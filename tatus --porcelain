@@ -1,0 +1,159 @@
+warning: in the working copy of 'application/config/routes.php', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/application/config/routes.php b/application/config/routes.php[m
+[1mindex 6656e28..d11fd29 100644[m
+[1m--- a/application/config/routes.php[m
+[1m+++ b/application/config/routes.php[m
+[36m@@ -66,15 +66,19 @@[m [m$route['api/users']['get'] = 'api/auth/get_users';[m
+ $route['api/users']['options'] = 'api/auth/options';[m
+ $route['api/user']['get'] = 'api/auth/get_user';[m
+ $route['api/user']['put'] = 'api/auth/update_user';[m
+[32m+[m[32m$route['api/user']['post'] = 'api/auth/update_user';[m
+ $route['api/user']['delete'] = 'api/auth/delete_user';[m
+ $route['api/user']['options'] = 'api/auth/options';[m
+ [m
+ // Specific Update Routes[m
+ $route['api/admin/update']['put'] = 'api/auth/update_user';[m
+[32m+[m[32m$route['api/admin/update']['post'] = 'api/auth/update_user';[m
+ $route['api/admin/update']['options'] = 'api/auth/options';[m
+ $route['api/teacher/update']['put'] = 'api/auth/update_user';[m
+[32m+[m[32m$route['api/teacher/update']['post'] = 'api/auth/update_user';[m
+ $route['api/teacher/update']['options'] = 'api/auth/options';[m
+ $route['api/student/update']['put'] = 'api/auth/update_user';[m
+[32m+[m[32m$route['api/student/update']['post'] = 'api/auth/update_user';[m
+ $route['api/student/update']['options'] = 'api/auth/options';[m
+ [m
+ // Specific Delete Routes[m
+[1mdiff --git a/application/controllers/api/Auth.php b/application/controllers/api/Auth.php[m
+[1mindex b71f8fa..0809054 100644[m
+[1m--- a/application/controllers/api/Auth.php[m
+[1m+++ b/application/controllers/api/Auth.php[m
+[36m@@ -479,6 +479,129 @@[m [mclass Auth extends BaseController {[m
+             return; // Error response already sent[m
+         }[m
+         [m
+[32m+[m[32m        // Check if this is a multipart form request (for file uploads)[m
+[32m+[m[32m        if ($this->input->method() === 'post' && !empty($_FILES)) {[m
+[32m+[m[32m            $this->update_user_with_images();[m
+[32m+[m[32m            return;[m
+[32m+[m[32m        }[m
+[32m+[m[41m        [m
+[32m+[m[32m        // Handle JSON request[m
+[32m+[m[32m        $this->update_user_json();[m
+[32m+[m[32m    }[m
+[32m+[m[41m    [m
+[32m+[m[32m    private function update_user_with_images() {[m
+[32m+[m[32m        try {[m
+[32m+[m[32m            // Get form data[m
+[32m+[m[32m            $role = $this->input->post('role');[m
+[32m+[m[32m            $user_id = $this->input->post('user_id');[m
+[32m+[m[41m            [m
+[32m+[m[32m            if (empty($role) || empty($user_id)) {[m
+[32m+[m[32m                $this->output[m
+[32m+[m[32m                    ->set_status_header(400)[m
+[32m+[m[32m                    ->set_content_type('application/json')[m
+[32m+[m[32m                    ->set_output(json_encode(['status' => false, 'message' => 'Role and user_id are required']));[m
+[32m+[m[32m                return;[m
+[32m+[m[32m            }[m
+[32m+[m[41m            [m
+[32m+[m[32m            // Check if user exists[m
+[32m+[m[32m            $user = $this->User_model->get_by_id($user_id);[m
+[32m+[m[32m            if (!$user || $user['role'] !== $role) {[m
+[32m+[m[32m                $this->output[m
+[32m+[m[32m                    ->set_status_header(404)[m
+[32m+[m[32m                    ->set_content_type('application/json')[m
+[32m+[m[32m                    ->set_output(json_encode(['status' => false, 'message' => 'User not found']));[m
+[32m+[m[32m                return;[m
+[32m+[m[32m            }[m
+[32m+[m[41m            [m
+[32m+[m[32m            $update_data = [];[m
+[32m+[m[41m            [m
+[32m+[m[32m            // Handle profile image upload[m
+[32m+[m[32m            if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] == 0) {[m
+[32m+[m[32m                try {[m
+[32m+[m[32m                    $profile_pic_path = $this->upload_image($_FILES['profile_pic'], 'profile');[m
+[32m+[m[32m                    $update_data['profile_pic'] = $profile_pic_path;[m
+[32m+[m[32m                } catch (Exception $e) {[m
+[32m+[m[32m                    $this->output[m
+[32m+[m[32m                        ->set_status_header(400)[m
+[32m+[m[32m                        ->set_content_type('application/json')[m
+[32m+[m[32m                        ->set_output(json_encode(['status' => false, 'message' => 'Profile image upload failed: ' . $e->getMessage()]));[m
+[32m+[m[32m                    return;[m
+[32m+[m[32m                }[m
+[32m+[m[32m            }[m
+[32m+[m[41m            [m
+[32m+[m[32m            // Handle cover image upload[m
+[32m+[m[32m            if (isset($_FILES['cover_pic']) && $_FILES['cover_pic']['error'] == 0) {[m
+[32m+[m[32m                try {[m
+[32m+[m[32m                    $cover_pic_path = $this->upload_image($_FILES['cover_pic'], 'cover');[m
+[32m+[m[32m                    $update_data['cover_pic'] = $cover_pic_path;[m
+[32m+[m[32m                } catch (Exception $e) {[m
+[32m+[m[32m                    $this->output[m
+[32m+[m[32m                        ->set_status_header(400)[m
+[32m+[m[32m                        ->set_content_type('application/json')[m
+[32m+[m[32m                        ->set_output(json_encode(['status' => false, 'message' => 'Cover image upload failed: ' . $e->getMessage()]));[m
+[32m+[m[32m                    return;[m
+[32m+[m[32m                }[m
+[32m+[m[32m            }[m
+[32m+[m[41m            [m
+[32m+[m[32m            // Handle other form fields[m
+[32m+[m[32m            if ($this->input->post('full_name')) $update_data['full_name'] = $this->input->post('full_name');[m
+[32m+[m[32m            if ($this->input->post('email')) $update_data['email'] = $this->input->post('email');[m
+[32m+[m[32m            if ($this->input->post('password')) $update_data['password'] = password_hash($this->input->post('password'), PASSWORD_BCRYPT);[m
+[32m+[m[32m            if ($this->input->post('program')) $update_data['program'] = $this->input->post('program');[m
+[32m+[m[32m            if ($this->input->post('contact_num')) $update_data['contact_num'] = $this->input->post('contact_num');[m
+[32m+[m[32m            if ($this->input->post('address')) $update_data['address'] = $this->input->post('address');[m
+[32m+[m[41m            [m
+[32m+[m[32m            // Status field with validation[m
+[32m+[m[32m            if ($this->input->post('status')) {[m
+[32m+[m[32m                $new_status = strtolower($this->input->post('status'));[m
+[32m+[m[32m                if ($new_status !== 'active' && $new_status !== 'inactive') {[m
+[32m+[m[32m                    $this->output[m
+[32m+[m[32m                        ->set_status_header(400)[m
+[32m+[m[32m                        ->set_content_type('application/json')[m
+[32m+[m[32m                        ->set_output(json_encode(['status' => false, 'message' => 'Status must be either "active" or "inactive"']));[m
+[32m+[m[32m                    return;[m
+[32m+[m[32m                }[m
+[32m+[m[32m                $update_data['status'] = $new_status;[m
+[32m+[m[32m            }[m
+[32m+[m[41m            [m
+[32m+[m[32m            // Student-specific fields[m
+[32m+[m[32m            if ($role === 'student') {[m
+[32m+[m[32m                if ($this->input->post('student_num')) $update_data['student_num'] = $this->input->post('student_num');[m
+[32m+[m[32m                if ($this->input->post('section_id')) $update_data['section_id'] = $this->input->post('section_id');[m
+[32m+[m[32m                if ($this->input->post('qr_code')) $update_data['qr_code'] = $this->input->post('qr_code');[m
+[32m+[m[32m            }[m
+[32m+[m[41m            [m
+[32m+[m[32m            if (empty($update_data)) {[m
+[32m+[m[32m                $this->output[m
+[32m+[m[32m                    ->set_status_header(400)[m
+[32m+[m[32m                    ->set_content_type('application/json')[m
+[32m+[m[32m                    ->set_output(json_encode(['status' => false, 'message' => 'No data provided for update']));[m
+[32m+[m[32m                return;[m
+[32m+[m[32m            }[m
+[32m+[m[41m            [m
+[32m+[m[32m            $success = $this->User_model->update($user_id, $update_data);[m
+[32m+[m[32m            if ($success) {[m
+[32m+[m[32m                $this->output[m
+[32m+[m[32m                    ->set_status_header(200)[m
+[32m+[m[32m                    ->set_content_type('application/json')[m
+[32m+[m[32m                    ->set_output(json_encode(['status' => true, 'message' => 'User updated successfully']));[m
+[32m+[m[32m            } else {[m
+[32m+[m[32m                $this->output[m
+[32m+[m[32m                    ->set_status_header(500)[m
+[32m+[m[32m                    ->set_content_type('application/json')[m
+[32m+[m[32m                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to update user']));[m
+[32m+[m[32m            }[m
+[32m+[m[41m            [m
+[32m+[m[32m        } catch (Exception $e) {[m
+[32m+[m[32m            log_message('error', 'Update user error: ' . $e->getMessage());[m
+[32m+[m[32m            $this->output[m
+[32m+[m[32m                ->set_status_header(500)[m
+[32m+[m[32m                ->set_content_type('application/json')[m
+[32m+[m[32m                ->set_output(json_encode(['status' => false, 'message' => 'Update failed: ' . $e->getMessage()]));[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m[41m    [m
+[32m+[m[32m    private function update_user_json() {[m
+         $data = json_decode(file_get_contents('php://input'));[m
+ [m
+         if (json_last_error() !== JSON_ERROR_NONE) {[m

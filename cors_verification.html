@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS Verification Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CORS Verification Test</h1>
+        
+        <button onclick="testSimpleGet()">Test Simple GET</button>
+        <button onclick="testOptionsRequest()">Test OPTIONS (Preflight)</button>
+        <button onclick="testWithAuth()">Test with Authorization</button>
+        <button onclick="testSectionsAPI()">Test Sections API</button>
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost/scms_new/index.php/api';
+        
+        function displayResult(message, isSuccess = true) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${isSuccess ? 'success' : 'error'}`;
+            resultDiv.textContent = message;
+        }
+        
+        function testSimpleGet() {
+            displayResult('Testing simple GET request...', true);
+            
+            fetch(`${API_BASE}/admin/programs`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => {
+                console.log('Response headers:', response.headers);
+                return response.json();
+            })
+            .then(data => {
+                displayResult(`✅ SUCCESS: Simple GET request worked!\n\nResponse: ${JSON.stringify(data, null, 2)}`, true);
+            })
+            .catch(error => {
+                displayResult(`❌ ERROR: ${error.message}\n\nThis indicates a CORS issue.`, false);
+            });
+        }
+        
+        function testOptionsRequest() {
+            displayResult('Testing OPTIONS preflight request...', true);
+            
+            fetch(`${API_BASE}/admin/programs`, {
+                method: 'OPTIONS',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer test-token'
+                }
+            })
+            .then(response => {
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
+                    'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers'),
+                    'Access-Control-Allow-Credentials': response.headers.get('Access-Control-Allow-Credentials')
+                };
+                
+                displayResult(`✅ SUCCESS: OPTIONS preflight request worked!\n\nCORS Headers:\n${JSON.stringify(corsHeaders, null, 2)}`, true);
+            })
+            .catch(error => {
+                displayResult(`❌ ERROR: ${error.message}\n\nThis indicates a CORS preflight issue.`, false);
+            });
+        }
+        
+        function testWithAuth() {
+            displayResult('Testing request with Authorization header...', true);
+            
+            fetch(`${API_BASE}/admin/sections`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': 'Bearer test-token'
+                }
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    displayResult(`✅ SUCCESS: Request with Authorization header worked! (Got expected 401)\n\nThis means CORS is working, but you need a valid token.`, true);
+                } else {
+                    return response.json();
+                }
+            })
+            .then(data => {
+                if (data) {
+                    displayResult(`✅ SUCCESS: Request with Authorization header worked!\n\nResponse: ${JSON.stringify(data, null, 2)}`, true);
+                }
+            })
+            .catch(error => {
+                displayResult(`❌ ERROR: ${error.message}\n\nThis indicates a CORS issue with Authorization headers.`, false);
+            });
+        }
+        
+        function testSectionsAPI() {
+            displayResult('Testing Sections API endpoint...', true);
+            
+            fetch(`${API_BASE}/admin/sections_by_program_year_specific?program=BSIT`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    displayResult(`✅ SUCCESS: Sections API endpoint is accessible! (Got expected 401)\n\nThis means CORS is working, but you need admin authentication.`, true);
+                } else {
+                    return response.json();
+                }
+            })
+            .then(data => {
+                if (data) {
+                    displayResult(`✅ SUCCESS: Sections API endpoint worked!\n\nResponse: ${JSON.stringify(data, null, 2)}`, true);
+                }
+            })
+            .catch(error => {
+                displayResult(`❌ ERROR: ${error.message}\n\nThis indicates a CORS issue with the Sections API.`, false);
+            });
+        }
+        
+        function clearResults() {
+            document.getElementById('result').textContent = '';
+            document.getElementById('result').className = 'result';
+        }
+        
+        // Display current origin for debugging
+        document.addEventListener('DOMContentLoaded', function() {
+            const origin = window.location.origin;
+            console.log('Current origin:', origin);
+            console.log('API base URL:', API_BASE);
+        });
+    </script>
+</body>
+</html>

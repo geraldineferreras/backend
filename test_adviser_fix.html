@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adviser Data Fix Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .section-item { margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 3px; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Adviser Data Fix Test</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: BSIT Sections (All Years)</h2>
+        <button onclick="testBSITSections()">Test BSIT Sections</button>
+        <div id="bsit-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: BSIT 1st Year Sections</h2>
+        <button onclick="testBSIT1stYear()">Test BSIT 1st Year</button>
+        <div id="bsit-1st-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: All Sections</h2>
+        <button onclick="testAllSections()">Test All Sections</button>
+        <div id="all-sections-result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost/scms_new/index.php/api/admin';
+        
+        async function makeRequest(url, description) {
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer test-token' // You might need a real token
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    return { success: true, data, description };
+                } else {
+                    return { success: false, error: data, description };
+                }
+            } catch (error) {
+                return { success: false, error: error.message, description };
+            }
+        }
+        
+        function displayResult(result, elementId) {
+            const element = document.getElementById(elementId);
+            
+            if (result.success) {
+                element.className = 'success';
+                element.innerHTML = `
+                    <h3>✅ ${result.description} - SUCCESS</h3>
+                    <p><strong>Status:</strong> ${result.data.status}</p>
+                    <p><strong>Message:</strong> ${result.data.message}</p>
+                    <p><strong>Total Sections:</strong> ${Array.isArray(result.data.data) ? result.data.data.length : result.data.data.sections?.length || 0}</p>
+                    
+                    <h4>Section Details:</h4>
+                    ${Array.isArray(result.data.data) ? 
+                        result.data.data.map(section => `
+                            <div class="section-item">
+                                <strong>${section.section_name}</strong> (${section.program} - ${section.year_level})<br>
+                                <strong>Adviser:</strong> ${section.adviserDetails?.name || 'No Adviser'}<br>
+                                <strong>Email:</strong> ${section.adviserDetails?.email || 'No Email'}<br>
+                                <strong>Profile Picture:</strong> ${section.adviserDetails?.profile_picture || 'No Picture'}<br>
+                                <strong>Enrolled:</strong> ${section.enrolled_count || 0} students
+                            </div>
+                        `).join('') :
+                        result.data.data.sections?.map(section => `
+                            <div class="section-item">
+                                <strong>${section.section_name}</strong> (${section.program} - ${section.year_level})<br>
+                                <strong>Adviser:</strong> ${section.adviserDetails?.name || 'No Adviser'}<br>
+                                <strong>Email:</strong> ${section.adviserDetails?.email || 'No Email'}<br>
+                                <strong>Profile Picture:</strong> ${section.adviserDetails?.profile_picture || 'No Picture'}<br>
+                                <strong>Enrolled:</strong> ${section.enrolled_count || 0} students
+                            </div>
+                        ).join('') || 'No sections found'
+                    }
+                    
+                    <h4>Raw Response:</h4>
+                    <pre>${JSON.stringify(result.data, null, 2)}</pre>
+                `;
+            } else {
+                element.className = 'error';
+                element.innerHTML = `
+                    <h3>❌ ${result.description} - ERROR</h3>
+                    <p><strong>Error:</strong> ${result.error.message || result.error}</p>
+                    <pre>${JSON.stringify(result.error, null, 2)}</pre>
+                `;
+            }
+        }
+        
+        async function testBSITSections() {
+            const result = await makeRequest(
+                `${API_BASE}/sections_by_program?program=BSIT`,
+                'BSIT Sections Test'
+            );
+            displayResult(result, 'bsit-result');
+        }
+        
+        async function testBSIT1stYear() {
+            const result = await makeRequest(
+                `${API_BASE}/sections_by_program_year_specific?program=BSIT&year_level=1st`,
+                'BSIT 1st Year Sections Test'
+            );
+            displayResult(result, 'bsit-1st-result');
+        }
+        
+        async function testAllSections() {
+            const result = await makeRequest(
+                `${API_BASE}/sections`,
+                'All Sections Test'
+            );
+            displayResult(result, 'all-sections-result');
+        }
+    </script>
+</body>
+</html>

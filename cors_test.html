@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS Test with Axios</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        select, input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .endpoint {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            margin-bottom: 20px;
+        }
+        .success {
+            color: #155724;
+            background-color: #d4edda;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #f5c6cb;
+        }
+        .section-item {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .section-name {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .section-details {
+            color: #666;
+            margin-top: 5px;
+        }
+        .token-input {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CORS Test with Axios</h1>
+        
+        <div class="token-input">
+            <label for="authToken">Auth Token (Bearer):</label>
+            <input type="text" id="authToken" placeholder="Enter your Bearer token here" style="width: 100%;">
+        </div>
+        
+        <div class="form-group">
+            <label for="program">Program:</label>
+            <select id="program">
+                <option value="">Select a program</option>
+                <option value="BSIT">BSIT - Bachelor of Science in Information Technology</option>
+                <option value="BSIS">BSIS - Bachelor of Science in Information Systems</option>
+                <option value="BSCS">BSCS - Bachelor of Science in Computer Science</option>
+                <option value="ACT">ACT - Associate in Computer Technology</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="yearLevel">Year Level:</label>
+            <select id="yearLevel">
+                <option value="">All Years</option>
+                <option value="1st">1st Year</option>
+                <option value="2nd">2nd Year</option>
+                <option value="3rd">3rd Year</option>
+                <option value="4th">4th Year</option>
+            </select>
+        </div>
+        
+        <button onclick="testWithAxios()">Test with Axios</button>
+        <button onclick="testWithFetch()">Test with Fetch</button>
+        <button onclick="testCORS()">Test CORS Preflight</button>
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="endpoint" class="endpoint" style="display: none;"></div>
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        // Configure axios defaults
+        axios.defaults.baseURL = 'http://localhost/scms_new/index.php/api';
+        axios.defaults.timeout = 10000;
+        axios.defaults.headers.common['Content-Type'] = 'application/json';
+        axios.defaults.headers.common['Accept'] = 'application/json';
+
+        // Add request interceptor to include auth token
+        axios.interceptors.request.use(
+            (config) => {
+                const token = document.getElementById('authToken').value;
+                if (token) {
+                    config.headers.Authorization = `Bearer ${token}`;
+                }
+                return config;
+            },
+            (error) => {
+                return Promise.reject(error);
+            }
+        );
+
+        // Add response interceptor
+        axios.interceptors.response.use(
+            (response) => {
+                return response;
+            },
+            (error) => {
+                console.error('Axios Error:', error);
+                return Promise.reject(error);
+            }
+        );
+
+        function testWithAxios() {
+            const program = document.getElementById('program').value;
+            const yearLevel = document.getElementById('yearLevel').value;
+            
+            if (!program) {
+                alert('Please select a program');
+                return;
+            }
+            
+            // Build the endpoint URL
+            let endpoint = `/admin/sections_by_program_year_specific?program=${encodeURIComponent(program)}`;
+            if (yearLevel) {
+                endpoint += `&year_level=${encodeURIComponent(yearLevel)}`;
+            }
+            
+            // Display the endpoint
+            document.getElementById('endpoint').innerHTML = `<strong>Axios Endpoint:</strong> ${axios.defaults.baseURL}${endpoint}`;
+            document.getElementById('endpoint').style.display = 'block';
+            
+            // Make the API call with axios
+            axios.get(endpoint)
+                .then(response => {
+                    displayResults(response.data, 'Axios');
+                })
+                .catch(error => {
+                    displayError(error, 'Axios');
+                });
+        }
+
+        function testWithFetch() {
+            const program = document.getElementById('program').value;
+            const yearLevel = document.getElementById('yearLevel').value;
+            
+            if (!program) {
+                alert('Please select a program');
+                return;
+            }
+            
+            // Build the endpoint URL
+            let endpoint = `http://localhost/scms_new/index.php/api/admin/sections_by_program_year_specific?program=${encodeURIComponent(program)}`;
+            if (yearLevel) {
+                endpoint += `&year_level=${encodeURIComponent(yearLevel)}`;
+            }
+            
+            // Display the endpoint
+            document.getElementById('endpoint').innerHTML = `<strong>Fetch Endpoint:</strong> ${endpoint}`;
+            document.getElementById('endpoint').style.display = 'block';
+            
+            // Prepare headers
+            const headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            };
+            
+            const token = document.getElementById('authToken').value;
+            if (token) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+            
+            // Make the API call with fetch
+            fetch(endpoint, {
+                method: 'GET',
+                headers: headers
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayResults(data, 'Fetch');
+            })
+            .catch(error => {
+                displayError(error, 'Fetch');
+            });
+        }
+
+        function testCORS() {
+            const endpoint = 'http://localhost/scms_new/index.php/api/admin/sections';
+            
+            document.getElementById('endpoint').innerHTML = `<strong>CORS Preflight Test:</strong> ${endpoint}`;
+            document.getElementById('endpoint').style.display = 'block';
+            
+            // Test OPTIONS request (preflight)
+            fetch(endpoint, {
+                method: 'OPTIONS',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer test-token'
+                }
+            })
+            .then(response => {
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
+                    'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers'),
+                    'Access-Control-Allow-Credentials': response.headers.get('Access-Control-Allow-Credentials')
+                };
+                
+                document.getElementById('result').innerHTML = `
+                    <div class="success">
+                        <strong>CORS Preflight Test Successful!</strong><br><br>
+                        <strong>CORS Headers:</strong><br>
+                        <pre>${JSON.stringify(corsHeaders, null, 2)}</pre>
+                    </div>
+                `;
+                document.getElementById('result').style.display = 'block';
+            })
+            .catch(error => {
+                displayError(error, 'CORS Preflight');
+            });
+        }
+
+        function displayResults(data, method) {
+            const resultDiv = document.getElementById('result');
+            
+            if (data.success) {
+                let html = `
+                    <div class="success">
+                        <strong>${method} Success:</strong> ${data.message}
+                    </div>
+                    <br>
+                    <strong>Program:</strong> ${data.data.program}<br>
+                    <strong>Program Short:</strong> ${data.data.program_short}<br>
+                    <strong>Year Level:</strong> ${data.data.year_level}<br>
+                    <strong>Total Sections:</strong> ${data.data.total_sections}
+                `;
+                
+                if (data.data.sections && data.data.sections.length > 0) {
+                    html += '<br><br><strong>Sections:</strong>';
+                    data.data.sections.forEach(section => {
+                        html += `
+                            <div class="section-item">
+                                <div class="section-name">${section.section_name}</div>
+                                <div class="section-details">
+                                    <strong>Program:</strong> ${section.program}<br>
+                                    <strong>Year Level:</strong> ${section.year_level}<br>
+                                    <strong>Semester:</strong> ${section.semester}<br>
+                                    <strong>Academic Year:</strong> ${section.academic_year}<br>
+                                    <strong>Adviser:</strong> ${section.adviser_name || 'Not assigned'}
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<br><br><em>No sections found for the specified criteria.</em>';
+                }
+                
+                resultDiv.innerHTML = html;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>${method} Error:</strong> ${data.message}
+                    </div>
+                `;
+            }
+            
+            resultDiv.style.display = 'block';
+        }
+
+        function displayError(error, method) {
+            const resultDiv = document.getElementById('result');
+            
+            let errorMessage = '';
+            if (error.response) {
+                // Server responded with error status
+                errorMessage = `Server Error (${error.response.status}): ${error.response.data?.message || error.response.statusText}`;
+            } else if (error.request) {
+                // Request was made but no response received
+                errorMessage = `Network Error: No response received from server`;
+            } else {
+                // Something else happened
+                errorMessage = `Error: ${error.message}`;
+            }
+            
+            resultDiv.innerHTML = `
+                <div class="error">
+                    <strong>${method} Error:</strong> ${errorMessage}<br><br>
+                    <strong>Note:</strong> You may need to:
+                    <ul>
+                        <li>Ensure the server is running at http://localhost/scms_new/</li>
+                        <li>Check if you have admin privileges</li>
+                        <li>Verify the auth token is valid</li>
+                        <li>Check browser console for more details</li>
+                    </ul>
+                </div>
+            `;
+            resultDiv.style.display = 'block';
+        }
+
+        function clearResults() {
+            document.getElementById('endpoint').style.display = 'none';
+            document.getElementById('result').style.display = 'none';
+        }
+    </script>
+</body>
+</html> 
