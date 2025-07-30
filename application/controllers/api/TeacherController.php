@@ -246,9 +246,39 @@ class TeacherController extends BaseController
         $user_data = require_teacher($this);
         if (!$user_data) return;
         $this->load->model('ClassroomStream_model');
-        $data = json_decode(file_get_contents('php://input'), true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return json_response(false, 'Invalid JSON format', null, 400);
+
+        // Check if multipart/form-data with file and JSON
+        if (isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK && isset($_POST['data'])) {
+            $data = json_decode($_POST['data'], true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return json_response(false, 'Invalid JSON format in data field', null, 400);
+            }
+            // Handle file upload
+            $upload_path = FCPATH . 'uploads/announcement/';
+            if (!is_dir($upload_path)) {
+                mkdir($upload_path, 0755, true);
+            }
+            $config['upload_path'] = $upload_path;
+            $config['allowed_types'] = 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar';
+            $config['max_size'] = 10240; // 10MB
+            $config['encrypt_name'] = true;
+            $config['remove_spaces'] = true;
+            $this->load->library('upload', $config);
+            $this->upload->initialize($config);
+            if (!$this->upload->do_upload('attachment')) {
+                $error = $this->upload->display_errors('', '');
+                return json_response(false, 'Upload failed: ' . $error, null, 400);
+            }
+            $upload_data = $this->upload->data();
+            $file_path = 'uploads/announcement/' . $upload_data['file_name'];
+            $data['attachment_type'] = 'file';
+            $data['attachment_url'] = $file_path;
+        } else {
+            // Fallback to JSON body (raw)
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return json_response(false, 'Invalid JSON format', null, 400);
+            }
         }
         $required = ['content'];
         foreach ($required as $field) {
@@ -256,7 +286,6 @@ class TeacherController extends BaseController
                 return json_response(false, "$field is required", null, 400);
             }
         }
-        // student_ids is optional: if provided, only those students can see the post
         $insert_data = [
             'class_code' => $class_code,
             'user_id' => $user_data['user_id'],

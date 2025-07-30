@@ -31,6 +31,11 @@ class Upload extends BaseController {
         $this->_upload_image('cover');
     }
 
+    public function announcement() {
+        // Allow more file types for announcements
+        $this->_upload_announcement_file('announcement');
+    }
+
     private function _upload_image($type) {
         // Check if file was uploaded
         if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
@@ -92,6 +97,62 @@ class Upload extends BaseController {
                     'file_size' => $upload_data['file_size'],
                     'image_width' => $upload_data['image_width'],
                     'image_height' => $upload_data['image_height']
+                ]
+            ]));
+    }
+
+    private function _upload_announcement_file($type) {
+        // Check if file was uploaded
+        if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
+            $this->output
+                ->set_status_header(400)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false, 
+                    'message' => 'No file uploaded or upload error occurred'
+                ]));
+            return;
+        }
+
+        // Configure upload settings
+        $upload_path = FCPATH . 'uploads/' . $type . '/';
+        if (!is_dir($upload_path)) {
+            mkdir($upload_path, 0755, true);
+        }
+        $config['upload_path'] = $upload_path;
+        $config['allowed_types'] = 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar';
+        $config['max_size'] = 10240; // 10MB
+        $config['encrypt_name'] = true;
+        $config['remove_spaces'] = true;
+
+        $this->upload->initialize($config);
+
+        if (!$this->upload->do_upload('image')) {
+            $error = $this->upload->display_errors('', '');
+            $this->output
+                ->set_status_header(400)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false, 
+                    'message' => 'Upload failed: ' . $error
+                ]));
+            return;
+        }
+
+        $upload_data = $this->upload->data();
+        $file_path = 'uploads/' . $type . '/' . $upload_data['file_name'];
+
+        $this->output
+            ->set_status_header(200)
+            ->set_content_type('application/json')
+            ->set_output(json_encode([
+                'status' => true,
+                'message' => ucfirst($type) . ' file uploaded successfully',
+                'data' => [
+                    'file_path' => $file_path,
+                    'file_name' => $upload_data['file_name'],
+                    'file_size' => $upload_data['file_size'],
+                    'file_type' => $upload_data['file_type']
                 ]
             ]));
     }
