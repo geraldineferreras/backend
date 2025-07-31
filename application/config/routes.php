@@ -118,6 +118,9 @@ $route['api/teacher/attendance']['post'] = 'teachercontroller/mark_attendance_qr
 
 // Student APIs
 $route['api/student/grades']['get'] = 'studentcontroller/get_my_grades';
+$route['api/student/join-class']['post'] = 'api/StudentController/join_class';
+$route['api/student/my-classes']['get'] = 'api/StudentController/my_classes';
+$route['api/student/leave-class']['delete'] = 'api/StudentController/leave_class';
 
 // Admin User Management
 $route['api/change-status']['post'] = 'api/auth/change_user_status';
@@ -173,6 +176,10 @@ $route['api/teacher/classroom/(:any)/stream/(:num)/comments']['get'] = 'api/Teac
 $route['api/teacher/classroom/(:any)/stream/(:num)/comment/(:num)']['put'] = 'api/TeacherController/classroom_stream_comment_put/$1/$2/$3';
 $route['api/teacher/classroom/(:any)/stream/(:num)/comment/(:num)']['delete'] = 'api/TeacherController/classroom_stream_comment_delete/$1/$2/$3';
 
+// Teacher Classroom Student Management
+$route['api/teacher/classroom/(:any)/students']['get'] = 'api/TeacherController/classroom_students_get/$1';
+$route['api/teacher/classroom/(:any)/enrollment-stats']['get'] = 'api/TeacherController/classroom_enrollment_stats_get/$1';
+
 // Teacher Assigned Subjects and Sections
 $route['api/teacher/assigned-subjects']['get'] = 'api/TeacherController/assigned_subjects_get';
 $route['api/teacher/available-subjects']['get'] = 'api/TeacherController/available_subjects_get';
@@ -184,8 +191,9 @@ $route['pdf/(:any)'] = 'pdf/serve/$1';
 $route['api/upload/profile'] = 'api/Upload/profile';
 $route['api/upload/cover'] = 'api/Upload/cover';
 
-// Image serving routes
+// File serving routes
 $route['image/(:any)/(:any)'] = 'image/serve/$1/$2';
+$route['file/(:any)/(:any)'] = 'file/serve/$1/$2';
 
 // Test route
 $route['api/test/upload'] = 'api/Test/upload_test';

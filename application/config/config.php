@@ -534,3 +534,19 @@ $config['rewrite_short_tags'] = FALSE;
 | Array:		array('10.0.1.200', '192.168.5.0/24')
 */
 $config['proxy_ips'] = '';
+
+/*
+|--------------------------------------------------------------------------
+| Allowed Attachment File Types
+|--------------------------------------------------------------------------
+| List of allowed file types for attachments (frontend uploads)
+| Example: images, documents, etc.
+*/
+$config['allowed_attachment_types'] = [
+    'jpg', 'jpeg', 'png', 'gif', // images
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', // documents
+    'txt', 'csv', // text
+    'zip', 'rar', // archives
+    'mp4', // video
+    'mp3', // audio
+];

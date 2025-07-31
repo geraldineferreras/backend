@@ -50,7 +50,7 @@ class ClassroomStream_model extends CI_Model {
 
     // Get all posts for UI: only needed fields, join users, count likes
     public function get_stream_for_classroom_ui($class_code) {
-        $this->db->select('cs.id, u.full_name as user_name, u.profile_pic as user_avatar, cs.created_at, cs.is_pinned, cs.title, cs.content, cs.liked_by_user_ids');
+        $this->db->select('cs.id, u.full_name as user_name, u.profile_pic as user_avatar, cs.created_at, cs.is_pinned, cs.title, cs.content, cs.liked_by_user_ids, cs.attachment_url, cs.attachment_type');
         $this->db->from('classroom_stream cs');
         $this->db->join('users u', 'cs.user_id = u.user_id', 'left');
         $this->db->where('cs.class_code', $class_code);
@@ -70,13 +70,19 @@ class ClassroomStream_model extends CI_Model {
             $likes = json_decode($post['liked_by_user_ids'], true) ?: [];
             $post['like_count'] = count($likes);
             unset($post['liked_by_user_ids']);
+            
+            // Add serving URLs for attachments
+            if (!empty($post['attachment_url'])) {
+                $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+            }
         }
         return $posts;
     }
 
     // Get all scheduled posts for UI
     public function get_scheduled_for_classroom_ui($class_code) {
-        $this->db->select('cs.id, u.full_name as user_name, u.profile_pic as user_avatar, cs.created_at, cs.is_pinned, cs.title, cs.content, cs.liked_by_user_ids, cs.scheduled_at');
+        $this->db->select('cs.id, u.full_name as user_name, u.profile_pic as user_avatar, cs.created_at, cs.is_pinned, cs.title, cs.content, cs.liked_by_user_ids, cs.scheduled_at, cs.attachment_url, cs.attachment_type');
         $this->db->from('classroom_stream cs');
         $this->db->join('users u', 'cs.user_id = u.user_id', 'left');
         $this->db->where('cs.class_code', $class_code);
@@ -88,13 +94,19 @@ class ClassroomStream_model extends CI_Model {
             $likes = json_decode($post['liked_by_user_ids'], true) ?: [];
             $post['like_count'] = count($likes);
             unset($post['liked_by_user_ids']);
+            
+            // Add serving URLs for attachments
+            if (!empty($post['attachment_url'])) {
+                $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+            }
         }
         return $posts;
     }
 
     // Get all drafts for UI
     public function get_drafts_for_classroom_ui($class_code) {
-        $this->db->select('cs.id, u.full_name as user_name, u.profile_pic as user_avatar, cs.created_at, cs.is_pinned, cs.title, cs.content, cs.liked_by_user_ids');
+        $this->db->select('cs.id, u.full_name as user_name, u.profile_pic as user_avatar, cs.created_at, cs.is_pinned, cs.title, cs.content, cs.liked_by_user_ids, cs.attachment_url, cs.attachment_type');
         $this->db->from('classroom_stream cs');
         $this->db->join('users u', 'cs.user_id = u.user_id', 'left');
         $this->db->where('cs.class_code', $class_code);
@@ -105,6 +117,12 @@ class ClassroomStream_model extends CI_Model {
             $likes = json_decode($post['liked_by_user_ids'], true) ?: [];
             $post['like_count'] = count($likes);
             unset($post['liked_by_user_ids']);
+            
+            // Add serving URLs for attachments
+            if (!empty($post['attachment_url'])) {
+                $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+            }
         }
         return $posts;
     }

@@ -247,32 +247,81 @@ class TeacherController extends BaseController
         if (!$user_data) return;
         $this->load->model('ClassroomStream_model');
 
-        // Check if multipart/form-data with file and JSON
-        if (isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK && isset($_POST['data'])) {
+        // Check if multipart/form-data with files and JSON
+        if (isset($_FILES) && !empty($_FILES) && isset($_POST['data'])) {
             $data = json_decode($_POST['data'], true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 return json_response(false, 'Invalid JSON format in data field', null, 400);
             }
-            // Handle file upload
+            
+            // Handle multiple file uploads
+            $uploaded_files = [];
             $upload_path = FCPATH . 'uploads/announcement/';
             if (!is_dir($upload_path)) {
                 mkdir($upload_path, 0755, true);
             }
-            $config['upload_path'] = $upload_path;
-            $config['allowed_types'] = 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar';
-            $config['max_size'] = 10240; // 10MB
-            $config['encrypt_name'] = true;
-            $config['remove_spaces'] = true;
-            $this->load->library('upload', $config);
-            $this->upload->initialize($config);
-            if (!$this->upload->do_upload('attachment')) {
-                $error = $this->upload->display_errors('', '');
-                return json_response(false, 'Upload failed: ' . $error, null, 400);
+            
+            // Process each uploaded file
+            foreach ($_FILES as $field_name => $file_data) {
+                if ($file_data['error'] === UPLOAD_ERR_OK) {
+                    $config['upload_path'] = $upload_path;
+                    $config['allowed_types'] = 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3';
+                    $config['max_size'] = 10240; // 10MB
+                    $config['encrypt_name'] = false;
+                    $config['remove_spaces'] = true;
+                    $config['file_ext_tolower'] = true;
+                    
+                    // Get original filename and sanitize it
+                    $original_name = $file_data['name'];
+                    $file_extension = pathinfo($original_name, PATHINFO_EXTENSION);
+                    $file_name_without_ext = pathinfo($original_name, PATHINFO_FILENAME);
+                    
+                    // Sanitize filename: keep Unicode characters, alphanumeric, dots, hyphens, underscores, and spaces
+                    // Remove only potentially dangerous characters
+                    $sanitized_name = preg_replace('/[^\p{L}\p{N}\s._-]/u', '', $file_name_without_ext);
+                    $sanitized_name = trim($sanitized_name, '._-');
+                    // Replace multiple spaces with single space
+                    $sanitized_name = preg_replace('/\s+/', ' ', $sanitized_name);
+                    
+                    // If sanitized name is empty, use a default name
+                    if (empty($sanitized_name)) {
+                        $sanitized_name = 'file';
+                    }
+                    
+                    // Check if file already exists and append number if necessary
+                    $final_filename = $sanitized_name . '.' . $file_extension;
+                    $counter = 1;
+                    while (file_exists($upload_path . $final_filename)) {
+                        $final_filename = $sanitized_name . '_' . $counter . '.' . $file_extension;
+                        $counter++;
+                    }
+                    
+                    $config['file_name'] = $final_filename;
+                    $this->load->library('upload', $config);
+                    $this->upload->initialize($config);
+                    
+                    if ($this->upload->do_upload($field_name)) {
+                        $upload_data = $this->upload->data();
+                        $file_path = 'uploads/announcement/' . $upload_data['file_name'];
+                        $uploaded_files[] = [
+                            'field_name' => $field_name,
+                            'file_path' => $file_path,
+                            'file_name' => $upload_data['file_name'],
+                            'file_size' => $upload_data['file_size'],
+                            'file_type' => $upload_data['file_type']
+                        ];
+                    } else {
+                        $error = $this->upload->display_errors('', '');
+                        return json_response(false, 'Upload failed for ' . $field_name . ': ' . $error, null, 400);
+                    }
+                }
             }
-            $upload_data = $this->upload->data();
-            $file_path = 'uploads/announcement/' . $upload_data['file_name'];
-            $data['attachment_type'] = 'file';
-            $data['attachment_url'] = $file_path;
+            
+            // Store file information in data
+            if (!empty($uploaded_files)) {
+                $data['attachment_type'] = 'multiple';
+                $data['attachment_url'] = json_encode($uploaded_files);
+            }
         } else {
             // Fallback to JSON body (raw)
             $data = json_decode(file_get_contents('php://input'), true);
@@ -280,12 +329,14 @@ class TeacherController extends BaseController
                 return json_response(false, 'Invalid JSON format', null, 400);
             }
         }
+        
         $required = ['content'];
         foreach ($required as $field) {
             if (empty($data[$field])) {
                 return json_response(false, "$field is required", null, 400);
             }
         }
+        
         $insert_data = [
             'class_code' => $class_code,
             'user_id' => $user_data['user_id'],
@@ -298,9 +349,11 @@ class TeacherController extends BaseController
             'attachment_type' => $data['attachment_type'] ?? null,
             'attachment_url' => $data['attachment_url'] ?? null
         ];
+        
         if (!empty($data['student_ids'])) {
             $insert_data['student_ids'] = $data['student_ids'];
         }
+        
         $id = $this->ClassroomStream_model->insert($insert_data);
         if ($id) {
             $post = $this->ClassroomStream_model->get_by_id($id);
@@ -606,5 +659,127 @@ class TeacherController extends BaseController
         } else {
             return json_response(false, 'Failed to delete comment (maybe not your comment)', null, 403);
         }
+    }
+
+    /**
+     * Get list of students enrolled in a specific class
+     * GET /api/teacher/classroom/{class_code}/students
+     */
+    public function classroom_students_get($class_code) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+        
+        // Get classroom by code and verify teacher ownership
+        $this->load->model('Classroom_model');
+        $classroom = $this->Classroom_model->get_by_code($class_code);
+        if (!$classroom) {
+            return json_response(false, 'Classroom not found', null, 404);
+        }
+        
+        // Verify that this teacher owns the classroom
+        if ($classroom['teacher_id'] != $user_data['user_id']) {
+            return json_response(false, 'Access denied. You can only view students in your own classes.', null, 403);
+        }
+        
+        // Get enrolled students with their details - using raw query to handle collation
+        $query = "SELECT 
+                    ce.enrolled_at,
+                    ce.status as enrollment_status,
+                    u.user_id,
+                    u.full_name,
+                    u.email,
+                    u.student_num,
+                    u.contact_num,
+                    u.program,
+                    u.section_id
+                FROM classroom_enrollments ce
+                JOIN users u ON ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci
+                WHERE ce.classroom_id = ?
+                AND ce.status = 'active'
+                ORDER BY u.full_name ASC";
+        
+        $enrolled_students = $this->db->query($query, [$classroom['id']])->result_array();
+        
+        // Format the response
+        $students = [];
+        foreach ($enrolled_students as $student) {
+            // Get section name separately to avoid collation issues
+            $section_name = '';
+            if (!empty($student['section_id'])) {
+                $section = $this->db->get_where('sections', ['section_id' => $student['section_id']])->row_array();
+                $section_name = $section ? $section['section_name'] : '';
+            }
+            
+            $students[] = [
+                'user_id' => $student['user_id'],
+                'full_name' => $student['full_name'],
+                'email' => $student['email'],
+                'student_num' => $student['student_num'],
+                'contact_num' => $student['contact_num'],
+                'program' => $student['program'],
+                'section_name' => $section_name,
+                'enrolled_at' => $student['enrolled_at'],
+                'enrollment_status' => $student['enrollment_status']
+            ];
+        }
+        
+        $response_data = [
+            'class_code' => $classroom['class_code'],
+            'total_students' => count($students),
+            'students' => $students
+        ];
+        
+        return json_response(true, 'Enrolled students retrieved successfully', $response_data);
+    }
+
+    /**
+     * Get enrollment statistics for a class
+     * GET /api/teacher/classroom/{class_code}/enrollment-stats
+     */
+    public function classroom_enrollment_stats_get($class_code) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+        
+        // Get classroom by code and verify teacher ownership
+        $this->load->model('Classroom_model');
+        $classroom = $this->Classroom_model->get_by_code($class_code);
+        if (!$classroom) {
+            return json_response(false, 'Classroom not found', null, 404);
+        }
+        
+        // Verify that this teacher owns the classroom
+        if ($classroom['teacher_id'] != $user_data['user_id']) {
+            return json_response(false, 'Access denied. You can only view statistics for your own classes.', null, 403);
+        }
+        
+        // Get enrollment statistics
+        $total_enrolled = $this->db->where('classroom_id', $classroom['id'])
+            ->where('status', 'active')
+            ->count_all_results('classroom_enrollments');
+        
+        $total_inactive = $this->db->where('classroom_id', $classroom['id'])
+            ->where('status', 'inactive')
+            ->count_all_results('classroom_enrollments');
+        
+        $total_dropped = $this->db->where('classroom_id', $classroom['id'])
+            ->where('status', 'dropped')
+            ->count_all_results('classroom_enrollments');
+        
+        // Get recent enrollments (last 7 days)
+        $recent_enrollments = $this->db->where('classroom_id', $classroom['id'])
+            ->where('status', 'active')
+            ->where('enrolled_at >=', date('Y-m-d H:i:s', strtotime('-7 days')))
+            ->count_all_results('classroom_enrollments');
+        
+        $stats = [
+            'class_code' => $classroom['class_code'],
+            'total_enrolled' => $total_enrolled,
+            'total_inactive' => $total_inactive,
+            'total_dropped' => $total_dropped,
+            'recent_enrollments' => $recent_enrollments,
+            'total_enrollments' => $total_enrolled + $total_inactive + $total_dropped
+        ];
+        
+        return json_response(true, 'Enrollment statistics retrieved successfully', $stats);
     }
 }

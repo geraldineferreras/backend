@@ -49,4 +49,31 @@ class Test extends BaseController {
                 ]
             ]));
     }
+
+    public function test_users_api() {
+        // Test endpoint to verify the User_model changes work correctly
+        $this->load->model('User_model');
+        
+        try {
+            $students = $this->User_model->get_all('student');
+            
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Test users API - Students with section_name',
+                    'data' => $students,
+                    'count' => count($students)
+                ]));
+        } catch (Exception $e) {
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Error testing users API: ' . $e->getMessage()
+                ]));
+        }
+    }
 } 

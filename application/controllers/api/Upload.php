@@ -62,8 +62,36 @@ class Upload extends BaseController {
         $config['max_size'] = 5120; // 5MB
         $config['max_width'] = 2048;
         $config['max_height'] = 2048;
-        $config['encrypt_name'] = true; // Generate unique filename
+        $config['encrypt_name'] = false;
         $config['remove_spaces'] = true;
+        $config['file_ext_tolower'] = true;
+        
+        // Get original filename and sanitize it
+        $original_name = $_FILES['image']['name'];
+        $file_extension = pathinfo($original_name, PATHINFO_EXTENSION);
+        $file_name_without_ext = pathinfo($original_name, PATHINFO_FILENAME);
+        
+        // Sanitize filename: keep Unicode characters, alphanumeric, dots, hyphens, underscores, and spaces
+        // Remove only potentially dangerous characters
+        $sanitized_name = preg_replace('/[^\p{L}\p{N}\s._-]/u', '', $file_name_without_ext);
+        $sanitized_name = trim($sanitized_name, '._-');
+        // Replace multiple spaces with single space
+        $sanitized_name = preg_replace('/\s+/', ' ', $sanitized_name);
+        
+        // If sanitized name is empty, use a default name
+        if (empty($sanitized_name)) {
+            $sanitized_name = 'image';
+        }
+        
+        // Check if file already exists and append number if necessary
+        $final_filename = $sanitized_name . '.' . $file_extension;
+        $counter = 1;
+        while (file_exists($upload_path . $final_filename)) {
+            $final_filename = $sanitized_name . '_' . $counter . '.' . $file_extension;
+            $counter++;
+        }
+        
+        $config['file_name'] = $final_filename;
 
         $this->upload->initialize($config);
 
@@ -120,10 +148,38 @@ class Upload extends BaseController {
             mkdir($upload_path, 0755, true);
         }
         $config['upload_path'] = $upload_path;
-        $config['allowed_types'] = 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar';
+        $config['allowed_types'] = 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3';
         $config['max_size'] = 10240; // 10MB
-        $config['encrypt_name'] = true;
+        $config['encrypt_name'] = false;
         $config['remove_spaces'] = true;
+        $config['file_ext_tolower'] = true;
+        
+        // Get original filename and sanitize it
+        $original_name = $_FILES['image']['name'];
+        $file_extension = pathinfo($original_name, PATHINFO_EXTENSION);
+        $file_name_without_ext = pathinfo($original_name, PATHINFO_FILENAME);
+        
+        // Sanitize filename: keep Unicode characters, alphanumeric, dots, hyphens, underscores, and spaces
+        // Remove only potentially dangerous characters
+        $sanitized_name = preg_replace('/[^\p{L}\p{N}\s._-]/u', '', $file_name_without_ext);
+        $sanitized_name = trim($sanitized_name, '._-');
+        // Replace multiple spaces with single space
+        $sanitized_name = preg_replace('/\s+/', ' ', $sanitized_name);
+        
+        // If sanitized name is empty, use a default name
+        if (empty($sanitized_name)) {
+            $sanitized_name = 'file';
+        }
+        
+        // Check if file already exists and append number if necessary
+        $final_filename = $sanitized_name . '.' . $file_extension;
+        $counter = 1;
+        while (file_exists($upload_path . $final_filename)) {
+            $final_filename = $sanitized_name . '_' . $counter . '.' . $file_extension;
+            $counter++;
+        }
+        
+        $config['file_name'] = $final_filename;
 
         $this->upload->initialize($config);
 

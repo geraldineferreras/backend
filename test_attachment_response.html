@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Attachment Response</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Attachment Response</h1>
+        <p>This test will check if the API now returns <code>attachment_url</code> and <code>attachment_type</code> fields in the classroom stream response.</p>
+        
+        <div class="test-section">
+            <h3>Step 1: Enter Classroom Code</h3>
+            <input type="text" id="classCode" placeholder="Enter classroom code (e.g., 5YKQB3)" style="padding: 8px; width: 200px;">
+            <button onclick="testAttachmentResponse()">Test API Response</button>
+        </div>
+        
+        <div class="test-section" id="result" style="display: none;">
+            <h3>Test Results</h3>
+            <div id="resultContent"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Expected Response Format</h3>
+            <p>A successful response should include <code>attachment_url</code> and <code>attachment_type</code> for posts with attachments:</p>
+            <pre>{
+  "success": true,
+  "message": "Stream posts retrieved successfully",
+  "data": [
+    {
+      "id": 123,
+      "user_name": "Teacher Name",
+      "title": "Post Title",
+      "content": "Post content...",
+      "attachment_url": "uploads/announcement/file.pdf",  // ← Should be present
+      "attachment_type": "file",                          // ← Should be present
+      "like_count": 0,
+      // ... other fields
+    }
+  ]
+}</pre>
+        </div>
+    </div>
+
+    <script>
+        async function testAttachmentResponse() {
+            const classCode = document.getElementById('classCode').value.trim();
+            if (!classCode) {
+                alert('Please enter a classroom code');
+                return;
+            }
+
+            const resultDiv = document.getElementById('result');
+            const resultContent = document.getElementById('resultContent');
+            
+            resultDiv.style.display = 'block';
+            resultContent.innerHTML = '<p>Testing...</p>';
+
+            try {
+                // Get token from localStorage (assuming it's stored there)
+                const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+                if (!token) {
+                    resultContent.innerHTML = '<div class="error"><p><strong>Error:</strong> No authentication token found. Please login first.</p></div>';
+                    return;
+                }
+
+                const response = await fetch(`/api/teacher/classroom/${classCode}/stream`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    let hasAttachments = false;
+                    let attachmentFieldsPresent = true;
+                    
+                    // Check if any posts have attachment fields
+                    data.data.forEach((post, index) => {
+                        if (post.attachment_url || post.attachment_type) {
+                            hasAttachments = true;
+                        }
+                        if (!('attachment_url' in post) || !('attachment_type' in post)) {
+                            attachmentFieldsPresent = false;
+                        }
+                    });
+
+                    let resultHTML = '<div class="success">';
+                    resultHTML += '<p><strong>✅ API Response Successful!</strong></p>';
+                    resultHTML += `<p>Found ${data.data.length} posts in the stream.</p>`;
+                    
+                    if (attachmentFieldsPresent) {
+                        resultHTML += '<p><strong>✅ Attachment fields are present in all posts!</strong></p>';
+                    } else {
+                        resultHTML += '<p><strong>❌ Some posts are missing attachment fields.</strong></p>';
+                    }
+                    
+                    if (hasAttachments) {
+                        resultHTML += '<p><strong>✅ Found posts with attachments!</strong></p>';
+                    } else {
+                        resultHTML += '<p><strong>ℹ️ No posts with attachments found (this is normal if no attachments were uploaded).</strong></p>';
+                    }
+                    
+                    resultHTML += '<h4>Sample Posts:</h4>';
+                    data.data.slice(0, 3).forEach((post, index) => {
+                        resultHTML += `<div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 3px;">`;
+                        resultHTML += `<strong>Post ${index + 1}:</strong><br>`;
+                        resultHTML += `ID: ${post.id}<br>`;
+                        resultHTML += `Title: ${post.title || 'No title'}<br>`;
+                        resultHTML += `Content: ${post.content.substring(0, 50)}...<br>`;
+                        resultHTML += `Attachment URL: ${post.attachment_url || 'None'}<br>`;
+                        resultHTML += `Attachment Type: ${post.attachment_type || 'None'}<br>`;
+                        resultHTML += `</div>`;
+                    });
+                    
+                    resultHTML += '</div>';
+                    resultContent.innerHTML = resultHTML;
+                } else {
+                    resultContent.innerHTML = `<div class="error"><p><strong>Error:</strong> ${data.message}</p></div>`;
+                }
+            } catch (error) {
+                resultContent.innerHTML = `<div class="error"><p><strong>Error:</strong> ${error.message}</p></div>`;
+            }
+        }
+    </script>
+</body>
+</html> 
