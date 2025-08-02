@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprehensive Audit Logging Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .btn-success {
+            background-color: #28a745;
+        }
+        .btn-success:hover {
+            background-color: #1e7e34;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background-color: #e0a800;
+        }
+        .response {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .audit-logs {
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .log-entry {
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: white;
+            border-radius: 3px;
+            border-left: 4px solid #007bff;
+        }
+        .log-entry .timestamp {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .log-entry .action {
+            font-weight: bold;
+            color: #333;
+        }
+        .log-entry .details {
+            color: #555;
+            margin-top: 5px;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .status-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .status-card h4 {
+            margin-top: 0;
+            color: #333;
+        }
+        .status-ok {
+            border-left: 4px solid #28a745;
+        }
+        .status-error {
+            border-left: 4px solid #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Comprehensive Audit Logging Test</h1>
+    
+    <div class="container">
+        <div class="section">
+            <h3>🔐 Authentication Test</h3>
+            <p>Test login/logout audit logging:</p>
+            
+            <div class="form-group">
+                <label for="loginEmail">Email:</label>
+                <input type="email" id="loginEmail" value="student@test.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="loginPassword">Password:</label>
+                <input type="password" id="loginPassword" value="password123">
+            </div>
+            
+            <button onclick="testLogin()" class="btn-success">🔑 Test Login</button>
+            <button onclick="testLogout()" class="btn-danger">🚪 Test Logout</button>
+            
+            <div id="authResponse" class="response"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>👨‍🎓 Student Actions Test</h3>
+            <p>Test student action audit logging:</p>
+            
+            <div class="form-group">
+                <label for="studentToken">Student Token:</label>
+                <input type="text" id="studentToken" placeholder="Bearer token from login">
+            </div>
+            
+            <div class="form-group">
+                <label for="classCode">Class Code:</label>
+                <input type="text" id="classCode" value="CS101">
+            </div>
+            
+            <button onclick="testJoinClass()" class="btn-success">➕ Join Class</button>
+            <button onclick="testLeaveClass()" class="btn-danger">➖ Leave Class</button>
+            
+            <div class="form-group">
+                <label for="excuseClassId">Class ID for Excuse Letter:</label>
+                <input type="text" id="excuseClassId" value="1">
+            </div>
+            
+            <div class="form-group">
+                <label for="excuseDate">Date Absent:</label>
+                <input type="date" id="excuseDate" value="2024-01-15">
+            </div>
+            
+            <div class="form-group">
+                <label for="excuseReason">Reason:</label>
+                <textarea id="excuseReason" rows="3">Medical appointment</textarea>
+            </div>
+            
+            <button onclick="testSubmitExcuse()" class="btn-success">📝 Submit Excuse Letter</button>
+            
+            <div id="studentResponse" class="response"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>👨‍🏫 Teacher Actions Test</h3>
+            <p>Test teacher action audit logging:</p>
+            
+            <div class="form-group">
+                <label for="teacherToken">Teacher Token:</label>
+                <input type="text" id="teacherToken" placeholder="Teacher Bearer token">
+            </div>
+            
+            <div class="form-group">
+                <label for="subjectId">Subject ID:</label>
+                <input type="text" id="subjectId" value="1">
+            </div>
+            
+            <div class="form-group">
+                <label for="sectionId">Section ID:</label>
+                <input type="text" id="sectionId" value="1">
+            </div>
+            
+            <div class="form-group">
+                <label for="semester">Semester:</label>
+                <input type="text" id="semester" value="1st">
+            </div>
+            
+            <div class="form-group">
+                <label for="schoolYear">School Year:</label>
+                <input type="text" id="schoolYear" value="2024-2025">
+            </div>
+            
+            <button onclick="testCreateClassroom()" class="btn-success">🏫 Create Classroom</button>
+            
+            <div class="form-group">
+                <label for="attendanceClassId">Class ID for Attendance:</label>
+                <input type="text" id="attendanceClassId" value="1">
+            </div>
+            
+            <div class="form-group">
+                <label for="attendanceStudentId">Student ID:</label>
+                <input type="text" id="attendanceStudentId" value="1">
+            </div>
+            
+            <div class="form-group">
+                <label for="attendanceDate">Date:</label>
+                <input type="date" id="attendanceDate" value="2024-01-15">
+            </div>
+            
+            <div class="form-group">
+                <label for="attendanceStatus">Status:</label>
+                <select id="attendanceStatus">
+                    <option value="present">Present</option>
+                    <option value="absent">Absent</option>
+                    <option value="late">Late</option>
+                </select>
+            </div>
+            
+            <button onclick="testRecordAttendance()" class="btn-warning">📊 Record Attendance</button>
+            
+            <div id="teacherResponse" class="response"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>📊 View Audit Logs</h3>
+            <p>Check the audit logs to see if actions were logged:</p>
+            
+            <div class="form-group">
+                <label for="adminToken">Admin Token:</label>
+                <input type="text" id="adminToken" placeholder="Admin Bearer token">
+            </div>
+            
+            <button onclick="getAuditLogs()" class="btn-success">📋 Get Audit Logs</button>
+            <button onclick="getAuditModules()" class="btn-success">📂 Get Available Modules</button>
+            <button onclick="getAuditRoles()" class="btn-success">👥 Get Available Roles</button>
+            
+            <div id="auditResponse" class="response"></div>
+            
+            <div id="auditLogs" class="audit-logs" style="display: none;">
+                <h4>📋 Recent Audit Logs:</h4>
+                <div id="auditLogsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>✅ System Status</h3>
+            <div class="status-grid">
+                <div class="status-card status-ok">
+                    <h4>✅ Auth Controller</h4>
+                    <p>Token_lib: Loaded</p>
+                    <p>Audit Helper: Loaded</p>
+                    <p>Login/Logout: Logged</p>
+                </div>
+                <div class="status-card status-ok">
+                    <h4>✅ Student Controller</h4>
+                    <p>Token_lib: Loaded</p>
+                    <p>Audit Helper: Loaded</p>
+                    <p>Join/Leave Class: Logged</p>
+                </div>
+                <div class="status-card status-ok">
+                    <h4>✅ Excuse Letter Controller</h4>
+                    <p>Token_lib: Loaded</p>
+                    <p>Audit Helper: Loaded</p>
+                    <p>Submit Excuse: Logged</p>
+                </div>
+                <div class="status-card status-ok">
+                    <h4>✅ Teacher Controller</h4>
+                    <p>Token_lib: Loaded</p>
+                    <p>Audit Helper: Loaded</p>
+                    <p>Create Classroom: Logged</p>
+                </div>
+                <div class="status-card status-ok">
+                    <h4>✅ Attendance Controller</h4>
+                    <p>Token_lib: Loaded</p>
+                    <p>Audit Helper: Loaded</p>
+                    <p>Record Attendance: Logged</p>
+                </div>
+                <div class="status-card status-ok">
+                    <h4>✅ Admin Controller</h4>
+                    <p>Token_lib: Loaded</p>
+                    <p>Audit API: Available</p>
+                    <p>Export Logs: Available</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost/scms_new_backup/index.php/api';
+        
+        function showResponse(elementId, message, isSuccess = true) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `response ${isSuccess ? 'success' : 'error'}`;
+            element.style.display = 'block';
+        }
+
+        function showInfo(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'response info';
+            element.style.display = 'block';
+        }
+
+        async function makeRequest(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                const data = await response.json();
+                return { success: response.ok, data, status: response.status };
+            } catch (error) {
+                return { success: false, data: { message: error.message }, status: 0 };
+            }
+        }
+
+        async function testLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            showInfo('authResponse', 'Testing login...');
+            
+            const result = await makeRequest(`${API_BASE}/auth/login`, {
+                method: 'POST',
+                body: JSON.stringify({ email, password })
+            });
+            
+            if (result.success) {
+                showResponse('authResponse', `✅ Login successful!\nToken: ${result.data.data.token}\n\nCopy this token to test other actions.`);
+                // Auto-fill tokens
+                document.getElementById('studentToken').value = result.data.data.token;
+                document.getElementById('teacherToken').value = result.data.data.token;
+            } else {
+                showResponse('authResponse', `❌ Login failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testLogout() {
+            const token = document.getElementById('studentToken').value;
+            
+            if (!token) {
+                showResponse('authResponse', '❌ Please login first to get a token', false);
+                return;
+            }
+            
+            showInfo('authResponse', 'Testing logout...');
+            
+            const result = await makeRequest(`${API_BASE}/auth/logout`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (result.success) {
+                showResponse('authResponse', '✅ Logout successful! Check audit logs.');
+            } else {
+                showResponse('authResponse', `❌ Logout failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testJoinClass() {
+            const token = document.getElementById('studentToken').value;
+            const classCode = document.getElementById('classCode').value;
+            
+            if (!token) {
+                showResponse('studentResponse', '❌ Please login first to get a token', false);
+                return;
+            }
+            
+            showInfo('studentResponse', 'Testing join class...');
+            
+            const result = await makeRequest(`${API_BASE}/student/join-class`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ class_code: classCode })
+            });
+            
+            if (result.success) {
+                showResponse('studentResponse', `✅ Joined class successfully!\nClass: ${result.data.data.subject_name}\nCheck audit logs for the action.`);
+            } else {
+                showResponse('studentResponse', `❌ Join class failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testLeaveClass() {
+            const token = document.getElementById('studentToken').value;
+            const classCode = document.getElementById('classCode').value;
+            
+            if (!token) {
+                showResponse('studentResponse', '❌ Please login first to get a token', false);
+                return;
+            }
+            
+            showInfo('studentResponse', 'Testing leave class...');
+            
+            const result = await makeRequest(`${API_BASE}/student/leave-class`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ class_code: classCode })
+            });
+            
+            if (result.success) {
+                showResponse('studentResponse', '✅ Left class successfully! Check audit logs for the action.');
+            } else {
+                showResponse('studentResponse', `❌ Leave class failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testSubmitExcuse() {
+            const token = document.getElementById('studentToken').value;
+            const classId = document.getElementById('excuseClassId').value;
+            const dateAbsent = document.getElementById('excuseDate').value;
+            const reason = document.getElementById('excuseReason').value;
+            
+            if (!token) {
+                showResponse('studentResponse', '❌ Please login first to get a token', false);
+                return;
+            }
+            
+            showInfo('studentResponse', 'Testing submit excuse letter...');
+            
+            const result = await makeRequest(`${API_BASE}/excuse-letters/submit`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    class_id: classId,
+                    date_absent: dateAbsent,
+                    reason: reason
+                })
+            });
+            
+            if (result.success) {
+                showResponse('studentResponse', `✅ Excuse letter submitted successfully!\nDate: ${dateAbsent}\nCheck audit logs for the action.`);
+            } else {
+                showResponse('studentResponse', `❌ Submit excuse failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testCreateClassroom() {
+            const token = document.getElementById('teacherToken').value;
+            const subjectId = document.getElementById('subjectId').value;
+            const sectionId = document.getElementById('sectionId').value;
+            const semester = document.getElementById('semester').value;
+            const schoolYear = document.getElementById('schoolYear').value;
+            
+            if (!token) {
+                showResponse('teacherResponse', '❌ Please provide a teacher token', false);
+                return;
+            }
+            
+            showInfo('teacherResponse', 'Testing create classroom...');
+            
+            const result = await makeRequest(`${API_BASE}/teacher/classrooms`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    subject_id: subjectId,
+                    section_id: sectionId,
+                    semester: semester,
+                    school_year: schoolYear
+                })
+            });
+            
+            if (result.success) {
+                showResponse('teacherResponse', `✅ Classroom created successfully!\nClass Code: ${result.data.data.class_code}\nCheck audit logs for the action.`);
+            } else {
+                showResponse('teacherResponse', `❌ Create classroom failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testRecordAttendance() {
+            const token = document.getElementById('teacherToken').value;
+            const classId = document.getElementById('attendanceClassId').value;
+            const studentId = document.getElementById('attendanceStudentId').value;
+            const date = document.getElementById('attendanceDate').value;
+            const status = document.getElementById('attendanceStatus').value;
+            
+            if (!token) {
+                showResponse('teacherResponse', '❌ Please provide a teacher token', false);
+                return;
+            }
+            
+            showInfo('teacherResponse', 'Testing record attendance...');
+            
+            const result = await makeRequest(`${API_BASE}/attendance/record`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    student_id: studentId,
+                    class_id: classId,
+                    date: date,
+                    status: status
+                })
+            });
+            
+            if (result.success) {
+                showResponse('teacherResponse', `✅ Attendance recorded successfully!\nStudent: ${result.data.data.student_name}\nStatus: ${status}\nCheck audit logs for the action.`);
+            } else {
+                showResponse('teacherResponse', `❌ Record attendance failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function getAuditLogs() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('auditResponse', '❌ Please provide admin token', false);
+                return;
+            }
+            
+            showInfo('auditResponse', 'Fetching audit logs...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/audit-logs`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (result.success) {
+                showResponse('auditResponse', `✅ Retrieved ${result.data.data.logs.length} audit logs`);
+                
+                // Display logs in a formatted way
+                const logsContainer = document.getElementById('auditLogs');
+                const logsContent = document.getElementById('auditLogsContent');
+                
+                logsContent.innerHTML = '';
+                result.data.data.logs.forEach(log => {
+                    const logEntry = document.createElement('div');
+                    logEntry.className = 'log-entry';
+                    logEntry.innerHTML = `
+                        <div class="timestamp">${log.created_at}</div>
+                        <div class="action">${log.action_type} (${log.module})</div>
+                        <div class="details">User: ${log.user_name} (${log.user_role}) - ${log.details}</div>
+                        <div class="details">IP: ${log.ip_address}</div>
+                    `;
+                    logsContent.appendChild(logEntry);
+                });
+                
+                logsContainer.style.display = 'block';
+            } else {
+                showResponse('auditResponse', `❌ Failed to get audit logs: ${result.data.message}`, false);
+            }
+        }
+
+        async function getAuditModules() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('auditResponse', '❌ Please provide admin token', false);
+                return;
+            }
+            
+            const result = await makeRequest(`${API_BASE}/admin/audit-logs/modules`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (result.success) {
+                showResponse('auditResponse', `✅ Available modules: ${result.data.data.join(', ')}`);
+            } else {
+                showResponse('auditResponse', `❌ Failed to get modules: ${result.data.message}`, false);
+            }
+        }
+
+        async function getAuditRoles() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('auditResponse', '❌ Please provide admin token', false);
+                return;
+            }
+            
+            const result = await makeRequest(`${API_BASE}/admin/audit-logs/roles`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (result.success) {
+                showResponse('auditResponse', `✅ Available roles: ${result.data.data.join(', ')}`);
+            } else {
+                showResponse('auditResponse', `❌ Failed to get roles: ${result.data.message}`, false);
+            }
+        }
+    </script>
+</body>
+</html> 

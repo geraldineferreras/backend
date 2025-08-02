@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Audit Logging Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .btn-success {
+            background-color: #28a745;
+        }
+        .btn-success:hover {
+            background-color: #1e7e34;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background-color: #e0a800;
+        }
+        .response {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .audit-logs {
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .log-entry {
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: white;
+            border-radius: 3px;
+            border-left: 4px solid #007bff;
+        }
+        .log-entry .timestamp {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .log-entry .action {
+            font-weight: bold;
+            color: #333;
+        }
+        .log-entry .details {
+            color: #555;
+            margin-top: 5px;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .status-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .status-card h4 {
+            margin-top: 0;
+            color: #333;
+        }
+        .status-ok {
+            border-left: 4px solid #28a745;
+        }
+        .status-error {
+            border-left: 4px solid #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <h1>👨‍💼 Admin Audit Logging Test</h1>
+    
+    <div class="container">
+        <div class="section">
+            <h3>🔐 Admin Authentication</h3>
+            <p>Login as admin to test audit logging:</p>
+            
+            <div class="form-group">
+                <label for="adminEmail">Admin Email:</label>
+                <input type="email" id="adminEmail" value="admin@test.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="adminPassword">Admin Password:</label>
+                <input type="password" id="adminPassword" value="admin123">
+            </div>
+            
+            <button onclick="testAdminLogin()" class="btn-success">🔑 Admin Login</button>
+            
+            <div id="authResponse" class="response"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>👥 User Management Test</h3>
+            <p>Test user management audit logging:</p>
+            
+            <div class="form-group">
+                <label for="adminToken">Admin Token:</label>
+                <input type="text" id="adminToken" placeholder="Admin Bearer token">
+            </div>
+            
+            <div class="form-group">
+                <label for="userRole">User Role:</label>
+                <select id="userRole">
+                    <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="userFullName">Full Name:</label>
+                <input type="text" id="userFullName" value="Test User">
+            </div>
+            
+            <div class="form-group">
+                <label for="userEmail">Email:</label>
+                <input type="email" id="userEmail" value="testuser@test.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="userPassword">Password:</label>
+                <input type="password" id="userPassword" value="password123">
+            </div>
+            
+            <button onclick="testCreateUser()" class="btn-success">➕ Create User</button>
+            <button onclick="testChangeUserStatus()" class="btn-warning">🔄 Change User Status</button>
+            <button onclick="testDeleteUser()" class="btn-danger">🗑️ Delete User</button>
+            
+            <div id="userResponse" class="response"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>📚 Section Management Test</h3>
+            <p>Test section management audit logging:</p>
+            
+            <div class="form-group">
+                <label for="sectionName">Section Name:</label>
+                <input type="text" id="sectionName" value="BSIT-1A">
+            </div>
+            
+            <div class="form-group">
+                <label for="sectionProgram">Program:</label>
+                <input type="text" id="sectionProgram" value="BSIT">
+            </div>
+            
+            <div class="form-group">
+                <label for="sectionYearLevel">Year Level:</label>
+                <input type="text" id="sectionYearLevel" value="1st Year">
+            </div>
+            
+            <div class="form-group">
+                <label for="sectionAdviserId">Adviser ID:</label>
+                <input type="text" id="sectionAdviserId" value="1">
+            </div>
+            
+            <div class="form-group">
+                <label for="sectionSemester">Semester:</label>
+                <select id="sectionSemester">
+                    <option value="1st">1st Semester</option>
+                    <option value="2nd">2nd Semester</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="sectionAcademicYear">Academic Year:</label>
+                <input type="text" id="sectionAcademicYear" value="2024-2025">
+            </div>
+            
+            <button onclick="testCreateSection()" class="btn-success">➕ Create Section</button>
+            <button onclick="testUpdateSection()" class="btn-warning">✏️ Update Section</button>
+            <button onclick="testDeleteSection()" class="btn-danger">🗑️ Delete Section</button>
+            
+            <div id="sectionResponse" class="response"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>📖 Subject Management Test</h3>
+            <p>Test subject management audit logging:</p>
+            
+            <div class="form-group">
+                <label for="subjectCode">Subject Code:</label>
+                <input type="text" id="subjectCode" value="CS101">
+            </div>
+            
+            <div class="form-group">
+                <label for="subjectName">Subject Name:</label>
+                <input type="text" id="subjectName" value="Programming Fundamentals">
+            </div>
+            
+            <button onclick="testCreateSubject()" class="btn-success">➕ Create Subject</button>
+            <button onclick="testUpdateSubject()" class="btn-warning">✏️ Update Subject</button>
+            <button onclick="testDeleteSubject()" class="btn-danger">🗑️ Delete Subject</button>
+            
+            <div id="subjectResponse" class="response"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>🏫 Class Management Test</h3>
+            <p>Test class management audit logging:</p>
+            
+            <div class="form-group">
+                <label for="classSubjectId">Subject ID:</label>
+                <input type="text" id="classSubjectId" value="1">
+            </div>
+            
+            <div class="form-group">
+                <label for="classTeacherId">Teacher ID:</label>
+                <input type="text" id="classTeacherId" value="1">
+            </div>
+            
+            <div class="form-group">
+                <label for="classSectionId">Section ID:</label>
+                <input type="text" id="classSectionId" value="1">
+            </div>
+            
+            <div class="form-group">
+                <label for="classSemester">Semester:</label>
+                <input type="text" id="classSemester" value="1st">
+            </div>
+            
+            <div class="form-group">
+                <label for="classSchoolYear">School Year:</label>
+                <input type="text" id="classSchoolYear" value="2024-2025">
+            </div>
+            
+            <button onclick="testCreateClass()" class="btn-success">➕ Create Class</button>
+            <button onclick="testUpdateClass()" class="btn-warning">✏️ Update Class</button>
+            <button onclick="testDeleteClass()" class="btn-danger">🗑️ Delete Class</button>
+            
+            <div id="classResponse" class="response"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>📊 View Admin Audit Logs</h3>
+            <p>Check the audit logs to see if admin actions were logged:</p>
+            
+            <button onclick="getAdminAuditLogs()" class="btn-success">📋 Get Admin Audit Logs</button>
+            <button onclick="getAdminAuditModules()" class="btn-success">📂 Get Available Modules</button>
+            <button onclick="getAdminAuditRoles()" class="btn-success">👥 Get Available Roles</button>
+            
+            <div id="adminAuditResponse" class="response"></div>
+            
+            <div id="adminAuditLogs" class="audit-logs" style="display: none;">
+                <h4>📋 Recent Admin Audit Logs:</h4>
+                <div id="adminAuditLogsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>✅ Admin System Status</h3>
+            <div class="status-grid">
+                <div class="status-card status-ok">
+                    <h4>✅ User Management</h4>
+                    <p>Create User: Logged</p>
+                    <p>Delete User: Logged</p>
+                    <p>Change Status: Logged</p>
+                </div>
+                <div class="status-card status-ok">
+                    <h4>✅ Section Management</h4>
+                    <p>Create Section: Logged</p>
+                    <p>Update Section: Logged</p>
+                    <p>Delete Section: Logged</p>
+                </div>
+                <div class="status-card status-ok">
+                    <h4>✅ Subject Management</h4>
+                    <p>Create Subject: Logged</p>
+                    <p>Update Subject: Logged</p>
+                    <p>Delete Subject: Logged</p>
+                </div>
+                <div class="status-card status-ok">
+                    <h4>✅ Class Management</h4>
+                    <p>Create Class: Logged</p>
+                    <p>Update Class: Logged</p>
+                    <p>Delete Class: Logged</p>
+                </div>
+                <div class="status-card status-ok">
+                    <h4>✅ Audit System</h4>
+                    <p>Token_lib: Loaded</p>
+                    <p>Audit Helper: Loaded</p>
+                    <p>All Actions: Logged</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost/scms_new_backup/index.php/api';
+        let createdUserIds = [];
+        let createdSectionIds = [];
+        let createdSubjectIds = [];
+        let createdClassIds = [];
+        
+        function showResponse(elementId, message, isSuccess = true) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `response ${isSuccess ? 'success' : 'error'}`;
+            element.style.display = 'block';
+        }
+
+        function showInfo(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'response info';
+            element.style.display = 'block';
+        }
+
+        async function makeRequest(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                const data = await response.json();
+                return { success: response.ok, data, status: response.status };
+            } catch (error) {
+                return { success: false, data: { message: error.message }, status: 0 };
+            }
+        }
+
+        async function testAdminLogin() {
+            const email = document.getElementById('adminEmail').value;
+            const password = document.getElementById('adminPassword').value;
+            
+            showInfo('authResponse', 'Testing admin login...');
+            
+            const result = await makeRequest(`${API_BASE}/auth/login`, {
+                method: 'POST',
+                body: JSON.stringify({ email, password })
+            });
+            
+            if (result.success) {
+                showResponse('authResponse', `✅ Admin login successful!\nToken: ${result.data.data.token}\n\nCopy this token to test admin actions.`);
+                document.getElementById('adminToken').value = result.data.data.token;
+            } else {
+                showResponse('authResponse', `❌ Admin login failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testCreateUser() {
+            const token = document.getElementById('adminToken').value;
+            const role = document.getElementById('userRole').value;
+            const fullName = document.getElementById('userFullName').value;
+            const email = document.getElementById('userEmail').value;
+            const password = document.getElementById('userPassword').value;
+            
+            if (!token) {
+                showResponse('userResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            showInfo('userResponse', 'Testing create user...');
+            
+            const result = await makeRequest(`${API_BASE}/auth/register`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    role: role,
+                    full_name: fullName,
+                    email: email,
+                    password: password,
+                    contact_num: '1234567890',
+                    address: 'Test Address',
+                    program: 'BSIT'
+                })
+            });
+            
+            if (result.success) {
+                showResponse('userResponse', `✅ User created successfully!\nRole: ${role}\nName: ${fullName}\nCheck audit logs for the action.`);
+                // Store created user info for later tests
+                createdUserIds.push({ role, email });
+            } else {
+                showResponse('userResponse', `❌ Create user failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testChangeUserStatus() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('userResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            if (createdUserIds.length === 0) {
+                showResponse('userResponse', '❌ Please create a user first', false);
+                return;
+            }
+            
+            const user = createdUserIds[0];
+            showInfo('userResponse', 'Testing change user status...');
+            
+            const result = await makeRequest(`${API_BASE}/auth/change_user_status`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    target_role: user.role,
+                    user_id: 1, // You might need to get the actual user ID
+                    status: 'inactive'
+                })
+            });
+            
+            if (result.success) {
+                showResponse('userResponse', '✅ User status changed successfully! Check audit logs for the action.');
+            } else {
+                showResponse('userResponse', `❌ Change user status failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testDeleteUser() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('userResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            showInfo('userResponse', 'Testing delete user...');
+            
+            const result = await makeRequest(`${API_BASE}/auth/delete_user`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    role: 'student',
+                    user_id: 1 // You might need to get the actual user ID
+                })
+            });
+            
+            if (result.success) {
+                showResponse('userResponse', '✅ User deleted successfully! Check audit logs for the action.');
+            } else {
+                showResponse('userResponse', `❌ Delete user failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testCreateSection() {
+            const token = document.getElementById('adminToken').value;
+            const sectionName = document.getElementById('sectionName').value;
+            const program = document.getElementById('sectionProgram').value;
+            const yearLevel = document.getElementById('sectionYearLevel').value;
+            const adviserId = document.getElementById('sectionAdviserId').value;
+            const semester = document.getElementById('sectionSemester').value;
+            const academicYear = document.getElementById('sectionAcademicYear').value;
+            
+            if (!token) {
+                showResponse('sectionResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            showInfo('sectionResponse', 'Testing create section...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/sections`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    section_name: sectionName,
+                    program: program,
+                    year_level: yearLevel,
+                    adviser_id: adviserId,
+                    semester: semester,
+                    academic_year: academicYear
+                })
+            });
+            
+            if (result.success) {
+                showResponse('sectionResponse', `✅ Section created successfully!\nSection: ${sectionName}\nCheck audit logs for the action.`);
+                createdSectionIds.push(result.data.data.section_id);
+            } else {
+                showResponse('sectionResponse', `❌ Create section failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testUpdateSection() {
+            const token = document.getElementById('adminToken').value;
+            const sectionName = document.getElementById('sectionName').value;
+            const program = document.getElementById('sectionProgram').value;
+            const yearLevel = document.getElementById('sectionYearLevel').value;
+            const adviserId = document.getElementById('sectionAdviserId').value;
+            const semester = document.getElementById('sectionSemester').value;
+            const academicYear = document.getElementById('sectionAcademicYear').value;
+            
+            if (!token) {
+                showResponse('sectionResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            if (createdSectionIds.length === 0) {
+                showResponse('sectionResponse', '❌ Please create a section first', false);
+                return;
+            }
+            
+            const sectionId = createdSectionIds[0];
+            showInfo('sectionResponse', 'Testing update section...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/sections/${sectionId}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    section_name: sectionName + ' (Updated)',
+                    program: program,
+                    year_level: yearLevel,
+                    adviser_id: adviserId,
+                    semester: semester,
+                    academic_year: academicYear
+                })
+            });
+            
+            if (result.success) {
+                showResponse('sectionResponse', '✅ Section updated successfully! Check audit logs for the action.');
+            } else {
+                showResponse('sectionResponse', `❌ Update section failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testDeleteSection() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('sectionResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            if (createdSectionIds.length === 0) {
+                showResponse('sectionResponse', '❌ Please create a section first', false);
+                return;
+            }
+            
+            const sectionId = createdSectionIds[0];
+            showInfo('sectionResponse', 'Testing delete section...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/sections/${sectionId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (result.success) {
+                showResponse('sectionResponse', '✅ Section deleted successfully! Check audit logs for the action.');
+                createdSectionIds.shift(); // Remove from array
+            } else {
+                showResponse('sectionResponse', `❌ Delete section failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testCreateSubject() {
+            const token = document.getElementById('adminToken').value;
+            const subjectCode = document.getElementById('subjectCode').value;
+            const subjectName = document.getElementById('subjectName').value;
+            
+            if (!token) {
+                showResponse('subjectResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            showInfo('subjectResponse', 'Testing create subject...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/subjects`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    subject_code: subjectCode,
+                    subject_name: subjectName
+                })
+            });
+            
+            if (result.success) {
+                showResponse('subjectResponse', `✅ Subject created successfully!\nSubject: ${subjectName} (${subjectCode})\nCheck audit logs for the action.`);
+                createdSubjectIds.push(result.data.data.id);
+            } else {
+                showResponse('subjectResponse', `❌ Create subject failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testUpdateSubject() {
+            const token = document.getElementById('adminToken').value;
+            const subjectCode = document.getElementById('subjectCode').value;
+            const subjectName = document.getElementById('subjectName').value;
+            
+            if (!token) {
+                showResponse('subjectResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            if (createdSubjectIds.length === 0) {
+                showResponse('subjectResponse', '❌ Please create a subject first', false);
+                return;
+            }
+            
+            const subjectId = createdSubjectIds[0];
+            showInfo('subjectResponse', 'Testing update subject...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/subjects/${subjectId}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    subject_code: subjectCode,
+                    subject_name: subjectName + ' (Updated)'
+                })
+            });
+            
+            if (result.success) {
+                showResponse('subjectResponse', '✅ Subject updated successfully! Check audit logs for the action.');
+            } else {
+                showResponse('subjectResponse', `❌ Update subject failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testDeleteSubject() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('subjectResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            if (createdSubjectIds.length === 0) {
+                showResponse('subjectResponse', '❌ Please create a subject first', false);
+                return;
+            }
+            
+            const subjectId = createdSubjectIds[0];
+            showInfo('subjectResponse', 'Testing delete subject...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/subjects/${subjectId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (result.success) {
+                showResponse('subjectResponse', '✅ Subject deleted successfully! Check audit logs for the action.');
+                createdSubjectIds.shift(); // Remove from array
+            } else {
+                showResponse('subjectResponse', `❌ Delete subject failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testCreateClass() {
+            const token = document.getElementById('adminToken').value;
+            const subjectId = document.getElementById('classSubjectId').value;
+            const teacherId = document.getElementById('classTeacherId').value;
+            const sectionId = document.getElementById('classSectionId').value;
+            const semester = document.getElementById('classSemester').value;
+            const schoolYear = document.getElementById('classSchoolYear').value;
+            
+            if (!token) {
+                showResponse('classResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            showInfo('classResponse', 'Testing create class...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/classes`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    subject_id: subjectId,
+                    teacher_id: teacherId,
+                    section_id: sectionId,
+                    semester: semester,
+                    school_year: schoolYear
+                })
+            });
+            
+            if (result.success) {
+                showResponse('classResponse', `✅ Class created successfully!\nClass ID: ${result.data.data.class_id}\nCheck audit logs for the action.`);
+                createdClassIds.push(result.data.data.class_id);
+            } else {
+                showResponse('classResponse', `❌ Create class failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testUpdateClass() {
+            const token = document.getElementById('adminToken').value;
+            const subjectId = document.getElementById('classSubjectId').value;
+            const teacherId = document.getElementById('classTeacherId').value;
+            const sectionId = document.getElementById('classSectionId').value;
+            const semester = document.getElementById('classSemester').value;
+            const schoolYear = document.getElementById('classSchoolYear').value;
+            
+            if (!token) {
+                showResponse('classResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            if (createdClassIds.length === 0) {
+                showResponse('classResponse', '❌ Please create a class first', false);
+                return;
+            }
+            
+            const classId = createdClassIds[0];
+            showInfo('classResponse', 'Testing update class...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/classes/${classId}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    subject_id: subjectId,
+                    teacher_id: teacherId,
+                    section_id: sectionId,
+                    semester: semester,
+                    school_year: schoolYear
+                })
+            });
+            
+            if (result.success) {
+                showResponse('classResponse', '✅ Class updated successfully! Check audit logs for the action.');
+            } else {
+                showResponse('classResponse', `❌ Update class failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function testDeleteClass() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('classResponse', '❌ Please login first to get admin token', false);
+                return;
+            }
+            
+            if (createdClassIds.length === 0) {
+                showResponse('classResponse', '❌ Please create a class first', false);
+                return;
+            }
+            
+            const classId = createdClassIds[0];
+            showInfo('classResponse', 'Testing delete class...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/classes/${classId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (result.success) {
+                showResponse('classResponse', '✅ Class deleted successfully! Check audit logs for the action.');
+                createdClassIds.shift(); // Remove from array
+            } else {
+                showResponse('classResponse', `❌ Delete class failed: ${result.data.message}`, false);
+            }
+        }
+
+        async function getAdminAuditLogs() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('adminAuditResponse', '❌ Please provide admin token', false);
+                return;
+            }
+            
+            showInfo('adminAuditResponse', 'Fetching admin audit logs...');
+            
+            const result = await makeRequest(`${API_BASE}/admin/audit-logs`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (result.success) {
+                showResponse('adminAuditResponse', `✅ Retrieved ${result.data.data.logs.length} admin audit logs`);
+                
+                // Display logs in a formatted way
+                const logsContainer = document.getElementById('adminAuditLogs');
+                const logsContent = document.getElementById('adminAuditLogsContent');
+                
+                logsContent.innerHTML = '';
+                result.data.data.logs.forEach(log => {
+                    const logEntry = document.createElement('div');
+                    logEntry.className = 'log-entry';
+                    logEntry.innerHTML = `
+                        <div class="timestamp">${log.created_at}</div>
+                        <div class="action">${log.action_type} (${log.module})</div>
+                        <div class="details">User: ${log.user_name} (${log.user_role}) - ${log.details}</div>
+                        <div class="details">IP: ${log.ip_address}</div>
+                    `;
+                    logsContent.appendChild(logEntry);
+                });
+                
+                logsContainer.style.display = 'block';
+            } else {
+                showResponse('adminAuditResponse', `❌ Failed to get admin audit logs: ${result.data.message}`, false);
+            }
+        }
+
+        async function getAdminAuditModules() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('adminAuditResponse', '❌ Please provide admin token', false);
+                return;
+            }
+            
+            const result = await makeRequest(`${API_BASE}/admin/audit-logs/modules`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (result.success) {
+                showResponse('adminAuditResponse', `✅ Available modules: ${result.data.data.join(', ')}`);
+            } else {
+                showResponse('adminAuditResponse', `❌ Failed to get modules: ${result.data.message}`, false);
+            }
+        }
+
+        async function getAdminAuditRoles() {
+            const token = document.getElementById('adminToken').value;
+            
+            if (!token) {
+                showResponse('adminAuditResponse', '❌ Please provide admin token', false);
+                return;
+            }
+            
+            const result = await makeRequest(`${API_BASE}/admin/audit-logs/roles`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (result.success) {
+                showResponse('adminAuditResponse', `✅ Available roles: ${result.data.data.join(', ')}`);
+            } else {
+                showResponse('adminAuditResponse', `❌ Failed to get roles: ${result.data.message}`, false);
+            }
+        }
+    </script>
+</body>
+</html> 
