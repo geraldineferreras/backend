@@ -735,4 +735,117 @@ class AdminController extends BaseController {
             return json_response(false, 'Failed to delete subject', null, 500);
         }
     }
+
+    // --- Audit Log Management ---
+    public function audit_logs_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+        
+        $this->load->model('Audit_model');
+        
+        // Get query parameters
+        $page = $this->input->get('page') ?: 1;
+        $limit = $this->input->get('limit') ?: 50;
+        $offset = ($page - 1) * $limit;
+        
+        // Get filters
+        $filters = [
+            'user_id' => $this->input->get('user_id'),
+            'user_role' => $this->input->get('user_role'),
+            'action' => $this->input->get('action'),
+            'module' => $this->input->get('module'),
+            'date_from' => $this->input->get('date_from'),
+            'date_to' => $this->input->get('date_to')
+        ];
+        
+        // Remove empty filters
+        $filters = array_filter($filters, function($value) {
+            return $value !== null && $value !== '';
+        });
+        
+        $logs = $this->Audit_model->get_audit_logs($filters, $limit, $offset);
+        $total = $this->Audit_model->get_audit_logs($filters, 0, 0);
+        $total_count = count($total);
+        
+        $response = [
+            'logs' => $logs,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $limit,
+                'total_records' => $total_count,
+                'total_pages' => ceil($total_count / $limit)
+            ]
+        ];
+        
+        return json_response(true, 'Audit logs retrieved successfully', $response);
+    }
+
+    public function audit_log_get($log_id) {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+        
+        $this->load->model('Audit_model');
+        $log = $this->Audit_model->get_audit_log($log_id);
+        
+        if ($log) {
+            return json_response(true, 'Audit log retrieved successfully', $log);
+        } else {
+            return json_response(false, 'Audit log not found', null, 404);
+        }
+    }
+
+    public function audit_logs_modules_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+        
+        $this->load->model('Audit_model');
+        $modules = $this->Audit_model->get_modules();
+        
+        return json_response(true, 'Modules retrieved successfully', $modules);
+    }
+
+    public function audit_logs_roles_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+        
+        $this->load->model('Audit_model');
+        $roles = $this->Audit_model->get_roles();
+        
+        return json_response(true, 'Roles retrieved successfully', $roles);
+    }
+
+    public function audit_logs_export_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+        
+        $this->load->model('Audit_model');
+        
+        // Get filters
+        $filters = [
+            'user_id' => $this->input->get('user_id'),
+            'user_role' => $this->input->get('user_role'),
+            'action' => $this->input->get('action'),
+            'module' => $this->input->get('module'),
+            'date_from' => $this->input->get('date_from'),
+            'date_to' => $this->input->get('date_to')
+        ];
+        
+        // Remove empty filters
+        $filters = array_filter($filters, function($value) {
+            return $value !== null && $value !== '';
+        });
+        
+        $csv_content = $this->Audit_model->export_csv($filters);
+        
+        // Set headers for CSV download
+        $filename = 'audit_logs_' . date('Y-m-d_H-i-s') . '.csv';
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+        
+        echo $csv_content;
+        exit;
+    }
 }
