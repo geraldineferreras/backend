@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance API Testing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h2 {
+            color: #555;
+            margin-top: 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .token-input {
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+        }
+    </style>
+</head>
+<body>
+    <h1>Attendance API Testing</h1>
+
+    <!-- Authentication Section -->
+    <div class="container">
+        <div class="section">
+            <h2>Authentication</h2>
+            <div class="form-group">
+                <label for="token">JWT Token:</label>
+                <input type="text" id="token" placeholder="Enter your JWT token here" class="token-input">
+            </div>
+            <button onclick="testAuth()">Test Authentication</button>
+        </div>
+    </div>
+
+    <!-- Get Classes Section -->
+    <div class="container">
+        <div class="section">
+            <h2>Get Teacher's Classes</h2>
+            <button onclick="getClasses()">Get Classes</button>
+            <div id="classesResponse" class="response"></div>
+        </div>
+    </div>
+
+    <!-- Get Students Section -->
+    <div class="container">
+        <div class="section">
+            <h2>Get Students in Class</h2>
+            <div class="form-group">
+                <label for="classId">Class ID:</label>
+                <input type="text" id="classId" placeholder="Enter class ID">
+            </div>
+            <button onclick="getStudents()">Get Students</button>
+            <div id="studentsResponse" class="response"></div>
+        </div>
+    </div>
+
+    <!-- Record Single Attendance Section -->
+    <div class="container">
+        <div class="section">
+            <h2>Record Single Attendance</h2>
+            <div class="form-group">
+                <label for="recordStudentId">Student ID:</label>
+                <input type="text" id="recordStudentId" placeholder="Enter student ID">
+            </div>
+            <div class="form-group">
+                <label for="recordClassId">Class ID:</label>
+                <input type="text" id="recordClassId" placeholder="Enter class ID">
+            </div>
+            <div class="form-group">
+                <label for="recordDate">Date:</label>
+                <input type="date" id="recordDate">
+            </div>
+            <div class="form-group">
+                <label for="recordStatus">Status:</label>
+                <select id="recordStatus">
+                    <option value="present">Present</option>
+                    <option value="late">Late</option>
+                    <option value="absent">Absent</option>
+                    <option value="excused">Excused</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="recordTimeIn">Time In:</label>
+                <input type="time" id="recordTimeIn">
+            </div>
+            <div class="form-group">
+                <label for="recordNotes">Notes:</label>
+                <textarea id="recordNotes" rows="3" placeholder="Enter notes (optional)"></textarea>
+            </div>
+            <button onclick="recordAttendance()">Record Attendance</button>
+            <div id="recordResponse" class="response"></div>
+        </div>
+    </div>
+
+    <!-- Get Attendance Records Section -->
+    <div class="container">
+        <div class="section">
+            <h2>Get Attendance Records</h2>
+            <div class="form-group">
+                <label for="recordsClassId">Class ID:</label>
+                <input type="text" id="recordsClassId" placeholder="Enter class ID">
+            </div>
+            <div class="form-group">
+                <label for="recordsDate">Date:</label>
+                <input type="date" id="recordsDate">
+            </div>
+            <button onclick="getRecords()">Get Records</button>
+            <div id="recordsResponse" class="response"></div>
+        </div>
+    </div>
+
+    <!-- Update Attendance Section -->
+    <div class="container">
+        <div class="section">
+            <h2>Update Attendance</h2>
+            <div class="form-group">
+                <label for="updateAttendanceId">Attendance ID:</label>
+                <input type="text" id="updateAttendanceId" placeholder="Enter attendance ID">
+            </div>
+            <div class="form-group">
+                <label for="updateStatus">New Status:</label>
+                <select id="updateStatus">
+                    <option value="present">Present</option>
+                    <option value="late">Late</option>
+                    <option value="absent">Absent</option>
+                    <option value="excused">Excused</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="updateTimeIn">Time In:</label>
+                <input type="time" id="updateTimeIn">
+            </div>
+            <div class="form-group">
+                <label for="updateNotes">Notes:</label>
+                <textarea id="updateNotes" rows="3" placeholder="Enter notes (optional)"></textarea>
+            </div>
+            <button onclick="updateAttendance()">Update Attendance</button>
+            <div id="updateResponse" class="response"></div>
+        </div>
+    </div>
+
+    <!-- Get Summary Section -->
+    <div class="container">
+        <div class="section">
+            <h2>Get Attendance Summary</h2>
+            <div class="form-group">
+                <label for="summaryClassId">Class ID:</label>
+                <input type="text" id="summaryClassId" placeholder="Enter class ID">
+            </div>
+            <div class="form-group">
+                <label for="summaryDateFrom">Date From:</label>
+                <input type="date" id="summaryDateFrom">
+            </div>
+            <div class="form-group">
+                <label for="summaryDateTo">Date To:</label>
+                <input type="date" id="summaryDateTo">
+            </div>
+            <button onclick="getSummary()">Get Summary</button>
+            <div id="summaryResponse" class="response"></div>
+        </div>
+    </div>
+
+    <!-- Export Section -->
+    <div class="container">
+        <div class="section">
+            <h2>Export Attendance</h2>
+            <div class="form-group">
+                <label for="exportClassId">Class ID:</label>
+                <input type="text" id="exportClassId" placeholder="Enter class ID">
+            </div>
+            <div class="form-group">
+                <label for="exportDateFrom">Date From:</label>
+                <input type="date" id="exportDateFrom">
+            </div>
+            <div class="form-group">
+                <label for="exportDateTo">Date To:</label>
+                <input type="date" id="exportDateTo">
+            </div>
+            <div class="form-group">
+                <label for="exportFormat">Format:</label>
+                <select id="exportFormat">
+                    <option value="json">JSON</option>
+                    <option value="csv">CSV</option>
+                </select>
+            </div>
+            <button onclick="exportAttendance()">Export Attendance</button>
+            <div id="exportResponse" class="response"></div>
+        </div>
+    </div>
+
+    <script>
+        const baseUrl = 'http://localhost:3308/scms_new_backup/index.php/api/attendance';
+
+        function getHeaders() {
+            const token = document.getElementById('token').value;
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            };
+        }
+
+        function showResponse(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = `response ${isError ? 'error' : 'success'}`;
+        }
+
+        async function makeRequest(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers: getHeaders()
+                });
+                const data = await response.json();
+                return { success: response.ok, data, status: response.status };
+            } catch (error) {
+                return { success: false, data: { error: error.message }, status: 0 };
+            }
+        }
+
+        async function testAuth() {
+            const result = await makeRequest(`${baseUrl}/classes`);
+            showResponse('classesResponse', result.data, !result.success);
+        }
+
+        async function getClasses() {
+            const result = await makeRequest(`${baseUrl}/classes`);
+            showResponse('classesResponse', result.data, !result.success);
+        }
+
+        async function getStudents() {
+            const classId = document.getElementById('classId').value;
+            if (!classId) {
+                alert('Please enter a class ID');
+                return;
+            }
+            const result = await makeRequest(`${baseUrl}/students/${classId}`);
+            showResponse('studentsResponse', result.data, !result.success);
+        }
+
+        async function recordAttendance() {
+            const studentId = document.getElementById('recordStudentId').value;
+            const classId = document.getElementById('recordClassId').value;
+            const date = document.getElementById('recordDate').value;
+            const status = document.getElementById('recordStatus').value;
+            const timeIn = document.getElementById('recordTimeIn').value;
+            const notes = document.getElementById('recordNotes').value;
+
+            if (!studentId || !classId || !date || !status) {
+                alert('Please fill in all required fields');
+                return;
+            }
+
+            const requestBody = {
+                student_id: studentId,
+                class_id: classId,
+                date: date,
+                status: status
+            };
+
+            if (timeIn) requestBody.time_in = timeIn;
+            if (notes) requestBody.notes = notes;
+
+            const result = await makeRequest(`${baseUrl}/record`, {
+                method: 'POST',
+                body: JSON.stringify(requestBody)
+            });
+            showResponse('recordResponse', result.data, !result.success);
+        }
+
+        async function getRecords() {
+            const classId = document.getElementById('recordsClassId').value;
+            const date = document.getElementById('recordsDate').value;
+
+            if (!classId || !date) {
+                alert('Please enter class ID and date');
+                return;
+            }
+
+            const result = await makeRequest(`${baseUrl}/records/${classId}/${date}`);
+            showResponse('recordsResponse', result.data, !result.success);
+        }
+
+        async function updateAttendance() {
+            const attendanceId = document.getElementById('updateAttendanceId').value;
+            const status = document.getElementById('updateStatus').value;
+            const timeIn = document.getElementById('updateTimeIn').value;
+            const notes = document.getElementById('updateNotes').value;
+
+            if (!attendanceId) {
+                alert('Please enter attendance ID');
+                return;
+            }
+
+            const requestBody = {};
+            if (status) requestBody.status = status;
+            if (timeIn) requestBody.time_in = timeIn;
+            if (notes) requestBody.notes = notes;
+
+            const result = await makeRequest(`${baseUrl}/update/${attendanceId}`, {
+                method: 'PUT',
+                body: JSON.stringify(requestBody)
+            });
+            showResponse('updateResponse', result.data, !result.success);
+        }
+
+        async function getSummary() {
+            const classId = document.getElementById('summaryClassId').value;
+            const dateFrom = document.getElementById('summaryDateFrom').value;
+            const dateTo = document.getElementById('summaryDateTo').value;
+
+            if (!classId) {
+                alert('Please enter class ID');
+                return;
+            }
+
+            let url = `${baseUrl}/summary/${classId}`;
+            const params = new URLSearchParams();
+            if (dateFrom) params.append('date_from', dateFrom);
+            if (dateTo) params.append('date_to', dateTo);
+            if (params.toString()) {
+                url += '?' + params.toString();
+            }
+
+            const result = await makeRequest(url);
+            showResponse('summaryResponse', result.data, !result.success);
+        }
+
+        async function exportAttendance() {
+            const classId = document.getElementById('exportClassId').value;
+            const dateFrom = document.getElementById('exportDateFrom').value;
+            const dateTo = document.getElementById('exportDateTo').value;
+            const format = document.getElementById('exportFormat').value;
+
+            if (!classId) {
+                alert('Please enter class ID');
+                return;
+            }
+
+            let url = `${baseUrl}/export/${classId}`;
+            const params = new URLSearchParams();
+            if (dateFrom) params.append('date_from', dateFrom);
+            if (dateTo) params.append('date_to', dateTo);
+            if (format) params.append('format', format);
+            if (params.toString()) {
+                url += '?' + params.toString();
+            }
+
+            if (format === 'csv') {
+                // For CSV, trigger download
+                const token = document.getElementById('token').value;
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('Authorization', `Bearer ${token}`);
+                link.download = `attendance_export_${classId}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showResponse('exportResponse', { message: 'CSV download initiated' });
+            } else {
+                const result = await makeRequest(url);
+                showResponse('exportResponse', result.data, !result.success);
+            }
+        }
+
+        // Set default dates
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            
+            document.getElementById('recordDate').value = today;
+            document.getElementById('recordsDate').value = today;
+            document.getElementById('summaryDateFrom').value = thirtyDaysAgo;
+            document.getElementById('summaryDateTo').value = today;
+            document.getElementById('exportDateFrom').value = thirtyDaysAgo;
+            document.getElementById('exportDateTo').value = today;
+        });
+    </script>
+</body>
+</html> 

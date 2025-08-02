@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excuse Letter + Attendance Integration Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1, h2 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .step {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 15px 0;
+            border-left: 4px solid #007bff;
+            border-radius: 5px;
+        }
+        .code {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎓 Excuse Letter + Attendance Integration Test</h1>
+        
+        <div class="info">
+            <strong>How it works:</strong> When a teacher takes attendance, the system automatically checks if any students have approved excuse letters for that date and class. If a student is marked "absent" but has an approved excuse letter, they are automatically marked as "excused" instead.
+        </div>
+
+        <h2>📋 Complete Flow Example</h2>
+        
+        <div class="step">
+            <h3>Step 1: Student Submits Excuse Letter</h3>
+            <p>Student submits an excuse letter for 2025-08-02:</p>
+            <div class="code">
+POST {{base_url}}/api/excuse-letters/submit
+Authorization: Bearer [STUDENT_TOKEN]
+
+{
+    "class_id": "4",
+    "date_absent": "2025-08-02",
+    "reason": "Medical appointment - had to visit the doctor"
+}
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Teacher Reviews and Approves</h3>
+            <p>Teacher approves the excuse letter:</p>
+            <div class="code">
+PUT {{base_url}}/api/excuse-letters/update/1
+Authorization: Bearer [TEACHER_TOKEN]
+
+{
+    "status": "approved",
+    "notes": "Approved - medical appointment is valid reason"
+}
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Teacher Takes Attendance</h3>
+            <p>Teacher marks student as "absent" for 2025-08-02:</p>
+            <div class="code">
+POST {{base_url}}/api/attendance/record
+Authorization: Bearer [TEACHER_TOKEN]
+
+{
+    "student_id": "STU123456789",
+    "class_id": "4",
+    "date": "2025-08-02",
+    "status": "absent"
+}
+            </div>
+        </div>
+
+        <div class="success">
+            <h3>✅ Automatic Result:</h3>
+            <p>The system automatically detects the approved excuse letter and changes the status from "absent" to "excused" with a note:</p>
+            <div class="code">
+{
+    "status": true,
+    "message": "Attendance recorded successfully",
+    "data": {
+        "attendance_id": "15",
+        "student_id": "STU123456789",
+        "class_id": "4",
+        "date": "2025-08-02",
+        "status": "excused",  // ← Changed from "absent" to "excused"
+        "notes": "Auto-excused: Medical appointment - had to visit the doctor",
+        "student_name": "John Doe",
+        "excuse_letter": {
+            "letter_id": "1",
+            "reason": "Medical appointment - had to visit the doctor",
+            "status": "approved",
+            "teacher_notes": "Approved - medical appointment is valid reason"
+        }
+    }
+}
+            </div>
+        </div>
+
+        <h2>🔍 New Endpoints for Teachers</h2>
+
+        <div class="test-section">
+            <h3>Get Students with Excuse Letter Status</h3>
+            <p>Before taking attendance, teachers can check which students have approved excuse letters:</p>
+            <div class="code">
+GET {{base_url}}/api/attendance/students/4/2025-08-02
+Authorization: Bearer [TEACHER_TOKEN]
+            </div>
+            <p>Response shows students with their excuse letter status:</p>
+            <div class="code">
+{
+    "status": true,
+    "message": "Students retrieved successfully",
+    "data": {
+        "class": { ... },
+        "students": [
+            {
+                "user_id": "STU123456789",
+                "full_name": "John Doe",
+                "student_num": "2024-0001",
+                "email": "john@example.com",
+                "excuse_letter": {
+                    "letter_id": "1",
+                    "reason": "Medical appointment - had to visit the doctor",
+                    "status": "approved",
+                    "teacher_notes": "Approved - medical appointment is valid reason"
+                }
+            },
+            {
+                "user_id": "STU987654321",
+                "full_name": "Jane Smith",
+                "student_num": "2024-0002",
+                "email": "jane@example.com",
+                "excuse_letter": null  // No excuse letter
+            }
+        ],
+        "date": "2025-08-02"
+    }
+}
+            </div>
+        </div>
+
+        <h2>⚡ Bulk Attendance with Auto-Excuse</h2>
+
+        <div class="test-section">
+            <h3>Bulk Attendance Recording</h3>
+            <p>When recording multiple students at once, the system automatically applies excuse letters:</p>
+            <div class="code">
+POST {{base_url}}/api/attendance/bulk-record
+Authorization: Bearer [TEACHER_TOKEN]
+
+{
+    "class_id": "4",
+    "date": "2025-08-02",
+    "attendance_records": [
+        {
+            "student_id": "STU123456789",
+            "status": "absent"  // Will become "excused" automatically
+        },
+        {
+            "student_id": "STU987654321", 
+            "status": "present"  // Stays "present" (excuse doesn't override present)
+        },
+        {
+            "student_id": "STU555666777",
+            "status": "absent"  // Stays "absent" (no excuse letter)
+        }
+    ]
+}
+            </div>
+        </div>
+
+        <h2>📊 Attendance Status Types</h2>
+
+        <div class="info">
+            <ul>
+                <li><strong>present</strong> - Student is present in class</li>
+                <li><strong>absent</strong> - Student is not present (no excuse)</li>
+                <li><strong>excused</strong> - Student is absent but has approved excuse letter</li>
+                <li><strong>late</strong> - Student arrived late</li>
+            </ul>
+        </div>
+
+        <h2>🎯 Key Features</h2>
+
+        <div class="step">
+            <h3>✅ Automatic Excuse Application</h3>
+            <ul>
+                <li>When teacher marks student as "absent", system checks for approved excuse letters</li>
+                <li>If approved excuse exists, status automatically changes to "excused"</li>
+                <li>Original excuse reason is added to attendance notes</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>✅ Present Status Protection</h3>
+            <ul>
+                <li>If student is marked "present", excuse letters don't override this</li>
+                <li>Present status takes priority over excuse letters</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>✅ Teacher Visibility</h3>
+            <ul>
+                <li>Teachers can see excuse letter status before taking attendance</li>
+                <li>Excuse letter details are included in attendance responses</li>
+                <li>Works with both individual and bulk attendance recording</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>✅ Real-time Integration</h3>
+            <ul>
+                <li>No manual intervention required</li>
+                <li>Automatic status updates during attendance recording</li>
+                <li>Immediate feedback with excuse letter details</li>
+            </ul>
+        </div>
+
+        <h2>🧪 Testing Instructions</h2>
+
+        <div class="warning">
+            <ol>
+                <li><strong>Submit Excuse Letter:</strong> Use student token to submit excuse letter for a specific date</li>
+                <li><strong>Approve Excuse Letter:</strong> Use teacher token to approve the excuse letter</li>
+                <li><strong>Take Attendance:</strong> Use teacher token to mark student as "absent" for the same date</li>
+                <li><strong>Verify Result:</strong> Check that status automatically changed to "excused"</li>
+                <li><strong>Test Bulk:</strong> Try bulk attendance recording with multiple students</li>
+            </ol>
+        </div>
+
+        <div class="success">
+            <h3>🎉 Result</h3>
+            <p>Now when teachers take attendance, students with approved excuse letters are automatically marked as "excused" instead of "absent", making the attendance system fully integrated with the excuse letter workflow!</p>
+        </div>
+    </div>
+</body>
+</html> 

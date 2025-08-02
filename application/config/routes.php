@@ -116,14 +116,46 @@ $route['api/admin/students']['get'] = 'api/AdminController/all_students_get';
 // Teacher APIs
 $route['api/teacher/attendance']['post'] = 'teachercontroller/mark_attendance_qr';
 
+// Attendance Management
+$route['api/attendance/classes']['get'] = 'api/AttendanceController/classes_get';
+$route['api/attendance/students/(:num)/(:any)']['get'] = 'api/AttendanceController/students_get/$1/$2';
+$route['api/attendance/record']['post'] = 'api/AttendanceController/record_post';
+$route['api/attendance/bulk-record']['post'] = 'api/AttendanceController/bulk_record_post';
+$route['api/attendance/records/(:num)/(:any)']['get'] = 'api/AttendanceController/records_get/$1/$2';
+$route['api/attendance/update/(:num)']['put'] = 'api/AttendanceController/update_put/$1';
+$route['api/attendance/summary/(:num)']['get'] = 'api/AttendanceController/summary_get/$1';
+$route['api/attendance/export/(:num)']['get'] = 'api/AttendanceController/export_get/$1';
+$route['api/attendance/delete/(:num)']['delete'] = 'api/AttendanceController/delete_delete/$1';
+$route['api/attendance/all']['get'] = 'api/AttendanceController/all_get';
+$route['api/attendance/teacher-assignments']['get'] = 'api/AttendanceController/teacher_assignments_get';
+$route['api/attendance/student']['get'] = 'api/AttendanceController/student_get';
+
 // Student APIs
 $route['api/student/grades']['get'] = 'studentcontroller/get_my_grades';
 $route['api/student/join-class']['post'] = 'api/StudentController/join_class';
 $route['api/student/my-classes']['get'] = 'api/StudentController/my_classes';
 $route['api/student/leave-class']['delete'] = 'api/StudentController/leave_class';
 
+// Excuse Letter Management
+$route['api/excuse-letters']['get'] = 'api/ExcuseLetterController/excuse_letters_get';
+$route['api/excuse-letters']['post'] = 'api/ExcuseLetterController/excuse_letters_post';
+$route['api/excuse-letters/(:num)']['get'] = 'api/ExcuseLetterController/excuse_letter_get/$1';
+$route['api/excuse-letters/(:num)']['put'] = 'api/ExcuseLetterController/excuse_letter_put/$1';
+$route['api/excuse-letters/(:num)']['delete'] = 'api/ExcuseLetterController/excuse_letter_delete/$1';
+$route['api/excuse-letters/student']['get'] = 'api/ExcuseLetterController/student_excuse_letters_get';
+$route['api/excuse-letters/teacher']['get'] = 'api/ExcuseLetterController/teacher_excuse_letters_get';
+$route['api/excuse-letters/(:num)/approve']['post'] = 'api/ExcuseLetterController/approve_excuse_letter/$1';
+$route['api/excuse-letters/(:num)/reject']['post'] = 'api/ExcuseLetterController/reject_excuse_letter/$1';
+
 // Admin User Management
 $route['api/change-status']['post'] = 'api/auth/change_user_status';
+
+// Admin Audit Log Management
+$route['api/admin/audit-logs']['get'] = 'api/AdminController/audit_logs_get';
+$route['api/admin/audit-logs/(:num)']['get'] = 'api/AdminController/audit_log_get/$1';
+$route['api/admin/audit-logs/modules']['get'] = 'api/AdminController/audit_logs_modules_get';
+$route['api/admin/audit-logs/roles']['get'] = 'api/AdminController/audit_logs_roles_get';
+$route['api/admin/audit-logs/export']['get'] = 'api/AdminController/audit_logs_export_get';
 
 // Catch-all OPTIONS route for all /api/* endpoints
 $route['api/(:any)']['options'] = 'api/auth/options';

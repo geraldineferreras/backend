@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Log API Testing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <h1>Audit Log API Testing</h1>
+    
+    <div class="container">
+        <h2>Authentication</h2>
+        <div class="form-group">
+            <label for="token">JWT Token:</label>
+            <input type="text" id="token" placeholder="Enter your JWT token">
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Get Audit Logs</h2>
+        <div class="form-group">
+            <label for="module">Module:</label>
+            <select id="module">
+                <option value="">All Modules</option>
+                <option value="USER MANAGEMENT">USER MANAGEMENT</option>
+                <option value="SECTION MANAGEMENT">SECTION MANAGEMENT</option>
+                <option value="GRADES MANAGEMENT">GRADES MANAGEMENT</option>
+                <option value="REPORTS & LOGS">REPORTS & LOGS</option>
+                <option value="AUTHENTICATION">AUTHENTICATION</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="user_role">User Role:</label>
+            <select id="user_role">
+                <option value="">All Roles</option>
+                <option value="admin">Admin</option>
+                <option value="teacher">Teacher</option>
+                <option value="student">Student</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="date_from">Date From:</label>
+            <input type="date" id="date_from">
+        </div>
+        <div class="form-group">
+            <label for="date_to">Date To:</label>
+            <input type="date" id="date_to">
+        </div>
+        <div class="form-group">
+            <label for="search">Search:</label>
+            <input type="text" id="search" placeholder="Search users, actions, or modules...">
+        </div>
+        <div class="form-group">
+            <label for="limit">Limit:</label>
+            <input type="number" id="limit" value="50" min="1" max="100">
+        </div>
+        <div class="form-group">
+            <label for="offset">Offset:</label>
+            <input type="number" id="offset" value="0" min="0">
+        </div>
+        <button onclick="getAuditLogs()">Get Audit Logs</button>
+        <button onclick="exportAuditLogs()">Export to CSV</button>
+        <div id="auditLogsResponse" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h2>Get Specific Audit Log</h2>
+        <div class="form-group">
+            <label for="log_id">Log ID:</label>
+            <input type="number" id="log_id" placeholder="Enter log ID">
+        </div>
+        <button onclick="getSpecificLog()">Get Log</button>
+        <div id="specificLogResponse" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h2>Get Available Modules</h2>
+        <button onclick="getModules()">Get Modules</button>
+        <div id="modulesResponse" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h2>Get Available Roles</h2>
+        <button onclick="getRoles()">Get Roles</button>
+        <div id="rolesResponse" class="response"></div>
+    </div>
+
+    <script>
+        const baseUrl = window.location.origin;
+
+        function getToken() {
+            return document.getElementById('token').value;
+        }
+
+        function showResponse(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = 'response ' + (isError ? 'error' : 'success');
+        }
+
+        function showError(elementId, message) {
+            showResponse(elementId, { error: message }, true);
+        }
+
+        async function makeRequest(url, options = {}) {
+            const token = getToken();
+            if (!token) {
+                throw new Error('JWT token is required');
+            }
+
+            const defaultOptions = {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            const response = await fetch(url, { ...defaultOptions, ...options });
+            return response;
+        }
+
+        async function getAuditLogs() {
+            try {
+                const params = new URLSearchParams();
+                const module = document.getElementById('module').value;
+                const userRole = document.getElementById('user_role').value;
+                const dateFrom = document.getElementById('date_from').value;
+                const dateTo = document.getElementById('date_to').value;
+                const search = document.getElementById('search').value;
+                const limit = document.getElementById('limit').value;
+                const offset = document.getElementById('offset').value;
+
+                if (module) params.append('module', module);
+                if (userRole) params.append('user_role', userRole);
+                if (dateFrom) params.append('date_from', dateFrom);
+                if (dateTo) params.append('date_to', dateTo);
+                if (search) params.append('search', search);
+                if (limit) params.append('limit', limit);
+                if (offset) params.append('offset', offset);
+
+                const response = await makeRequest(`${baseUrl}/api/admin/audit-logs?${params}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResponse('auditLogsResponse', data);
+                } else {
+                    showError('auditLogsResponse', data.message || 'Request failed');
+                }
+            } catch (error) {
+                showError('auditLogsResponse', error.message);
+            }
+        }
+
+        async function exportAuditLogs() {
+            try {
+                const params = new URLSearchParams();
+                const module = document.getElementById('module').value;
+                const userRole = document.getElementById('user_role').value;
+                const dateFrom = document.getElementById('date_from').value;
+                const dateTo = document.getElementById('date_to').value;
+                const search = document.getElementById('search').value;
+
+                if (module) params.append('module', module);
+                if (userRole) params.append('user_role', userRole);
+                if (dateFrom) params.append('date_from', dateFrom);
+                if (dateTo) params.append('date_to', dateTo);
+                if (search) params.append('search', search);
+
+                const token = getToken();
+                if (!token) {
+                    throw new Error('JWT token is required');
+                }
+
+                // Create a temporary link to download the file
+                const link = document.createElement('a');
+                link.href = `${baseUrl}/api/admin/audit-logs/export?${params}`;
+                link.download = `audit_logs_${new Date().toISOString().split('T')[0]}.csv`;
+                
+                // Add authorization header
+                const response = await fetch(link.href, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    link.href = url;
+                    link.click();
+                    window.URL.revokeObjectURL(url);
+                    showResponse('auditLogsResponse', { message: 'Export successful! File downloaded.' });
+                } else {
+                    const data = await response.json();
+                    showError('auditLogsResponse', data.message || 'Export failed');
+                }
+            } catch (error) {
+                showError('auditLogsResponse', error.message);
+            }
+        }
+
+        async function getSpecificLog() {
+            try {
+                const logId = document.getElementById('log_id').value;
+                if (!logId) {
+                    throw new Error('Log ID is required');
+                }
+
+                const response = await makeRequest(`${baseUrl}/api/admin/audit-logs/${logId}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResponse('specificLogResponse', data);
+                } else {
+                    showError('specificLogResponse', data.message || 'Request failed');
+                }
+            } catch (error) {
+                showError('specificLogResponse', error.message);
+            }
+        }
+
+        async function getModules() {
+            try {
+                const response = await makeRequest(`${baseUrl}/api/admin/audit-logs/modules`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResponse('modulesResponse', data);
+                } else {
+                    showError('modulesResponse', data.message || 'Request failed');
+                }
+            } catch (error) {
+                showError('modulesResponse', error.message);
+            }
+        }
+
+        async function getRoles() {
+            try {
+                const response = await makeRequest(`${baseUrl}/api/admin/audit-logs/roles`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResponse('rolesResponse', data);
+                } else {
+                    showError('rolesResponse', data.message || 'Request failed');
+                }
+            } catch (error) {
+                showError('rolesResponse', error.message);
+            }
+        }
+    </script>
+</body>
+</html> 
