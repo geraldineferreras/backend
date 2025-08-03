@@ -814,6 +814,136 @@ class AdminController extends BaseController {
         return json_response(true, 'Roles retrieved successfully', $roles);
     }
 
+    // --- Role-specific Audit Log Endpoints ---
+    public function audit_logs_admin_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+        
+        $this->load->model('Audit_model');
+        
+        // Get query parameters
+        $page = $this->input->get('page') ?: 1;
+        $limit = $this->input->get('limit') ?: 50;
+        $offset = ($page - 1) * $limit;
+        
+        // Get filters
+        $filters = [
+            'user_role' => 'admin',
+            'action' => $this->input->get('action'),
+            'module' => $this->input->get('module'),
+            'date_from' => $this->input->get('date_from'),
+            'date_to' => $this->input->get('date_to')
+        ];
+        
+        // Remove empty filters
+        $filters = array_filter($filters, function($value) {
+            return $value !== null && $value !== '';
+        });
+        
+        $logs = $this->Audit_model->get_audit_logs($filters, $limit, $offset);
+        $total = $this->Audit_model->get_audit_logs($filters, 0, 0);
+        $total_count = count($total);
+        
+        $response = [
+            'logs' => $logs,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $limit,
+                'total_records' => $total_count,
+                'total_pages' => ceil($total_count / $limit)
+            ],
+            'filter' => 'admin'
+        ];
+        
+        return json_response(true, 'Admin audit logs retrieved successfully', $response);
+    }
+
+    public function audit_logs_teacher_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+        
+        $this->load->model('Audit_model');
+        
+        // Get query parameters
+        $page = $this->input->get('page') ?: 1;
+        $limit = $this->input->get('limit') ?: 50;
+        $offset = ($page - 1) * $limit;
+        
+        // Get filters
+        $filters = [
+            'user_role' => 'teacher',
+            'action' => $this->input->get('action'),
+            'module' => $this->input->get('module'),
+            'date_from' => $this->input->get('date_from'),
+            'date_to' => $this->input->get('date_to')
+        ];
+        
+        // Remove empty filters
+        $filters = array_filter($filters, function($value) {
+            return $value !== null && $value !== '';
+        });
+        
+        $logs = $this->Audit_model->get_audit_logs($filters, $limit, $offset);
+        $total = $this->Audit_model->get_audit_logs($filters, 0, 0);
+        $total_count = count($total);
+        
+        $response = [
+            'logs' => $logs,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $limit,
+                'total_records' => $total_count,
+                'total_pages' => ceil($total_count / $limit)
+            ],
+            'filter' => 'teacher'
+        ];
+        
+        return json_response(true, 'Teacher audit logs retrieved successfully', $response);
+    }
+
+    public function audit_logs_student_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+        
+        $this->load->model('Audit_model');
+        
+        // Get query parameters
+        $page = $this->input->get('page') ?: 1;
+        $limit = $this->input->get('limit') ?: 50;
+        $offset = ($page - 1) * $limit;
+        
+        // Get filters
+        $filters = [
+            'user_role' => 'student',
+            'action' => $this->input->get('action'),
+            'module' => $this->input->get('module'),
+            'date_from' => $this->input->get('date_from'),
+            'date_to' => $this->input->get('date_to')
+        ];
+        
+        // Remove empty filters
+        $filters = array_filter($filters, function($value) {
+            return $value !== null && $value !== '';
+        });
+        
+        $logs = $this->Audit_model->get_audit_logs($filters, $limit, $offset);
+        $total = $this->Audit_model->get_audit_logs($filters, 0, 0);
+        $total_count = count($total);
+        
+        $response = [
+            'logs' => $logs,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $limit,
+                'total_records' => $total_count,
+                'total_pages' => ceil($total_count / $limit)
+            ],
+            'filter' => 'student'
+        ];
+        
+        return json_response(true, 'Student audit logs retrieved successfully', $response);
+    }
+
     public function audit_logs_export_get() {
         $user_data = require_admin($this);
         if (!$user_data) return;

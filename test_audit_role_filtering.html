@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Log Role Filtering Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .role-button {
+            background-color: #28a745;
+        }
+        .role-button:hover {
+            background-color: #218838;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .endpoint-info {
+            background-color: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .endpoint-info h3 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        .endpoint-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .endpoint-list li {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>Audit Log Role Filtering Test</h1>
+    
+    <div class="endpoint-info">
+        <h3>Available Endpoints</h3>
+        <p>This test demonstrates the new role-specific audit log filtering endpoints:</p>
+        <ul class="endpoint-list">
+            <li><strong>GET /api/admin/audit-logs/admin</strong> - Filter logs by admin users only</li>
+            <li><strong>GET /api/admin/audit-logs/teacher</strong> - Filter logs by teacher users only</li>
+            <li><strong>GET /api/admin/audit-logs/student</strong> - Filter logs by student users only</li>
+            <li><strong>GET /api/admin/audit-logs</strong> - General endpoint with user_role parameter</li>
+        </ul>
+    </div>
+    
+    <div class="container">
+        <h2>Authentication</h2>
+        <div class="form-group">
+            <label for="token">JWT Token:</label>
+            <input type="text" id="token" placeholder="Enter your JWT token">
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Role-Specific Audit Logs</h2>
+        <p>Click the buttons below to test the role-specific filtering endpoints:</p>
+        
+        <button class="role-button" onclick="getAdminLogs()">Get Admin Logs</button>
+        <button class="role-button" onclick="getTeacherLogs()">Get Teacher Logs</button>
+        <button class="role-button" onclick="getStudentLogs()">Get Student Logs</button>
+        
+        <div class="form-group">
+            <label for="additional_filters">Additional Filters (Optional):</label>
+            <select id="additional_filters">
+                <option value="">No additional filters</option>
+                <option value="module">Filter by Module</option>
+                <option value="action">Filter by Action</option>
+                <option value="date">Filter by Date Range</option>
+            </select>
+        </div>
+        
+        <div id="filter_options" style="display: none;">
+            <div class="form-group">
+                <label for="module_filter">Module:</label>
+                <select id="module_filter">
+                    <option value="">All Modules</option>
+                    <option value="USER MANAGEMENT">USER MANAGEMENT</option>
+                    <option value="SECTION MANAGEMENT">SECTION MANAGEMENT</option>
+                    <option value="ATTENDANCE MANAGEMENT">ATTENDANCE MANAGEMENT</option>
+                    <option value="AUTHENTICATION">AUTHENTICATION</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="action_filter">Action:</label>
+                <select id="action_filter">
+                    <option value="">All Actions</option>
+                    <option value="LOGGED IN">LOGGED IN</option>
+                    <option value="LOGGED OUT">LOGGED OUT</option>
+                    <option value="CREATED">CREATED</option>
+                    <option value="UPDATED">UPDATED</option>
+                    <option value="DELETED">DELETED</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="date_from">Date From:</label>
+                <input type="date" id="date_from">
+            </div>
+            <div class="form-group">
+                <label for="date_to">Date To:</label>
+                <input type="date" id="date_to">
+            </div>
+        </div>
+        
+        <div id="response" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h2>General Audit Logs (with role filter)</h2>
+        <p>Test the general endpoint with role parameter:</p>
+        
+        <div class="form-group">
+            <label for="general_role">Role:</label>
+            <select id="general_role">
+                <option value="">All Roles</option>
+                <option value="admin">Admin</option>
+                <option value="teacher">Teacher</option>
+                <option value="student">Student</option>
+            </select>
+        </div>
+        
+        <button onclick="getGeneralLogs()">Get General Logs</button>
+        
+        <div id="general_response" class="response"></div>
+    </div>
+
+    <script>
+        const baseUrl = window.location.origin;
+
+        function getToken() {
+            return document.getElementById('token').value.trim();
+        }
+
+        function showResponse(elementId, data) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = 'response success';
+        }
+
+        function showError(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.textContent = `Error: ${message}`;
+            element.className = 'response error';
+        }
+
+        async function makeRequest(url, options = {}) {
+            const token = getToken();
+            if (!token) {
+                throw new Error('JWT token is required');
+            }
+
+            const defaultOptions = {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            const response = await fetch(url, { ...defaultOptions, ...options });
+            return response;
+        }
+
+        function getAdditionalParams() {
+            const additionalFilters = document.getElementById('additional_filters').value;
+            const params = new URLSearchParams();
+            
+            if (additionalFilters === 'module') {
+                const module = document.getElementById('module_filter').value;
+                if (module) params.append('module', module);
+            } else if (additionalFilters === 'action') {
+                const action = document.getElementById('action_filter').value;
+                if (action) params.append('action', action);
+            } else if (additionalFilters === 'date') {
+                const dateFrom = document.getElementById('date_from').value;
+                const dateTo = document.getElementById('date_to').value;
+                if (dateFrom) params.append('date_from', dateFrom);
+                if (dateTo) params.append('date_to', dateTo);
+            }
+            
+            return params;
+        }
+
+        async function getAdminLogs() {
+            try {
+                const params = getAdditionalParams();
+                const response = await makeRequest(`${baseUrl}/api/admin/audit-logs/admin?${params}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResponse('response', data);
+                } else {
+                    showError('response', data.message || 'Request failed');
+                }
+            } catch (error) {
+                showError('response', error.message);
+            }
+        }
+
+        async function getTeacherLogs() {
+            try {
+                const params = getAdditionalParams();
+                const response = await makeRequest(`${baseUrl}/api/admin/audit-logs/teacher?${params}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResponse('response', data);
+                } else {
+                    showError('response', data.message || 'Request failed');
+                }
+            } catch (error) {
+                showError('response', error.message);
+            }
+        }
+
+        async function getStudentLogs() {
+            try {
+                const params = getAdditionalParams();
+                const response = await makeRequest(`${baseUrl}/api/admin/audit-logs/student?${params}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResponse('response', data);
+                } else {
+                    showError('response', data.message || 'Request failed');
+                }
+            } catch (error) {
+                showError('response', error.message);
+            }
+        }
+
+        async function getGeneralLogs() {
+            try {
+                const role = document.getElementById('general_role').value;
+                const params = new URLSearchParams();
+                
+                if (role) {
+                    params.append('user_role', role);
+                }
+                
+                const response = await makeRequest(`${baseUrl}/api/admin/audit-logs?${params}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResponse('general_response', data);
+                } else {
+                    showError('general_response', data.message || 'Request failed');
+                }
+            } catch (error) {
+                showError('general_response', error.message);
+            }
+        }
+
+        // Show/hide additional filter options
+        document.getElementById('additional_filters').addEventListener('change', function() {
+            const filterOptions = document.getElementById('filter_options');
+            if (this.value) {
+                filterOptions.style.display = 'block';
+            } else {
+                filterOptions.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html> 

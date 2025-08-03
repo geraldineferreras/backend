@@ -155,6 +155,11 @@ $route['api/admin/audit-logs/modules']['get'] = 'api/AdminController/audit_logs_
 $route['api/admin/audit-logs/roles']['get'] = 'api/AdminController/audit_logs_roles_get';
 $route['api/admin/audit-logs/export']['get'] = 'api/AdminController/audit_logs_export_get';
 
+// Role-specific Audit Log Endpoints
+$route['api/admin/audit-logs/admin']['get'] = 'api/AdminController/audit_logs_admin_get';
+$route['api/admin/audit-logs/teacher']['get'] = 'api/AdminController/audit_logs_teacher_get';
+$route['api/admin/audit-logs/student']['get'] = 'api/AdminController/audit_logs_student_get';
+
 // Catch-all OPTIONS route for all /api/* endpoints
 $route['api/(:any)']['options'] = 'api/auth/options';
 
@@ -214,6 +219,13 @@ $route['api/teacher/classroom/(:any)/enrollment-stats']['get'] = 'api/TeacherCon
 $route['api/teacher/assigned-subjects']['get'] = 'api/TeacherController/assigned_subjects_get';
 $route['api/teacher/available-subjects']['get'] = 'api/TeacherController/available_subjects_get';
 $route['api/teacher/available-sections/(:num)']['get'] = 'api/TeacherController/available_sections_get/$1';
+
+// Attendance Logs API
+$route['api/attendance-logs/logs']['get'] = 'api/AttendanceLogController/logs_get';
+$route['api/attendance-logs/log/(:num)']['get'] = 'api/AttendanceLogController/log_get/$1';
+$route['api/attendance-logs/export']['get'] = 'api/AttendanceLogController/export_get';
+$route['api/attendance-logs/statistics']['get'] = 'api/AttendanceLogController/statistics_get';
+$route['api/attendance-logs/filters']['get'] = 'api/AttendanceLogController/filters_get';
 
 $route['pdf/(:any)'] = 'pdf/serve/$1';
 

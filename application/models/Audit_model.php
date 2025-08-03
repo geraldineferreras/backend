@@ -24,12 +24,7 @@ class Audit_model extends CI_Model
                 'module' => $audit_data['module'] ?? 'UNKNOWN',
                 'table_name' => $audit_data['table_name'] ?? null,
                 'record_id' => $audit_data['record_id'] ?? null,
-                'details' => isset($audit_data['table_name']) || isset($audit_data['record_id']) ? json_encode([
-                    'table_name' => $audit_data['table_name'] ?? null,
-                    'record_id' => $audit_data['record_id'] ?? null,
-                    'description' => $audit_data['details'] ?? $audit_data['description'] ?? '',
-                    'additional_data' => array_diff_key($audit_data, array_flip(['user_id', 'user_name', 'user_role', 'action_type', 'action', 'module', 'details', 'description', 'table_name', 'record_id', 'ip_address']))
-                ]) : null,
+                'details' => $audit_data['details'] ?? $audit_data['description'] ?? '',
                 'ip_address' => $audit_data['ip_address'] ?? $this->input->ip_address(),
                 'created_at' => date('Y-m-d H:i:s')
             ];
@@ -63,10 +58,7 @@ class Audit_model extends CI_Model
                 'user_role' => $user_role,
                 'action_type' => $action,
                 'module' => $module,
-                'details' => json_encode([
-                    'description' => $description,
-                    'additional_data' => $details
-                ]),
+                'details' => $description,
                 'ip_address' => $this->input->ip_address(),
                 'created_at' => date('Y-m-d H:i:s')
             ];
@@ -225,8 +217,7 @@ class Audit_model extends CI_Model
         $csv = "Log ID,User ID,User Name,User Role,Action Type,Module,Table Name,Record ID,Details,IP Address,Created At\n";
 
         foreach ($logs as $log) {
-            $details = json_decode($log['details'], true);
-            $description = $details['description'] ?? '';
+            $description = $log['details'] ?? '';
             
             $csv .= sprintf(
                 '"%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"' . "\n",

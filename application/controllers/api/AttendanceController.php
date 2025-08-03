@@ -12,7 +12,7 @@ class AttendanceController extends BaseController
         $this->load->model('Student_model');
         $this->load->model('Subject_model');
         $this->load->model('Section_model');
-        $this->load->helper(['auth', 'audit']);
+        $this->load->helper(['auth', 'audit', 'attendance_log']);
         $this->load->library('Token_lib');
     }
 
@@ -225,7 +225,7 @@ class AttendanceController extends BaseController
                 $message = 'Attendance updated successfully';
                 $attendance_id = $existing['attendance_id'];
                 
-                // Log attendance update
+                // Log attendance update to audit logs
                 log_audit_event(
                     'UPDATED ATTENDANCE',
                     'ATTENDANCE MANAGEMENT',
@@ -235,13 +235,21 @@ class AttendanceController extends BaseController
                         'record_id' => $attendance_id
                     ]
                 );
+                
+                // Log to dedicated attendance_logs table
+                $attendance_data['attendance_id'] = $attendance_id;
+                $attendance_data['class_id'] = $data->class_id;
+                log_attendance_event($attendance_data, 'UPDATED', $user_data, [
+                    'excuse_letter' => $excuse_letter,
+                    'remarks' => 'Attendance updated by teacher'
+                ]);
             } else {
                 // Insert new record
                 $this->db->insert('attendance', $attendance_data);
                 $attendance_id = $this->db->insert_id();
                 $message = 'Attendance recorded successfully';
                 
-                // Log attendance recording
+                // Log attendance recording to audit logs
                 log_audit_event(
                     'RECORDED ATTENDANCE',
                     'ATTENDANCE MANAGEMENT',
@@ -251,6 +259,14 @@ class AttendanceController extends BaseController
                         'record_id' => $attendance_id
                     ]
                 );
+                
+                // Log to dedicated attendance_logs table
+                $attendance_data['attendance_id'] = $attendance_id;
+                $attendance_data['class_id'] = $data->class_id;
+                log_attendance_event($attendance_data, 'RECORDED', $user_data, [
+                    'excuse_letter' => $excuse_letter,
+                    'remarks' => 'Attendance recorded by teacher'
+                ]);
             }
 
             // Get detailed attendance record with student info
