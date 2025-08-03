@@ -9,7 +9,7 @@ class Auth extends BaseController {
         parent::__construct();
         error_reporting(0);
         $this->load->model('User_model');
-        $this->load->helper(['response', 'auth']);
+        $this->load->helper(['response', 'auth', 'audit']);
         $this->load->library('Token_lib');
     }
 
@@ -60,6 +60,15 @@ class Auth extends BaseController {
                 'last_login' => date('Y-m-d H:i:s')
             ]);
 
+            // Log successful login to audit
+            $user_data = [
+                'user_id' => $user['user_id'],
+                'name' => $user['full_name'],
+                'username' => $user['email'],
+                'role' => $user['role']
+            ];
+            log_user_login($user_data);
+
             // Generate JWT token
             $token_payload = [
                 'user_id' => $user['user_id'],
@@ -89,6 +98,17 @@ class Auth extends BaseController {
                 ]));
             return;
         }
+
+        // Log failed login attempt
+        log_audit_event(
+            'FAILED LOGIN',
+            'AUTHENTICATION',
+            "Failed login attempt for email: {$email}",
+            [
+                'ip_address' => $this->input->ip_address(),
+                'user_agent' => $this->input->user_agent()
+            ]
+        );
 
         $this->output
             ->set_status_header(401)
@@ -874,6 +894,25 @@ class Auth extends BaseController {
 
     // Logout method
     public function logout() {
+        // Get user data from token for logging
+        $token = $this->token_lib->get_token_from_header();
+        $user_data = null;
+        
+        if ($token) {
+            $payload = $this->token_lib->validate_token($token);
+            if ($payload) {
+                $user_data = [
+                    'user_id' => $payload['user_id'],
+                    'name' => $payload['full_name'],
+                    'username' => $payload['email'],
+                    'role' => $payload['role']
+                ];
+                
+                // Log logout event
+                log_user_logout($user_data);
+            }
+        }
+        
         // With JWT, logout is typically handled client-side by removing the token
         // However, we can implement a token blacklist if needed for additional security
         // For now, we'll just return a success message
