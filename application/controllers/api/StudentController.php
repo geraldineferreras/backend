@@ -99,7 +99,7 @@ class StudentController extends BaseController {
     }
 
     /**
-     * Get student's enrolled classes
+     * Get available subject offerings for student
      * GET /api/student/my-classes
      */
     public function my_classes() {
@@ -113,36 +113,47 @@ class StudentController extends BaseController {
             return json_response(false, 'User data not found.', null, 404);
         }
 
-        // Get enrolled classes
-        $enrolled_classes = $this->db->select('classrooms.*, users.full_name as teacher_name, classroom_enrollments.enrolled_at')
-            ->from('classroom_enrollments')
-            ->join('classrooms', 'classroom_enrollments.classroom_id = classrooms.id')
-            ->join('users', 'classrooms.teacher_id = users.user_id')
-            ->where('classroom_enrollments.student_id', $complete_user_data['user_id'])
-            ->where('classroom_enrollments.status', 'active')
-            ->order_by('classroom_enrollments.enrolled_at', 'DESC')
+        // Get all available classes for the student's section
+        $available_classes = $this->db->select('classes.*, users.full_name as teacher_name, subjects.subject_code, subjects.subject_name, sections.section_name')
+            ->from('classes')
+            ->join('users', 'classes.teacher_id = users.user_id')
+            ->join('subjects', 'classes.subject_id = subjects.id')
+            ->join('sections', 'classes.section_id = sections.section_id')
+            ->where('classes.section_id', $complete_user_data['section_id'])
+            ->where('classes.status', 'active')
+            ->order_by('classes.date_created', 'DESC')
             ->get()->result_array();
 
+        // Get student's enrolled class IDs for comparison
+        $enrolled_class_ids = $this->db->select('classroom_id')
+            ->from('classroom_enrollments')
+            ->where('student_id', $complete_user_data['user_id'])
+            ->where('status', 'active')
+            ->get()->result_array();
+        
+        $enrolled_ids = array_column($enrolled_class_ids, 'classroom_id');
+
         $result = [];
-        foreach ($enrolled_classes as $class) {
-            $this->load->model('Subject_model');
-            $this->load->model('Section_model');
-            
-            $subject = $this->Subject_model->get_by_id($class['subject_id']);
-            $section = $this->Section_model->get_by_id($class['section_id']);
-            
+        foreach ($available_classes as $class) {
             $result[] = [
-                'class_code' => $class['class_code'],
-                'subject_name' => $subject ? $subject['subject_name'] : '',
-                'section_name' => $section ? $section['section_name'] : '',
+                'class_id' => $class['class_id'],
+                'subject_id' => $class['subject_id'],
+                'teacher_id' => $class['teacher_id'],
+                'section_id' => $class['section_id'],
                 'semester' => $class['semester'],
                 'school_year' => $class['school_year'],
+                'status' => $class['status'],
+                'date_created' => $class['date_created'],
+                'is_active' => ($class['status'] === 'active') ? '1' : '0',
+                'subject_code' => $class['subject_code'],
+                'subject_name' => $class['subject_name'],
                 'teacher_name' => $class['teacher_name'],
-                'enrolled_at' => $class['enrolled_at']
+                'section_name' => $class['section_name'],
+                'is_enrolled' => in_array($class['class_id'], $enrolled_ids)
             ];
         }
 
-        return json_response(true, 'Enrolled classes retrieved successfully', $result);
+        return json_response(true, 'Subject offerings retrieved successfully', $result);
     }
 
     /**

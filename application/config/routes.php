@@ -215,6 +215,32 @@ $route['api/teacher/classroom/(:any)/stream/(:num)/comment/(:num)']['delete'] = 
 $route['api/teacher/classroom/(:any)/students']['get'] = 'api/TeacherController/classroom_students_get/$1';
 $route['api/teacher/classroom/(:any)/enrollment-stats']['get'] = 'api/TeacherController/classroom_enrollment_stats_get/$1';
 
+// Task Management
+$route['api/tasks/create']['post'] = 'api/TaskController/create_post';
+$route['api/tasks/teacher']['get'] = 'api/TaskController/teacher_get';
+$route['api/tasks/student']['get'] = 'api/TaskController/student_get';
+$route['api/tasks/(:num)']['get'] = 'api/TaskController/task_get/$1';
+$route['api/tasks/(:num)']['put'] = 'api/TaskController/task_put/$1';
+$route['api/tasks/(:num)']['delete'] = 'api/TaskController/task_delete/$1';
+$route['api/tasks/(:num)/hard-delete']['delete'] = 'api/TaskController/hard_delete_task/$1';
+$route['api/tasks/(:num)/publish']['post'] = 'api/TaskController/publish_post/$1';
+$route['api/tasks/(:num)/schedule']['post'] = 'api/TaskController/schedule_post/$1';
+$route['api/tasks/(:num)/archive']['post'] = 'api/TaskController/archive_post/$1';
+$route['api/tasks/(:num)/submit']['post'] = 'api/TaskController/submit_post/$1';
+$route['api/tasks/(:num)/comments']['get'] = 'api/TaskController/comments_get/$1';
+$route['api/tasks/(:num)/comments']['post'] = 'api/TaskController/comment_post/$1';
+$route['api/tasks/submissions/(:num)/grade']['post'] = 'api/TaskController/grade_submission_post/$1';
+$route['api/tasks/(:num)/stats']['get'] = 'api/TaskController/stats_get/$1';
+$route['api/tasks/(:num)/bulk-grade']['post'] = 'api/TaskController/bulk_grade_post/$1';
+$route['api/tasks/files/(:any)']['get'] = 'api/TaskController/serve_file/$1';
+$route['api/tasks/submissions/files/(:any)']['get'] = 'api/TaskController/serve_submission_file/$1';
+$route['api/tasks/(:num)/preview']['get'] = 'api/TaskController/preview_file/$1';
+$route['api/tasks/test-upload']['get'] = 'api/TaskController/test_upload_get';
+$route['api/tasks/available-students']['get'] = 'api/TaskController/available_students_get';
+$route['api/tasks/(:num)/assigned-students']['get'] = 'api/TaskController/assigned_students_get/$1';
+$route['api/tasks/(:num)/assign-students']['post'] = 'api/TaskController/assign_students_post/$1';
+$route['api/tasks/(:num)/assignment-stats']['get'] = 'api/TaskController/assignment_stats_get/$1';
+
 // Teacher Assigned Subjects and Sections
 $route['api/teacher/assigned-subjects']['get'] = 'api/TeacherController/assigned_subjects_get';
 $route['api/teacher/available-subjects']['get'] = 'api/TeacherController/available_subjects_get';

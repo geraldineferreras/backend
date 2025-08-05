@@ -492,8 +492,8 @@ class ExcuseLetterController extends BaseController
                 'updated_at' => date('Y-m-d H:i:s')
             ];
 
-            if (isset($data->notes)) {
-                $update_data['teacher_notes'] = $data->notes;
+            if (isset($data->teacher_notes)) {
+                $update_data['teacher_notes'] = $data->teacher_notes;
             }
 
             $this->db->where('letter_id', $letter_id);

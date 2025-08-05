@@ -691,7 +691,8 @@ class TeacherController extends BaseController
                     u.student_num,
                     u.contact_num,
                     u.program,
-                    u.section_id
+                    u.section_id,
+                    u.profile_pic
                 FROM classroom_enrollments ce
                 JOIN users u ON ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci
                 WHERE ce.classroom_id = ?
@@ -719,7 +720,8 @@ class TeacherController extends BaseController
                 'program' => $student['program'],
                 'section_name' => $section_name,
                 'enrolled_at' => $student['enrolled_at'],
-                'enrollment_status' => $student['enrollment_status']
+                'enrollment_status' => $student['enrollment_status'],
+                'profile_pic' => $student['profile_pic']
             ];
         }
         
