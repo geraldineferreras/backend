@@ -15,10 +15,4 @@ CREATE TABLE IF NOT EXISTS `task_student_assignments` (
   CONSTRAINT `fk_task_assignments_student` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Add new columns to class_tasks table
-ALTER TABLE `class_tasks` 
-ADD COLUMN `assignment_type` enum('classroom','individual') DEFAULT 'classroom' AFTER `class_codes`,
-ADD COLUMN `assigned_students` json NULL AFTER `assignment_type`;
 
--- Add index for better performance
-ALTER TABLE `class_tasks` ADD INDEX `idx_assignment_type` (`assignment_type`); 

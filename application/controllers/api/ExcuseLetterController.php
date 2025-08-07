@@ -7,7 +7,7 @@ class ExcuseLetterController extends BaseController
     {
         parent::__construct();
         $this->load->model('ExcuseLetter_model');
-        $this->load->helper(['auth', 'audit']);
+        $this->load->helper(['auth', 'audit', 'notification']);
         $this->load->library('Token_lib');
     }
 
@@ -77,7 +77,7 @@ class ExcuseLetterController extends BaseController
         }
 
         try {
-            // Verify student is enrolled in this class
+            // First, try to find the class in the classes table
             $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
                 ->from('classes')
                 ->join('subjects', 'classes.subject_id = subjects.id', 'left')
@@ -85,21 +85,48 @@ class ExcuseLetterController extends BaseController
                 ->where('classes.class_id', $data->class_id)
                 ->get()->row_array();
 
+            // If not found in classes table, try to find corresponding classroom
             if (!$class) {
-                $this->send_error('Class not found', 404);
-                return;
+                // Check if this is a classroom ID instead of class ID
+                $classroom = $this->db->select('classrooms.*, subjects.subject_name, sections.section_name')
+                    ->from('classrooms')
+                    ->join('subjects', 'classrooms.subject_id = subjects.id', 'left')
+                    ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
+                    ->where('classrooms.id', $data->class_id)
+                    ->get()->row_array();
+
+                if ($classroom) {
+                    // Find corresponding class in classes table based on subject and section
+                    $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
+                        ->from('classes')
+                        ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                        ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                        ->where('classes.subject_id', $classroom['subject_id'])
+                        ->where('classes.section_id', $classroom['section_id'])
+                        ->where('classes.teacher_id', $classroom['teacher_id'])
+                        ->get()->row_array();
+
+                    if (!$class) {
+                        $this->send_error('No corresponding class found for this classroom', 404);
+                        return;
+                    }
+                } else {
+                    $this->send_error('Class not found', 404);
+                    return;
+                }
             }
 
-            // Check if student is enrolled in this class (same section)
-            $student = $this->db->select('users.*')
-                ->from('users')
-                ->where('users.user_id', $user_data['user_id'])
-                ->where('users.role', 'student')
-                ->where('users.section_id', $class['section_id'])
-                ->where('users.status', 'active')
+            // Check if student is enrolled in this class using classroom_enrollments table
+            $enrollment = $this->db->select('classroom_enrollments.*')
+                ->from('classroom_enrollments')
+                ->join('classrooms', 'classroom_enrollments.classroom_id = classrooms.id')
+                ->where('classroom_enrollments.student_id', $user_data['user_id'])
+                ->where('classrooms.subject_id', $class['subject_id'])
+                ->where('classrooms.section_id', $class['section_id'])
+                ->where('classroom_enrollments.status', 'active')
                 ->get()->row_array();
 
-            if (!$student) {
+            if (!$enrollment) {
                 $this->send_error('You are not enrolled in this class', 400);
                 return;
             }
@@ -144,6 +171,9 @@ class ExcuseLetterController extends BaseController
                     'record_id' => $letter_id
                 ]
             );
+
+            // Send notification to teacher about the excuse letter submission
+            $this->send_excuse_letter_notification($class, $user_data, $letter_id, $data->date_absent, $data->reason);
 
             // Get detailed excuse letter with class info
             $excuse_letter = $this->db->select('
@@ -499,6 +529,9 @@ class ExcuseLetterController extends BaseController
             $this->db->where('letter_id', $letter_id);
             $this->db->update('excuse_letters', $update_data);
 
+            // Send notification to student about the status update
+            $this->send_excuse_letter_status_notification($excuse_letter, $data->status, $data->teacher_notes ?? null);
+
             $this->send_success(null, 'Excuse letter status updated successfully');
         } catch (Exception $e) {
             $this->send_error('Failed to update excuse letter: ' . $e->getMessage(), 500);
@@ -542,6 +575,89 @@ class ExcuseLetterController extends BaseController
             $this->send_success(null, 'Excuse letter deleted successfully');
         } catch (Exception $e) {
             $this->send_error('Failed to delete excuse letter: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Send notification to teacher when student submits an excuse letter
+     */
+    private function send_excuse_letter_notification($class, $student_data, $letter_id, $date_absent, $reason)
+    {
+        try {
+            $student_name = $student_data['full_name'];
+            $teacher_id = $class['teacher_id'];
+            $subject_name = $class['subject_name'] ?? 'Unknown Subject';
+            $section_name = $class['section_name'] ?? 'Unknown Section';
+            
+            $title = "New Excuse Letter: {$subject_name}";
+            $message = "{$student_name} has submitted an excuse letter for {$subject_name} ({$section_name}) - Date: {$date_absent}";
+            
+            // Create notification for the teacher (without class_code since it's not available in classes table)
+            create_excuse_letter_notification(
+                $teacher_id,
+                $letter_id,
+                $title,
+                $message,
+                null // No class_code available from classes table
+            );
+            
+            // Log notification sending
+            log_message('info', "Excuse letter notification sent to teacher {$teacher_id} for letter {$letter_id}");
+            
+        } catch (Exception $e) {
+            // Log error but don't fail the submission
+            log_message('error', "Failed to send excuse letter notification: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send notification to student when teacher updates excuse letter status
+     */
+    private function send_excuse_letter_status_notification($excuse_letter, $status, $teacher_notes = null)
+    {
+        try {
+            $student_id = $excuse_letter['student_id'];
+            $letter_id = $excuse_letter['letter_id'];
+            $date_absent = $excuse_letter['date_absent'];
+            $reason = $excuse_letter['reason'];
+            
+            // Get class and subject information
+            $class_info = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
+                ->from('classes')
+                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                ->where('classes.class_id', $excuse_letter['class_id'])
+                ->get()->row_array();
+            
+            $subject_name = $class_info['subject_name'] ?? 'Unknown Subject';
+            $section_name = $class_info['section_name'] ?? 'Unknown Section';
+            
+            // Create status-specific title and message
+            $status_display = ucfirst($status);
+            $title = "Excuse Letter {$status_display}: {$subject_name}";
+            
+            $message = "Your excuse letter for {$subject_name} ({$section_name}) has been {$status}.";
+            $message .= " Date: {$date_absent}";
+            
+            if ($teacher_notes) {
+                $message .= "\n\nTeacher Notes: {$teacher_notes}";
+            }
+            
+            // Create notification for the student
+            create_excuse_letter_notification(
+                $student_id,
+                $letter_id,
+                $title,
+                $message,
+                null // No class_code available from classes table
+            );
+            
+            // Log notification sending
+            log_message('info', "Excuse letter status notification sent to student {$student_id} for letter {$letter_id} - Status: {$status}");
+            
+        } catch (Exception $e) {
+            // Log error but don't fail the update
+            log_message('error', "Failed to send excuse letter status notification: " . $e->getMessage());
         }
     }
 } 

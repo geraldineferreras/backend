@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Excuse Letter Frontend</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .debug-info {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            color: #495057;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Debug Excuse Letter Frontend</h1>
+    <p>This tool helps you debug why your frontend excuse letter submission isn't working.</p>
+    
+    <div class="form-group">
+        <label for="token">JWT Token:</label>
+        <input type="text" id="token" placeholder="Enter your JWT token (from login)" style="font-size: 12px;">
+        <small>Get this from your login response or localStorage</small>
+    </div>
+    
+    <div class="form-group">
+        <label for="classId">Class ID:</label>
+        <input type="text" id="classId" value="5" placeholder="Enter class ID">
+        <small>Use the same class_id that works in Postman</small>
+    </div>
+    
+    <div class="form-group">
+        <label for="dateAbsent">Date Absent:</label>
+        <input type="date" id="dateAbsent" value="2025-09-12">
+    </div>
+    
+    <div class="form-group">
+        <label for="reason">Reason:</label>
+        <textarea id="reason" rows="3" placeholder="Enter reason for absence">Test from frontend debug tool</textarea>
+    </div>
+    
+    <button onclick="testSubmit()">Test Submit</button>
+    <button onclick="debugToken()">Debug Token</button>
+    <button onclick="clearResult()">Clear Result</button>
+    
+    <div id="result" class="result" style="display: none;"></div>
+    
+    <script>
+        const API_BASE = 'http://localhost/scms_new_backup/index.php/api';
+        
+        function showResult(message, type = 'info') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.className = `result ${type}`;
+            resultDiv.style.display = 'block';
+        }
+        
+        function debugToken() {
+            const token = document.getElementById('token').value;
+            
+            if (!token) {
+                showResult('❌ No token provided', 'error');
+                return;
+            }
+            
+            // Check token format
+            let debugInfo = '🔍 Token Debug Info:\n\n';
+            debugInfo += `Token length: ${token.length}\n`;
+            debugInfo += `Starts with "eyJ": ${token.startsWith('eyJ')}\n`;
+            debugInfo += `Contains "Bearer": ${token.includes('Bearer')}\n`;
+            debugInfo += `First 50 chars: ${token.substring(0, 50)}...\n\n`;
+            
+            // Try to decode JWT (basic check)
+            try {
+                const parts = token.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1]));
+                    debugInfo += `✅ JWT format looks valid\n`;
+                    debugInfo += `Payload: ${JSON.stringify(payload, null, 2)}\n`;
+                } else {
+                    debugInfo += `❌ JWT format invalid (should have 3 parts)\n`;
+                }
+            } catch (e) {
+                debugInfo += `❌ JWT decode error: ${e.message}\n`;
+            }
+            
+            showResult(debugInfo, 'debug-info');
+        }
+        
+        async function testSubmit() {
+            const token = document.getElementById('token').value;
+            const classId = document.getElementById('classId').value;
+            const dateAbsent = document.getElementById('dateAbsent').value;
+            const reason = document.getElementById('reason').value;
+            
+            // Validation
+            if (!token || !classId || !dateAbsent || !reason) {
+                showResult('❌ Please fill in all fields', 'error');
+                return;
+            }
+            
+            showResult('🔄 Testing submission...', 'info');
+            
+            try {
+                // Log the request details
+                console.log('Request Details:', {
+                    url: `${API_BASE}/excuse-letters/submit`,
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: {
+                        class_id: classId,
+                        date_absent: dateAbsent,
+                        reason: reason
+                    }
+                });
+                
+                const response = await fetch(`${API_BASE}/excuse-letters/submit`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        class_id: classId,
+                        date_absent: dateAbsent,
+                        reason: reason
+                    })
+                });
+                
+                const data = await response.json();
+                
+                let resultMessage = '';
+                resultMessage += `📊 Response Status: ${response.status}\n`;
+                resultMessage += `📊 Response Headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}\n\n`;
+                resultMessage += `📄 Response Data:\n${JSON.stringify(data, null, 2)}\n\n`;
+                
+                if (response.ok) {
+                    resultMessage += '✅ SUCCESS! The API call worked.\n';
+                    resultMessage += 'If your frontend still doesn\'t work, the issue is in your frontend code.\n';
+                    resultMessage += 'Check your field names, authentication, and request format.';
+                    showResult(resultMessage, 'success');
+                } else {
+                    resultMessage += '❌ ERROR! The API call failed.\n';
+                    resultMessage += 'This helps identify the specific issue.';
+                    showResult(resultMessage, 'error');
+                }
+                
+            } catch (error) {
+                let errorMessage = '❌ NETWORK ERROR!\n\n';
+                errorMessage += `Error: ${error.message}\n\n`;
+                errorMessage += 'Possible causes:\n';
+                errorMessage += '1. CORS issue - Check browser console\n';
+                errorMessage += '2. Wrong API URL - Verify the URL is correct\n';
+                errorMessage += '3. Server not running - Check XAMPP\n';
+                errorMessage += '4. Network connectivity issue\n\n';
+                errorMessage += 'Check browser console (F12) for more details.';
+                
+                showResult(errorMessage, 'error');
+                console.error('Network error:', error);
+            }
+        }
+        
+        function clearResult() {
+            document.getElementById('result').style.display = 'none';
+        }
+        
+        // Auto-fill token from localStorage if available
+        window.onload = function() {
+            const storedToken = localStorage.getItem('token');
+            if (storedToken) {
+                document.getElementById('token').value = storedToken;
+            }
+        };
+    </script>
+</body>
+</html>

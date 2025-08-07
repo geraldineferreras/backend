@@ -9,7 +9,7 @@ class Auth extends BaseController {
         parent::__construct();
         error_reporting(0);
         $this->load->model('User_model');
-        $this->load->helper(['response', 'auth', 'audit']);
+        $this->load->helper(['response', 'auth', 'audit', 'notification']);
         $this->load->library('Token_lib');
     }
 
@@ -232,6 +232,9 @@ class Auth extends BaseController {
 
             // Insert user into database
             if ($this->User_model->insert($user_data)) {
+                // Send welcome system notification
+                $this->send_welcome_notification($user_id, $full_name, $role, $email);
+                
                 $this->output
                     ->set_status_header(201)
                     ->set_content_type('application/json')
@@ -806,6 +809,9 @@ class Auth extends BaseController {
 
         $success = $this->User_model->update($user_id, ['status' => $new_status]);
         if ($success) {
+            // Send system notification about account status change
+            $this->send_account_status_notification($user_id, $new_status, $user['full_name'], $target_role);
+            
             $status_text = $new_status === 'active' ? 'activated' : 'deactivated';
             $this->output
                 ->set_status_header(200)
@@ -929,5 +935,67 @@ class Auth extends BaseController {
     // Handle OPTIONS preflight requests (CORS)
     public function options() {
         // The BaseController constructor handles CORS and exits for OPTIONS requests.
+    }
+
+    /**
+     * Send welcome system notification to new users
+     */
+    private function send_welcome_notification($user_id, $full_name, $role, $email) {
+        try {
+            $title = "Welcome to SCMS!";
+            $message = "Hello {$full_name}! Welcome to the Student Class Management System. ";
+            $message .= "Your {$role} account has been successfully created. ";
+            $message .= "You can now log in and start using the system.";
+            
+            create_system_notification($user_id, $title, $message, false);
+            
+            log_message('info', "Welcome notification sent to user {$user_id} ({$email})");
+            
+        } catch (Exception $e) {
+            log_message('error', "Failed to send welcome notification: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send account status change notification
+     */
+    private function send_account_status_notification($user_id, $status, $full_name, $role) {
+        try {
+            $status_text = $status === 'active' ? 'activated' : 'deactivated';
+            $title = "Account Status Updated";
+            $message = "Hello {$full_name}, your {$role} account has been {$status_text}. ";
+            
+            if ($status === 'active') {
+                $message .= "You can now log in and access the system.";
+            } else {
+                $message .= "Your account access has been temporarily suspended. Please contact the administrator for assistance.";
+            }
+            
+            create_system_notification($user_id, $title, $message, $status === 'inactive');
+            
+            log_message('info', "Account status notification sent to user {$user_id} - Status: {$status}");
+            
+        } catch (Exception $e) {
+            log_message('error', "Failed to send account status notification: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send security alert notification for suspicious login activity
+     */
+    private function send_security_alert_notification($user_id, $login_details) {
+        try {
+            $title = "Security Alert - New Login";
+            $message = "A new login was detected for your account. ";
+            $message .= "If this wasn't you, please change your password immediately. ";
+            $message .= "Login details: " . $login_details;
+            
+            create_system_notification($user_id, $title, $message, true); // Mark as urgent
+            
+            log_message('info', "Security alert notification sent to user {$user_id}");
+            
+        } catch (Exception $e) {
+            log_message('error', "Failed to send security alert notification: " . $e->getMessage());
+        }
     }
 }

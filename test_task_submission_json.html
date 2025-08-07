@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Submission Test (JSON)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .note {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Task Submission Test (JSON Format)</h1>
+        <p>This form demonstrates how to submit tasks using JSON format (without file uploads).</p>
+        
+        <div class="note">
+            <strong>Note:</strong> This method is for text-only submissions or when using external links (Google Drive, YouTube, etc.). 
+            For file uploads, use the multipart form data version.
+        </div>
+        
+        <form id="taskForm">
+            <div class="form-group">
+                <label for="task_id">Task ID:</label>
+                <input type="text" id="task_id" name="task_id" value="1" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="submission_content">Submission Content:</label>
+                <textarea id="submission_content" name="submission_content" placeholder="Enter your submission content here..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="class_code">Class Code:</label>
+                <input type="text" id="class_code" name="class_code" placeholder="e.g., MATH101" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="attachment_type">Attachment Type:</label>
+                <select id="attachment_type" name="attachment_type">
+                    <option value="">No attachment</option>
+                    <option value="link">External Link</option>
+                    <option value="youtube">YouTube Video</option>
+                    <option value="google_drive">Google Drive</option>
+                </select>
+            </div>
+            
+            <div class="form-group" id="attachment_url_group" style="display: none;">
+                <label for="attachment_url">Attachment URL:</label>
+                <input type="text" id="attachment_url" name="attachment_url" placeholder="https://example.com/file.pdf">
+            </div>
+            
+            <div class="form-group">
+                <label for="token">JWT Token:</label>
+                <input type="text" id="token" name="token" placeholder="Enter your JWT token" required>
+            </div>
+            
+            <button type="submit" id="submitBtn">Submit Task</button>
+            <button type="button" id="clearBtn">Clear Form</button>
+        </form>
+        
+        <div id="response"></div>
+    </div>
+
+    <script>
+        // Show/hide attachment URL field based on attachment type
+        document.getElementById('attachment_type').addEventListener('change', function() {
+            const attachmentUrlGroup = document.getElementById('attachment_url_group');
+            const attachmentUrl = document.getElementById('attachment_url');
+            
+            if (this.value) {
+                attachmentUrlGroup.style.display = 'block';
+                attachmentUrl.required = true;
+            } else {
+                attachmentUrlGroup.style.display = 'none';
+                attachmentUrl.required = false;
+                attachmentUrl.value = '';
+            }
+        });
+
+        // Form submission
+        document.getElementById('taskForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const responseDiv = document.getElementById('response');
+            
+            // Disable submit button
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+            
+            try {
+                const taskId = document.getElementById('task_id').value;
+                const submissionContent = document.getElementById('submission_content').value;
+                const classCode = document.getElementById('class_code').value;
+                const token = document.getElementById('token').value;
+                const attachmentType = document.getElementById('attachment_type').value;
+                const attachmentUrl = document.getElementById('attachment_url').value;
+                
+                // Prepare request data
+                const requestData = {
+                    submission_content: submissionContent,
+                    class_code: classCode
+                };
+                
+                // Add attachment if provided
+                if (attachmentType && attachmentUrl) {
+                    requestData.attachment_type = attachmentType;
+                    requestData.attachment_url = attachmentUrl;
+                }
+                
+                const response = await fetch(`/api/tasks/${taskId}/submit`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                const data = await response.json();
+                
+                // Display response
+                responseDiv.className = data.success ? 'response success' : 'response error';
+                responseDiv.innerHTML = `
+                    <strong>Status:</strong> ${response.status} ${response.statusText}
+                    <br><strong>Request Data:</strong>
+                    <br>${JSON.stringify(requestData, null, 2)}
+                    <br><br><strong>Response:</strong>
+                    <br>${JSON.stringify(data, null, 2)}
+                `;
+                
+                if (data.success) {
+                    console.log('Task submitted successfully!');
+                    console.log('Submission ID:', data.data.submission_id);
+                } else {
+                    console.error('Error:', data.message);
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                responseDiv.className = 'response error';
+                responseDiv.innerHTML = `
+                    <strong>Error:</strong>
+                    <br>${error.message}
+                `;
+            } finally {
+                // Re-enable submit button
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Task';
+            }
+        });
+
+        // Clear form
+        document.getElementById('clearBtn').addEventListener('click', function() {
+            document.getElementById('taskForm').reset();
+            document.getElementById('attachment_url_group').style.display = 'none';
+            document.getElementById('response').innerHTML = '';
+        });
+
+        // Load token from localStorage if available
+        window.addEventListener('load', function() {
+            const savedToken = localStorage.getItem('token');
+            if (savedToken) {
+                document.getElementById('token').value = savedToken;
+            }
+        });
+
+        // Example data for testing
+        function loadExampleData() {
+            document.getElementById('submission_content').value = 'This is my assignment submission for the math homework. I have completed all the problems and included my work.';
+            document.getElementById('class_code').value = 'MATH101';
+            document.getElementById('attachment_type').value = 'google_drive';
+            document.getElementById('attachment_url').value = 'https://drive.google.com/file/d/1234567890abcdef/view?usp=sharing';
+            document.getElementById('attachment_url_group').style.display = 'block';
+        }
+
+        // Add example button
+        const exampleBtn = document.createElement('button');
+        exampleBtn.textContent = 'Load Example Data';
+        exampleBtn.type = 'button';
+        exampleBtn.onclick = loadExampleData;
+        document.querySelector('.container').insertBefore(exampleBtn, document.getElementById('taskForm'));
+    </script>
+</body>
+</html> 

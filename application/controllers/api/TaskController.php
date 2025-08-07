@@ -7,7 +7,7 @@ class TaskController extends BaseController
     {
         parent::__construct();
         $this->load->model('Task_model');
-        $this->load->helper(['auth', 'audit']);
+        $this->load->helper(['auth', 'audit', 'notification']);
         $this->load->library('Token_lib');
     }
 
@@ -147,10 +147,13 @@ class TaskController extends BaseController
             if ($task_id) {
                 // If individual assignment, assign specific students
                 if ($task_data['assignment_type'] === 'individual' && !empty($data->assigned_students)) {
-                    $this->Task_model->assign_students_to_task($task_id, $data->assigned_students);
+                    $this->Task_model->safe_assign_students_to_task($task_id, $data->assigned_students);
                 }
                 
                 $task = $this->Task_model->get_by_id($task_id);
+                
+                // Send notifications to students in the affected classes
+                $this->send_task_notifications($task_id, $task, $data->class_codes, $user_data);
                 
                 // Log task creation
                 log_audit_event(
@@ -236,6 +239,38 @@ class TaskController extends BaseController
             $this->send_success($tasks, 'Tasks retrieved successfully');
         } catch (Exception $e) {
             $this->send_error('Failed to retrieve tasks: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get student's individually assigned tasks only (Student only)
+     * GET /api/tasks/student/assigned
+     */
+    public function student_assigned_get()
+    {
+        $user_data = require_student($this);
+        if (!$user_data) return;
+
+        try {
+            $class_code = $this->input->get('class_code');
+            if (!$class_code) {
+                $this->send_error('Class code is required', 400);
+                return;
+            }
+
+            $tasks = $this->Task_model->get_individually_assigned_tasks_for_student($user_data['user_id'], $class_code);
+            
+            // Add submission status for each task
+            foreach ($tasks as &$task) {
+                $submission = $this->Task_model->get_student_submission($task['task_id'], $user_data['user_id'], $class_code);
+                $task['submission_status'] = $submission ? $submission['status'] : 'not_submitted';
+                $task['submission_id'] = $submission ? $submission['submission_id'] : null;
+                $task['class_codes'] = json_decode($task['class_codes'], true);
+            }
+
+            $this->send_success($tasks, 'Individually assigned tasks retrieved successfully');
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve assigned tasks: ' . $e->getMessage(), 500);
         }
     }
 
@@ -578,8 +613,15 @@ class TaskController extends BaseController
             $attachment_type = $data->attachment_type ?? null;
         }
 
+        // Debug: Log what we received
+        error_log("Task submission debug - Content-Type: " . $this->input->server('CONTENT_TYPE'));
+        error_log("Task submission debug - POST data: " . print_r($this->input->post(), true));
+        error_log("Task submission debug - FILES data: " . print_r($_FILES, true));
+        error_log("Task submission debug - submission_content: " . ($data->submission_content ?? 'NULL'));
+        error_log("Task submission debug - attachment_url: " . ($attachment_url ?? 'NULL'));
+
         if (empty($data->submission_content) && empty($attachment_url)) {
-            $this->send_error('Submission content or attachment is required', 400);
+            $this->send_error('At least one attachment is required', 400);
             return;
         }
 
@@ -613,13 +655,16 @@ class TaskController extends BaseController
                 'task_id' => $task_id,
                 'student_id' => $user_data['user_id'],
                 'class_code' => $data->class_code,
-                'submission_content' => $data->submission_content,
+                'submission_content' => $data->submission_content ?? null,
                 'attachment_type' => $attachment_type,
                 'attachment_url' => $attachment_url
             ];
 
             $submission_id = $this->Task_model->submit_task($submission_data);
             if ($submission_id) {
+                // Send notification to teacher about the submission
+                $this->send_submission_notification($task, $user_data, $submission_id, $data->class_code);
+                
                 $this->send_success(['submission_id' => $submission_id], 'Task submitted successfully', 201);
             } else {
                 $this->send_error('Failed to submit task', 500);
@@ -659,6 +704,9 @@ class TaskController extends BaseController
 
             $success = $this->Task_model->grade_submission($submission_id, $data->grade, $data->feedback ?? null);
             if ($success) {
+                // Send notification to student about the grade
+                $this->send_grade_notification($submission, $data->grade, $data->feedback ?? null);
+                
                 $this->send_success(null, 'Submission graded successfully');
             } else {
                 $this->send_error('Failed to grade submission', 500);
@@ -1146,7 +1194,7 @@ class TaskController extends BaseController
                 return;
             }
 
-            $success = $this->Task_model->assign_students_to_task($task_id, $data->students);
+            $success = $this->Task_model->safe_assign_students_to_task($task_id, $data->students);
             if ($success) {
                 // Update task assignment type
                 $this->Task_model->update($task_id, [
@@ -1183,6 +1231,314 @@ class TaskController extends BaseController
             $this->send_success($stats, 'Assignment statistics retrieved successfully');
         } catch (Exception $e) {
             $this->send_error('Failed to retrieve assignment statistics: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Debug endpoint to check table existence and test query
+     * GET /api/tasks/debug-assignments
+     */
+    public function debug_assignments_get()
+    {
+        try {
+            // Check if table exists
+            $table_exists = $this->db->table_exists('task_student_assignments');
+            
+            // Get sample data from the table
+            $assignments = [];
+            if ($table_exists) {
+                $assignments = $this->db->get('task_student_assignments')->result_array();
+            }
+            
+            // Test the query with a sample student and class
+            $test_student_id = 'STU685651BF9DDCF988';
+            $test_class_code = 'J56NHD';
+            
+            $sql = "SELECT class_tasks.*, users.full_name as teacher_name
+                    FROM class_tasks
+                    LEFT JOIN users ON class_tasks.teacher_id = users.user_id COLLATE utf8mb4_general_ci
+                    WHERE class_tasks.status = 'active'
+                    AND class_tasks.is_draft = 0
+                    AND JSON_CONTAINS(class_tasks.class_codes, ?)
+                    AND (
+                        class_tasks.assignment_type = 'classroom'
+                        OR (
+                            class_tasks.assignment_type = 'individual'
+                            AND EXISTS (
+                                SELECT 1 FROM task_student_assignments tsa
+                                WHERE tsa.task_id = class_tasks.task_id
+                                AND tsa.student_id = ?
+                                AND tsa.class_code = ?
+                            )
+                        )
+                    )
+                    ORDER BY class_tasks.created_at DESC";
+            
+            $test_results = $this->db->query($sql, [json_encode($test_class_code), $test_student_id, $test_class_code])->result_array();
+            
+            $debug_data = [
+                'table_exists' => $table_exists,
+                'assignments_count' => count($assignments),
+                'sample_assignments' => array_slice($assignments, 0, 5),
+                'test_query_results_count' => count($test_results),
+                'test_student_id' => $test_student_id,
+                'test_class_code' => $test_class_code
+            ];
+            
+            $this->send_success($debug_data, 'Debug information retrieved');
+        } catch (Exception $e) {
+            $this->send_error('Debug failed: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Debug endpoint to check what data is being received
+     * POST /api/tasks/debug-submit
+     */
+    public function debug_submit_post()
+    {
+        $user_data = require_student($this);
+        if (!$user_data) return;
+
+        $debug_data = [
+            'content_type' => $this->input->server('CONTENT_TYPE'),
+            'is_multipart' => strpos($this->input->server('CONTENT_TYPE'), 'multipart/form-data') !== false,
+            'post_data' => $this->input->post(),
+            'files_data' => $_FILES,
+            'raw_input' => file_get_contents('php://input'),
+            'headers' => getallheaders()
+        ];
+
+        // Check if files were uploaded
+        if (isset($_FILES['attachment'])) {
+            $debug_data['file_info'] = [
+                'name' => $_FILES['attachment']['name'],
+                'type' => $_FILES['attachment']['type'],
+                'size' => $_FILES['attachment']['size'],
+                'error' => $_FILES['attachment']['error'],
+                'tmp_name' => $_FILES['attachment']['tmp_name']
+            ];
+        }
+
+        $this->send_success($debug_data, 'Debug data received');
+    }
+
+    /**
+     * Get task details for student (Student only)
+     * GET /api/tasks/student/{task_id}
+     */
+    public function student_task_get($task_id)
+    {
+        $user_data = require_student($this);
+        if (!$user_data) return;
+
+        try {
+            // Get the task details
+            $task = $this->Task_model->get_by_id($task_id);
+            if (!$task) {
+                $this->send_error('Task not found', 404);
+                return;
+            }
+
+            // Check if student has access to this task
+            $class_codes = json_decode($task['class_codes'], true);
+            $has_access = false;
+            
+            // Check if student is enrolled in any of the task's classes
+            foreach ($class_codes as $class_code) {
+                $enrollment = $this->db->get_where('classroom_enrollments', [
+                    'classroom_id' => $class_code,
+                    'student_id' => $user_data['user_id'],
+                    'status' => 'active'
+                ])->row_array();
+                
+                if ($enrollment) {
+                    $has_access = true;
+                    break;
+                }
+            }
+
+            // For individual assignments, check if student is specifically assigned
+            if ($task['assignment_type'] === 'individual') {
+                $assigned_students = json_decode($task['assigned_students'], true);
+                foreach ($assigned_students as $assigned_student) {
+                    if ($assigned_student['student_id'] === $user_data['user_id']) {
+                        $has_access = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!$has_access) {
+                $this->send_error('Access denied. You do not have permission to view this task.', 403);
+                return;
+            }
+
+            // Get teacher name
+            $teacher = $this->db->get_where('users', ['user_id' => $task['teacher_id']])->row_array();
+            $task['teacher_name'] = $teacher ? $teacher['full_name'] : 'Unknown Teacher';
+
+            // Get student's submission if exists
+            $submission = $this->Task_model->get_student_submission($task_id, $user_data['user_id'], $class_codes[0]);
+            $task['submission'] = $submission;
+            $task['submission_status'] = $submission ? $submission['status'] : 'not_submitted';
+
+            // Get comments if allowed
+            if ($task['allow_comments']) {
+                $comments = $this->Task_model->get_comments($task_id);
+                $task['comments'] = $comments;
+            }
+
+            $task['class_codes'] = $class_codes;
+            $task['assigned_students'] = json_decode($task['assigned_students'], true);
+
+            $this->send_success($task, 'Task details retrieved successfully');
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve task details: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Send notifications to students when a task is created
+     */
+    private function send_task_notifications($task_id, $task, $class_codes, $teacher_data)
+    {
+        try {
+            $task_title = $task['title'];
+            $task_type = ucfirst($task['type']);
+            $teacher_name = $teacher_data['full_name'];
+            
+            // Determine notification message based on assignment type
+            if ($task['assignment_type'] === 'individual') {
+                $title = "New Individual Task: {$task_title}";
+                $message = "{$teacher_name} has assigned you a new {$task_type} task: {$task_title}";
+            } else {
+                $title = "New Class Task: {$task_title}";
+                $message = "{$teacher_name} has created a new {$task_type} task for your class: {$task_title}";
+            }
+            
+            // Send notifications to students in each class
+            foreach ($class_codes as $class_code) {
+                $students = get_class_students($class_code);
+                
+                if (!empty($students)) {
+                    $student_ids = array_column($students, 'user_id');
+                    
+                    // Create notifications for all students in the class
+                    create_notifications_for_users(
+                        $student_ids,
+                        'task',
+                        $title,
+                        $message,
+                        $task_id,
+                        'task',
+                        $class_code,
+                        false // Not urgent
+                    );
+                    
+                    // Log notification sending
+                    log_message('info', "Task notifications sent to " . count($student_ids) . " students in class {$class_code} for task {$task_id}");
+                }
+            }
+        } catch (Exception $e) {
+            // Log error but don't fail the task creation
+            log_message('error', "Failed to send task notifications: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send notification to teacher when student submits a task
+     */
+    private function send_submission_notification($task, $student_data, $submission_id, $class_code)
+    {
+        try {
+            $task_title = $task['title'];
+            $student_name = $student_data['full_name'];
+            $teacher_id = $task['teacher_id'];
+            
+            // Get class name for better notification
+            $class_name = get_class_name($class_code);
+            
+            $title = "New Task Submission: {$task_title}";
+            $message = "{$student_name} has submitted the task '{$task_title}' for class {$class_name}";
+            
+            // Create notification for the teacher
+            create_submission_notification(
+                $teacher_id,
+                $submission_id,
+                $title,
+                $message,
+                $class_code
+            );
+            
+            // Log notification sending
+            log_message('info', "Submission notification sent to teacher {$teacher_id} for submission {$submission_id}");
+            
+        } catch (Exception $e) {
+            // Log error but don't fail the submission
+            log_message('error', "Failed to send submission notification: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send notification to student when teacher grades their submission
+     */
+    private function send_grade_notification($submission, $grade, $feedback = null)
+    {
+        try {
+            $student_id = $submission['student_id'];
+            $task_id = $submission['task_id'];
+            $class_code = $submission['class_code'];
+            
+            // Get task information
+            $task = $this->Task_model->get_by_id($task_id);
+            if (!$task) {
+                log_message('error', "Task not found for grade notification: {$task_id}");
+                return;
+            }
+            
+            $task_title = $task['title'];
+            $teacher_id = $task['teacher_id'];
+            
+            // Get teacher information
+            $teacher = $this->db->select('full_name')
+                ->from('users')
+                ->where('user_id', $teacher_id)
+                ->get()->row_array();
+            
+            $teacher_name = $teacher ? $teacher['full_name'] : 'Teacher';
+            
+            // Get class name for better notification
+            $class_name = get_class_name($class_code);
+            
+            // Create grade-specific title and message
+            $title = "Task Graded: {$task_title}";
+            $message = "Your submission for '{$task_title}' has been graded by {$teacher_name}.";
+            $message .= " Grade: {$grade}";
+            
+            if ($class_name) {
+                $message .= " (Class: {$class_name})";
+            }
+            
+            if ($feedback) {
+                $message .= "\n\nFeedback: {$feedback}";
+            }
+            
+            // Create notification for the student
+            create_grade_notification(
+                $student_id,
+                $submission['submission_id'],
+                $title,
+                $message,
+                $class_code
+            );
+            
+            // Log notification sending
+            log_message('info', "Grade notification sent to student {$student_id} for submission {$submission['submission_id']} - Grade: {$grade}");
+            
+        } catch (Exception $e) {
+            // Log error but don't fail the grading
+            log_message('error', "Failed to send grade notification: " . $e->getMessage());
         }
     }
 } 

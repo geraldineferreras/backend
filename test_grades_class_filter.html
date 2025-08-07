@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Grades Class Filter Fix</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Test Grades Class Filter Fix</h2>
+        <p>This test verifies that the grades endpoint properly filters by class code.</p>
+        
+        <div class="form-group">
+            <label for="token">JWT Token:</label>
+            <input type="text" id="token" placeholder="Enter your JWT token">
+        </div>
+        
+        <div class="form-group">
+            <label for="classCode">Class Code (optional):</label>
+            <input type="text" id="classCode" placeholder="e.g., S4X86T, DZ6ENU, J56NHD">
+        </div>
+        
+        <div class="form-group">
+            <label for="status">Status Filter (optional):</label>
+            <select id="status">
+                <option value="">All</option>
+                <option value="graded">Graded</option>
+                <option value="submitted">Submitted</option>
+                <option value="not_submitted">Not Submitted</option>
+            </select>
+        </div>
+        
+        <button onclick="testAllGrades()">Test All Grades</button>
+        <button onclick="testClassGrades()">Test Class-Specific Grades</button>
+        <button onclick="testWithStatus()">Test with Status Filter</button>
+        
+        <div id="response" class="response info">
+            Response will appear here...
+        </div>
+    </div>
+
+    <script>
+        const baseUrl = 'http://localhost:3308/scms_new_backup/index.php';
+        
+        async function makeRequest(url) {
+            const token = document.getElementById('token').value;
+            if (!token) {
+                showResponse('Error: Please enter a JWT token', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                showResponse(JSON.stringify(data, null, 2), response.ok ? 'success' : 'error');
+                
+                // Additional analysis for class filtering
+                if (response.ok && data.data && data.data.grades) {
+                    analyzeResults(data.data);
+                }
+            } catch (error) {
+                showResponse(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function testAllGrades() {
+            const url = `${baseUrl}/api/student/grades`;
+            makeRequest(url);
+        }
+        
+        function testClassGrades() {
+            const classCode = document.getElementById('classCode').value;
+            if (!classCode) {
+                showResponse('Error: Please enter a class code', 'error');
+                return;
+            }
+            
+            const url = `${baseUrl}/api/student/grades?class_code=${classCode}`;
+            makeRequest(url);
+        }
+        
+        function testWithStatus() {
+            const classCode = document.getElementById('classCode').value;
+            const status = document.getElementById('status').value;
+            
+            let url = `${baseUrl}/api/student/grades`;
+            const params = [];
+            
+            if (classCode) params.push(`class_code=${classCode}`);
+            if (status) params.push(`status=${status}`);
+            
+            if (params.length > 0) {
+                url += '?' + params.join('&');
+            }
+            
+            makeRequest(url);
+        }
+        
+        function analyzeResults(data) {
+            const grades = data.grades;
+            const classCodes = [...new Set(grades.map(g => g.class_code).filter(c => c))];
+            
+            let analysis = '\n\n=== ANALYSIS ===\n';
+            analysis += `Total tasks: ${grades.length}\n`;
+            analysis += `Unique class codes: ${classCodes.join(', ')}\n`;
+            analysis += `Class codes count: ${classCodes.length}\n`;
+            
+            if (data.filters.current_class_filter && data.filters.current_class_filter !== 'all') {
+                const filteredTasks = grades.filter(g => g.class_code === data.filters.current_class_filter);
+                analysis += `Tasks for ${data.filters.current_class_filter}: ${filteredTasks.length}\n`;
+                analysis += `Expected: All tasks should be from ${data.filters.current_class_filter}\n`;
+                
+                if (filteredTasks.length !== grades.length) {
+                    analysis += '⚠️ WARNING: Some tasks are from other classes!\n';
+                } else {
+                    analysis += '✅ SUCCESS: All tasks are from the specified class!\n';
+                }
+            }
+            
+            showResponse(document.getElementById('response').textContent + analysis, 'info');
+        }
+        
+        function showResponse(message, type) {
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = message;
+            responseDiv.className = `response ${type}`;
+        }
+    </script>
+</body>
+</html> 

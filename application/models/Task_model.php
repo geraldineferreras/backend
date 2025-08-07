@@ -145,9 +145,21 @@ class Task_model extends CI_Model {
                 WHERE class_tasks.status = 'active'
                 AND class_tasks.is_draft = 0
                 AND JSON_CONTAINS(class_tasks.class_codes, ?)
+                AND (
+                    class_tasks.assignment_type = 'classroom'
+                    OR (
+                        class_tasks.assignment_type = 'individual'
+                        AND EXISTS (
+                            SELECT 1 FROM task_student_assignments tsa
+                            WHERE tsa.task_id = class_tasks.task_id
+                            AND tsa.student_id = ?
+                            AND tsa.class_code = ?
+                        )
+                    )
+                )
                 ORDER BY class_tasks.created_at DESC";
         
-        return $this->db->query($sql, [json_encode($class_code)])->result_array();
+        return $this->db->query($sql, [json_encode($class_code), $student_id, $class_code])->result_array();
     }
     
     public function get_task_with_submissions($task_id, $teacher_id) {
@@ -214,7 +226,7 @@ class Task_model extends CI_Model {
     
     public function get_comments($task_id) {
         // Use raw query to handle collation issue
-        $sql = "SELECT task_comments.*, users.full_name as user_name, users.profile_pic, users.email, users.role, users.student_num, users.teacher_id
+        $sql = "SELECT task_comments.*, users.full_name as user_name, users.profile_pic, users.email, users.role, users.student_num
                 FROM task_comments
                 LEFT JOIN users ON task_comments.user_id = users.user_id COLLATE utf8mb4_general_ci
                 WHERE task_comments.task_id = ?
@@ -298,13 +310,25 @@ class Task_model extends CI_Model {
             $students_data = json_decode(json_encode($students_data), true);
         }
         
-        // Insert new assignments
+        // Insert new assignments with duplicate checking
         $assignments = [];
+        $unique_keys = []; // Track unique combinations to prevent duplicates
+        
         foreach ($students_data as $student) {
             // Convert individual student object to array if needed
             if (is_object($student)) {
                 $student = json_decode(json_encode($student), true);
             }
+            
+            // Create unique key to prevent duplicates
+            $unique_key = $task_id . '-' . $student['student_id'] . '-' . $student['class_code'];
+            
+            // Skip if this combination already exists
+            if (in_array($unique_key, $unique_keys)) {
+                continue;
+            }
+            
+            $unique_keys[] = $unique_key;
             
             $assignments[] = [
                 'task_id' => $task_id,
@@ -316,7 +340,17 @@ class Task_model extends CI_Model {
         }
         
         if (!empty($assignments)) {
-            return $this->db->insert_batch('task_student_assignments', $assignments);
+            try {
+                $result = $this->db->insert_batch('task_student_assignments', $assignments);
+                
+                // Log the assignment operation for debugging
+                log_message('info', 'Task assignment: Task ID ' . $task_id . ', Students assigned: ' . count($assignments));
+                
+                return $result;
+            } catch (Exception $e) {
+                log_message('error', 'Task assignment failed: ' . $e->getMessage());
+                throw $e;
+            }
         }
         
         return true;
@@ -334,6 +368,74 @@ class Task_model extends CI_Model {
                 ORDER BY u.full_name ASC";
         
         return $this->db->query($sql, [$task_id])->result_array();
+    }
+
+    /**
+     * Check if a student is already assigned to a task
+     */
+    public function is_student_assigned($task_id, $student_id, $class_code)
+    {
+        return $this->db->where('task_id', $task_id)
+            ->where('student_id', $student_id)
+            ->where('class_code', $class_code)
+            ->count_all_results('task_student_assignments') > 0;
+    }
+
+    /**
+     * Safely assign students to a task (with duplicate checking)
+     */
+    public function safe_assign_students_to_task($task_id, $students_data)
+    {
+        // Convert stdClass to array if needed
+        if (is_object($students_data)) {
+            $students_data = json_decode(json_encode($students_data), true);
+        }
+        
+        $assignments = [];
+        $unique_keys = [];
+        
+        foreach ($students_data as $student) {
+            // Convert individual student object to array if needed
+            if (is_object($student)) {
+                $student = json_decode(json_encode($student), true);
+            }
+            
+            // Create unique key
+            $unique_key = $task_id . '-' . $student['student_id'] . '-' . $student['class_code'];
+            
+            // Skip if this combination already exists in our batch
+            if (in_array($unique_key, $unique_keys)) {
+                continue;
+            }
+            
+            // Check if already assigned in database
+            if ($this->is_student_assigned($task_id, $student['student_id'], $student['class_code'])) {
+                continue;
+            }
+            
+            $unique_keys[] = $unique_key;
+            
+            $assignments[] = [
+                'task_id' => $task_id,
+                'student_id' => $student['student_id'],
+                'class_code' => $student['class_code'],
+                'assigned_at' => date('Y-m-d H:i:s'),
+                'status' => 'assigned'
+            ];
+        }
+        
+        if (!empty($assignments)) {
+            try {
+                $result = $this->db->insert_batch('task_student_assignments', $assignments);
+                log_message('info', 'Safe task assignment: Task ID ' . $task_id . ', Students assigned: ' . count($assignments));
+                return $result;
+            } catch (Exception $e) {
+                log_message('error', 'Safe task assignment failed: ' . $e->getMessage());
+                throw $e;
+            }
+        }
+        
+        return true;
     }
 
     /**
@@ -388,5 +490,28 @@ class Task_model extends CI_Model {
             'not_submitted' => $total_assigned - $submitted,
             'assignment_type' => $task['assignment_type']
         ];
+    }
+
+    /**
+     * Get only individually assigned tasks for a student
+     */
+    public function get_individually_assigned_tasks_for_student($student_id, $class_code) {
+        // Use raw query to handle collation issue
+        $sql = "SELECT class_tasks.*, users.full_name as teacher_name
+                FROM class_tasks
+                LEFT JOIN users ON class_tasks.teacher_id = users.user_id COLLATE utf8mb4_general_ci
+                WHERE class_tasks.status = 'active'
+                AND class_tasks.is_draft = 0
+                AND JSON_CONTAINS(class_tasks.class_codes, ?)
+                AND class_tasks.assignment_type = 'individual'
+                AND EXISTS (
+                    SELECT 1 FROM task_student_assignments tsa
+                    WHERE tsa.task_id = class_tasks.task_id
+                    AND tsa.student_id = ?
+                    AND tsa.class_code = ?
+                )
+                ORDER BY class_tasks.created_at DESC";
+        
+        return $this->db->query($sql, [json_encode($class_code), $student_id, $class_code])->result_array();
     }
 } 

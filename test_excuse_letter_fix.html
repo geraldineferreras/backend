@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excuse Letter Fix Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Excuse Letter Fix Test</h1>
+    
+    <div class="container">
+        <h2>Authentication</h2>
+        <div class="form-group">
+            <label for="jwtToken">JWT Token:</label>
+            <input type="text" id="jwtToken" placeholder="Enter your JWT token">
+        </div>
+        <button onclick="testAuth()">Test Authentication</button>
+        <div id="authResult" class="result"></div>
+    </div>
+
+    <div class="container">
+        <h2>Get Student Classes</h2>
+        <button onclick="getStudentClasses()">Get My Classes</button>
+        <div id="classesResult" class="result"></div>
+    </div>
+
+    <div class="container">
+        <h2>Submit Excuse Letter</h2>
+        <div class="form-group">
+            <label for="classId">Class ID:</label>
+            <input type="text" id="classId" placeholder="Enter class ID from the list above">
+        </div>
+        <div class="form-group">
+            <label for="dateAbsent">Date Absent:</label>
+            <input type="date" id="dateAbsent" value="2025-01-27">
+        </div>
+        <div class="form-group">
+            <label for="reason">Reason:</label>
+            <textarea id="reason" rows="3" placeholder="Enter reason for absence">Test excuse letter submission</textarea>
+        </div>
+        <button onclick="submitExcuseLetter()">Submit Excuse Letter</button>
+        <div id="submitResult" class="result"></div>
+    </div>
+
+    <script>
+        const baseUrl = 'http://localhost/scms_new_backup/index.php/api';
+
+        function testAuth() {
+            const token = document.getElementById('jwtToken').value;
+            if (!token) {
+                showResult('authResult', 'Please enter a JWT token', 'error');
+                return;
+            }
+
+            fetch(`${baseUrl}/auth/verify`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                showResult('authResult', JSON.stringify(data, null, 2), data.success ? 'success' : 'error');
+            })
+            .catch(error => {
+                showResult('authResult', 'Error: ' + error.message, 'error');
+            });
+        }
+
+        function getStudentClasses() {
+            const token = document.getElementById('jwtToken').value;
+            
+            if (!token) {
+                showResult('classesResult', 'Please enter a JWT token', 'error');
+                return;
+            }
+
+            fetch(`${baseUrl}/student/my-classes`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status) {
+                    let result = 'Available Classes:\n\n';
+                    data.data.forEach((cls, index) => {
+                        result += `${index + 1}. ${cls.subject_name} (${cls.subject_code})\n`;
+                        result += `   Class ID: ${cls.class_id}\n`;
+                        result += `   Section: ${cls.section_name}\n`;
+                        result += `   Teacher: ${cls.teacher_name}\n`;
+                        result += `   Enrolled: ${cls.is_enrolled ? 'Yes' : 'No'}\n\n`;
+                    });
+                    showResult('classesResult', result, 'success');
+                } else {
+                    showResult('classesResult', JSON.stringify(data, null, 2), 'error');
+                }
+            })
+            .catch(error => {
+                showResult('classesResult', 'Error: ' + error.message, 'error');
+            });
+        }
+
+        function submitExcuseLetter() {
+            const token = document.getElementById('jwtToken').value;
+            const classId = document.getElementById('classId').value;
+            const dateAbsent = document.getElementById('dateAbsent').value;
+            const reason = document.getElementById('reason').value;
+            
+            if (!token || !classId || !dateAbsent || !reason) {
+                showResult('submitResult', 'Please fill in all fields', 'error');
+                return;
+            }
+
+            fetch(`${baseUrl}/excuse-letters/submit`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    class_id: classId,
+                    date_absent: dateAbsent,
+                    reason: reason
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                showResult('submitResult', JSON.stringify(data, null, 2), data.success ? 'success' : 'error');
+            })
+            .catch(error => {
+                showResult('submitResult', 'Error: ' + error.message, 'error');
+            });
+        }
+
+        function showResult(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `result ${type}`;
+        }
+    </script>
+</body>
+</html>

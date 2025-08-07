@@ -77,7 +77,21 @@ class AttendanceController extends BaseController
                 return;
             }
 
-            // Get students enrolled in this class
+            // Find the corresponding classroom for this class
+            $classroom = $this->db->select('classrooms.*')
+                ->from('classrooms')
+                ->where('classrooms.subject_id', $class['subject_id'])
+                ->where('classrooms.section_id', $class['section_id'])
+                ->where('classrooms.teacher_id', $class['teacher_id'])
+                ->where('classrooms.is_active', 1)
+                ->get()->row_array();
+
+            if (!$classroom) {
+                $this->send_error('No active classroom found for this class', 404);
+                return;
+            }
+
+            // Get students enrolled in this class through classroom_enrollments
             $students = $this->db->select('
                 users.user_id,
                 users.full_name,
@@ -86,8 +100,10 @@ class AttendanceController extends BaseController
                 users.section_id
             ')
             ->from('users')
+            ->join('classroom_enrollments', 'users.user_id = classroom_enrollments.student_id')
+            ->where('classroom_enrollments.classroom_id', $classroom['id'])
+            ->where('classroom_enrollments.status', 'active')
             ->where('users.role', 'student')
-            ->where('users.section_id', $class['section_id'])
             ->where('users.status', 'active')
             ->order_by('users.full_name', 'ASC')
             ->get()->result_array();
@@ -95,7 +111,7 @@ class AttendanceController extends BaseController
             // If date is provided, check for excuse letters
             if ($date) {
                 foreach ($students as &$student) {
-                    $excuse_letter = $this->check_excuse_letter($student['user_id'], $class_id, $date);
+                    $excuse_letter = $this->check_excuse_letter($student['user_id'], $class['class_id'], $date);
                     if ($excuse_letter) {
                         $student['excuse_letter'] = [
                             'letter_id' => $excuse_letter['letter_id'],
@@ -168,28 +184,54 @@ class AttendanceController extends BaseController
                 return;
             }
 
-            // Verify student is enrolled in this class
+            // Find the corresponding classroom for this class
+            $classroom = $this->db->select('classrooms.*')
+                ->from('classrooms')
+                ->where('classrooms.subject_id', $class['subject_id'])
+                ->where('classrooms.section_id', $class['section_id'])
+                ->where('classrooms.teacher_id', $class['teacher_id'])
+                ->where('classrooms.is_active', 1)
+                ->get()->row_array();
+
+            if (!$classroom) {
+                $this->send_error('No active classroom found for this class', 404);
+                return;
+            }
+
+            // Check if student is enrolled in the corresponding classroom
+            $enrollment = $this->db->select('classroom_enrollments.*')
+                ->from('classroom_enrollments')
+                ->where('classroom_enrollments.classroom_id', $classroom['id'])
+                ->where('classroom_enrollments.student_id', $data->student_id)
+                ->where('classroom_enrollments.status', 'active')
+                ->get()->row_array();
+
+            if (!$enrollment) {
+                $this->send_error('Student not enrolled in this class', 400);
+                return;
+            }
+
+            // Get student details for the attendance record
             $student = $this->db->select('users.*')
                 ->from('users')
                 ->where('users.user_id', $data->student_id)
                 ->where('users.role', 'student')
-                ->where('users.section_id', $class['section_id'])
                 ->where('users.status', 'active')
                 ->get()->row_array();
 
             if (!$student) {
-                $this->send_error('Student not enrolled in this class', 400);
+                $this->send_error('Student not found or inactive', 400);
                 return;
             }
 
             // Check for existing attendance record
             $existing = $this->db->where('student_id', $data->student_id)
-                ->where('class_id', $data->class_id)
+                ->where('class_id', $class['class_id'])
                 ->where('date', $data->date)
                 ->get('attendance')->row_array();
 
             // Check for approved excuse letter
-            $excuse_letter = $this->check_excuse_letter($data->student_id, $data->class_id, $data->date);
+            $excuse_letter = $this->check_excuse_letter($data->student_id, $class['class_id'], $data->date);
             
             // Determine final status
             $final_status = $data->status;
@@ -206,7 +248,7 @@ class AttendanceController extends BaseController
 
             $attendance_data = [
                 'student_id' => $data->student_id,
-                'class_id' => $data->class_id,
+                'class_id' => $class['class_id'],
                 'subject_id' => $class['subject_id'],
                 'section_name' => $class['section_name'],
                 'date' => $data->date,
@@ -238,7 +280,7 @@ class AttendanceController extends BaseController
                 
                 // Log to dedicated attendance_logs table
                 $attendance_data['attendance_id'] = $attendance_id;
-                $attendance_data['class_id'] = $data->class_id;
+                $attendance_data['class_id'] = $class['class_id'];
                 log_attendance_event($attendance_data, 'UPDATED', $user_data, [
                     'excuse_letter' => $excuse_letter,
                     'remarks' => 'Attendance updated by teacher'
@@ -262,7 +304,7 @@ class AttendanceController extends BaseController
                 
                 // Log to dedicated attendance_logs table
                 $attendance_data['attendance_id'] = $attendance_id;
-                $attendance_data['class_id'] = $data->class_id;
+                $attendance_data['class_id'] = $class['class_id'];
                 log_attendance_event($attendance_data, 'RECORDED', $user_data, [
                     'excuse_letter' => $excuse_letter,
                     'remarks' => 'Attendance recorded by teacher'
@@ -339,6 +381,20 @@ class AttendanceController extends BaseController
                 return;
             }
 
+            // Find the corresponding classroom for this class
+            $classroom = $this->db->select('classrooms.*')
+                ->from('classrooms')
+                ->where('classrooms.subject_id', $class['subject_id'])
+                ->where('classrooms.section_id', $class['section_id'])
+                ->where('classrooms.teacher_id', $class['teacher_id'])
+                ->where('classrooms.is_active', 1)
+                ->get()->row_array();
+
+            if (!$classroom) {
+                $this->send_error('No active classroom found for this class', 404);
+                return;
+            }
+
             $this->db->trans_start();
 
             $success_count = 0;
@@ -352,23 +408,36 @@ class AttendanceController extends BaseController
                     continue;
                 }
 
-                // Verify student is enrolled
-                $student = $this->db->select('users.*')
-                    ->from('users')
-                    ->where('users.user_id', $record->student_id)
-                    ->where('users.role', 'student')
-                    ->where('users.section_id', $class['section_id'])
-                    ->where('users.status', 'active')
+                // Check if student is enrolled in the corresponding classroom
+                $enrollment = $this->db->select('classroom_enrollments.*')
+                    ->from('classroom_enrollments')
+                    ->where('classroom_enrollments.classroom_id', $classroom['id'])
+                    ->where('classroom_enrollments.student_id', $record->student_id)
+                    ->where('classroom_enrollments.status', 'active')
                     ->get()->row_array();
 
-                if (!$student) {
+                if (!$enrollment) {
                     $error_count++;
                     $errors[] = "Student {$record->student_id} not enrolled";
                     continue;
                 }
 
+                // Get student details for the attendance record
+                $student = $this->db->select('users.*')
+                    ->from('users')
+                    ->where('users.user_id', $record->student_id)
+                    ->where('users.role', 'student')
+                    ->where('users.status', 'active')
+                    ->get()->row_array();
+
+                if (!$student) {
+                    $error_count++;
+                    $errors[] = "Student {$record->student_id} not found or inactive";
+                    continue;
+                }
+
                 // Check for approved excuse letter
-                $excuse_letter = $this->check_excuse_letter($record->student_id, $data->class_id, $data->date);
+                $excuse_letter = $this->check_excuse_letter($record->student_id, $class['class_id'], $data->date);
                 
                 // Determine final status
                 $final_status = $record->status;
@@ -385,7 +454,7 @@ class AttendanceController extends BaseController
 
                 $attendance_data = [
                     'student_id' => $record->student_id,
-                    'class_id' => $data->class_id,
+                    'class_id' => $class['class_id'],
                     'subject_id' => $class['subject_id'],
                     'section_name' => $class['section_name'],
                     'date' => $data->date,
@@ -399,7 +468,7 @@ class AttendanceController extends BaseController
 
                 // Check for existing record
                 $existing = $this->db->where('student_id', $record->student_id)
-                    ->where('class_id', $data->class_id)
+                    ->where('class_id', $class['class_id'])
                     ->where('date', $data->date)
                     ->get('attendance')->row_array();
 
@@ -461,6 +530,20 @@ class AttendanceController extends BaseController
                 return;
             }
 
+            // Find the corresponding classroom for this class
+            $classroom = $this->db->select('classrooms.*')
+                ->from('classrooms')
+                ->where('classrooms.subject_id', $class['subject_id'])
+                ->where('classrooms.section_id', $class['section_id'])
+                ->where('classrooms.teacher_id', $class['teacher_id'])
+                ->where('classrooms.is_active', 1)
+                ->get()->row_array();
+
+            if (!$classroom) {
+                $this->send_error('No active classroom found for this class', 404);
+                return;
+            }
+
             // Get attendance records
             $records = $this->db->select('
                 attendance.*,
@@ -470,7 +553,7 @@ class AttendanceController extends BaseController
             ')
             ->from('attendance')
             ->join('users', 'attendance.student_id = users.user_id', 'left')
-            ->where('attendance.class_id', $class_id)
+            ->where('attendance.class_id', $class['class_id'])
             ->where('attendance.date', $date)
             ->order_by('users.full_name', 'ASC')
             ->get()->result_array();
@@ -483,8 +566,10 @@ class AttendanceController extends BaseController
                 users.email
             ')
             ->from('users')
+            ->join('classroom_enrollments', 'users.user_id = classroom_enrollments.student_id')
+            ->where('classroom_enrollments.classroom_id', $classroom['id'])
+            ->where('classroom_enrollments.status', 'active')
             ->where('users.role', 'student')
-            ->where('users.section_id', $class['section_id'])
             ->where('users.status', 'active')
             ->order_by('users.full_name', 'ASC')
             ->get()->result_array();

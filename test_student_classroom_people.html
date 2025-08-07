@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Student Classroom People API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .teacher-card, .student-card {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background: white;
+        }
+        .teacher-card {
+            border-left: 4px solid #007bff;
+        }
+        .student-card {
+            border-left: 4px solid #28a745;
+        }
+        .profile-pic {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 10px;
+        }
+        .member-info {
+            display: flex;
+            align-items: center;
+        }
+        .stats {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Student Classroom People API</h1>
+        <p>This page tests the new endpoint for students to get all people in a specific class.</p>
+        
+        <div class="form-group">
+            <label for="token">JWT Token:</label>
+            <input type="text" id="token" placeholder="Enter your JWT token">
+        </div>
+        
+        <div class="form-group">
+            <label for="classCode">Class Code:</label>
+            <input type="text" id="classCode" placeholder="Enter class code (e.g., ABC123)">
+        </div>
+        
+        <button onclick="testGetClassroomPeople()">Get Classroom People</button>
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        async function testGetClassroomPeople() {
+            const token = document.getElementById('token').value.trim();
+            const classCode = document.getElementById('classCode').value.trim();
+            const resultDiv = document.getElementById('result');
+            
+            if (!token) {
+                showResult('Error: JWT token is required', 'error');
+                return;
+            }
+            
+            if (!classCode) {
+                showResult('Error: Class code is required', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/student/classroom/${classCode}/people`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayClassroomPeople(data);
+                } else {
+                    showResult(`Error ${response.status}: ${data.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                showResult(`Network error: ${error.message}`, 'error');
+            }
+        }
+        
+        function displayClassroomPeople(data) {
+            const resultDiv = document.getElementById('result');
+            let html = '<h3>Classroom People</h3>';
+            
+            // Classroom info
+            html += `<div class="stats">
+                <strong>Classroom:</strong> ${data.data.classroom.title} (${data.data.classroom.class_code})<br>
+                <strong>Section:</strong> ${data.data.classroom.section_name}<br>
+                <strong>Semester:</strong> ${data.data.classroom.semester} ${data.data.classroom.school_year}
+            </div>`;
+            
+            // Statistics
+            html += `<div class="stats">
+                <strong>Total Members:</strong> ${data.data.statistics.total_members}<br>
+                <strong>Teachers:</strong> ${data.data.statistics.total_teachers}<br>
+                <strong>Students:</strong> ${data.data.statistics.total_students}
+            </div>`;
+            
+            // Teacher
+            if (data.data.teacher) {
+                html += `<div class="teacher-card">
+                    <div class="member-info">
+                        <img src="${data.data.teacher.profile_pic || '/uploads/profile/default.png'}" 
+                             alt="Teacher" class="profile-pic" 
+                             onerror="this.src='/uploads/profile/default.png'">
+                        <div>
+                            <strong>${data.data.teacher.full_name}</strong><br>
+                            <em>${data.data.teacher.role}</em><br>
+                            <span style="color: #007bff;">${data.data.teacher.status}</span><br>
+                            <small>${data.data.teacher.email}</small>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            
+            // Students
+            if (data.data.students && data.data.students.length > 0) {
+                html += '<h4>Students:</h4>';
+                data.data.students.forEach(student => {
+                    html += `<div class="student-card">
+                        <div class="member-info">
+                            <img src="${student.profile_pic || '/uploads/profile/default.png'}" 
+                                 alt="Student" class="profile-pic" 
+                                 onerror="this.src='/uploads/profile/default.png'">
+                            <div>
+                                <strong>${student.full_name}</strong><br>
+                                <em>${student.role}</em><br>
+                                <span style="color: #28a745;">${student.status}</span><br>
+                                <small>Student #: ${student.student_num}</small><br>
+                                <small>${student.email}</small><br>
+                                <small>Enrolled: ${new Date(student.enrolled_at).toLocaleDateString()}</small>
+                            </div>
+                        </div>
+                    </div>`;
+                });
+            } else {
+                html += '<p><em>No students enrolled</em></p>';
+            }
+            
+            // Raw JSON
+            html += '<h4>Raw Response:</h4>';
+            html += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            
+            resultDiv.innerHTML = html;
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result success';
+        }
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.style.display = 'block';
+            resultDiv.className = `result ${type}`;
+        }
+        
+        function clearResults() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'none';
+            resultDiv.innerHTML = '';
+        }
+    </script>
+</body>
+</html> 

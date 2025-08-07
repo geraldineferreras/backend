@@ -7,7 +7,7 @@ class AdminController extends BaseController {
     public function __construct() {
         parent::__construct();
         $this->load->model(['Section_model', 'User_model']);
-        $this->load->helper(['response', 'auth']);
+        $this->load->helper(['response', 'auth', 'notification']);
         $this->load->library('Token_lib');
         // CORS headers are already handled by BaseController
     }
@@ -97,10 +97,16 @@ class AdminController extends BaseController {
         ];
         $section_id = $this->Section_model->insert($insert_data);
         if ($section_id) {
+            // Send system notification to adviser about new section assignment
+            $this->send_section_assignment_notification($data->adviser_id, $data->section_name, $data->program, $data->year_level);
+            
             // Assign students if provided
             $assigned_students = [];
             if (isset($data->student_ids) && is_array($data->student_ids) && !empty($data->student_ids)) {
                 $assigned_students = $this->Section_model->assign_students_to_section($section_id, $data->student_ids);
+                
+                // Send system notifications to assigned students
+                $this->send_student_section_assignment_notifications($data->student_ids, $data->section_name, $data->program, $data->year_level);
             }
             
             $response_data = [
@@ -977,5 +983,73 @@ class AdminController extends BaseController {
         
         echo $csv_content;
         exit;
+    }
+
+    /**
+     * Send system notification to adviser about new section assignment
+     */
+    private function send_section_assignment_notification($adviser_id, $section_name, $program, $year_level) {
+        try {
+            $adviser = $this->User_model->get_by_id($adviser_id);
+            if (!$adviser) {
+                log_message('error', "Adviser not found for section assignment notification: {$adviser_id}");
+                return;
+            }
+
+            $title = "New Section Assignment";
+            $message = "Hello {$adviser['full_name']}, you have been assigned as the adviser for ";
+            $message .= "Section {$section_name} ({$program} - Year {$year_level}). ";
+            $message .= "You can now manage this section and its students.";
+
+            create_system_notification($adviser_id, $title, $message, false);
+
+            log_message('info', "Section assignment notification sent to adviser {$adviser_id} for section {$section_name}");
+
+        } catch (Exception $e) {
+            log_message('error', "Failed to send section assignment notification: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send system notifications to students about section assignment
+     */
+    private function send_student_section_assignment_notifications($student_ids, $section_name, $program, $year_level) {
+        try {
+            foreach ($student_ids as $student_id) {
+                $student = $this->User_model->get_by_id($student_id);
+                if (!$student) {
+                    log_message('error', "Student not found for section assignment notification: {$student_id}");
+                    continue;
+                }
+
+                $title = "Section Assignment";
+                $message = "Hello {$student['full_name']}, you have been assigned to ";
+                $message .= "Section {$section_name} ({$program} - Year {$year_level}). ";
+                $message .= "Your section adviser will contact you with further details.";
+
+                create_system_notification($student_id, $title, $message, false);
+
+                log_message('info', "Section assignment notification sent to student {$student_id} for section {$section_name}");
+            }
+
+        } catch (Exception $e) {
+            log_message('error', "Failed to send student section assignment notifications: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send system notification for maintenance or system updates
+     */
+    private function send_system_maintenance_notification($user_ids, $title, $message, $is_urgent = false) {
+        try {
+            foreach ($user_ids as $user_id) {
+                create_system_notification($user_id, $title, $message, $is_urgent);
+            }
+
+            log_message('info', "System maintenance notification sent to " . count($user_ids) . " users");
+
+        } catch (Exception $e) {
+            log_message('error', "Failed to send system maintenance notification: " . $e->getMessage());
+        }
     }
 }

@@ -357,6 +357,33 @@ class TeacherController extends BaseController
         $id = $this->ClassroomStream_model->insert($insert_data);
         if ($id) {
             $post = $this->ClassroomStream_model->get_by_id($id);
+            
+            // Create notifications for students if post is published (not draft)
+            if (!$data['is_draft']) {
+                $this->load->helper('notification');
+                
+                // Get all students in this class
+                $students = get_class_students($class_code);
+                
+                if ($students) {
+                    $user_ids = array_column($students, 'user_id');
+                    $title = $data['title'] ?: 'New Announcement';
+                    $message = $data['content'] ?? 'A new announcement has been posted.';
+                    
+                    // Create notifications for all students in the class
+                    create_notifications_for_users(
+                        $user_ids,
+                        'announcement',
+                        $title,
+                        $message,
+                        $id,
+                        'announcement',
+                        $class_code,
+                        false
+                    );
+                }
+            }
+            
             return json_response(true, 'Announcement posted successfully', $post, 201);
         } else {
             return json_response(false, 'Failed to post announcement', null, 500);
@@ -735,53 +762,250 @@ class TeacherController extends BaseController
     }
 
     /**
-     * Get enrollment statistics for a class
+     * Get classroom enrollment statistics (Teacher only)
      * GET /api/teacher/classroom/{class_code}/enrollment-stats
      */
     public function classroom_enrollment_stats_get($class_code) {
         $user_data = require_teacher($this);
         if (!$user_data) return;
         
-        // Get classroom by code and verify teacher ownership
-        $this->load->model('Classroom_model');
-        $classroom = $this->Classroom_model->get_by_code($class_code);
-        if (!$classroom) {
-            return json_response(false, 'Classroom not found', null, 404);
+        try {
+            // Get classroom by code and verify teacher ownership
+            $this->load->model('Classroom_model');
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom || $classroom['teacher_id'] != $user_data['user_id']) {
+                return json_response(false, 'Classroom not found or access denied', null, 404);
+            }
+            
+            // Get enrollment statistics
+            $total_enrolled = $this->db->where('classroom_id', $classroom['id'])
+                ->where('status', 'active')
+                ->count_all_results('classroom_enrollments');
+            
+            $recent_enrollments = $this->db->select('ce.enrolled_at, u.full_name, u.student_num')
+                ->from('classroom_enrollments ce')
+                ->join('users u', 'ce.student_id = u.user_id')
+                ->where('ce.classroom_id', $classroom['id'])
+                ->where('ce.status', 'active')
+                ->order_by('ce.enrolled_at', 'DESC')
+                ->limit(5)
+                ->get()->result_array();
+            
+            $stats = [
+                'classroom' => [
+                    'class_code' => $classroom['class_code'],
+                    'title' => $classroom['title'],
+                    'semester' => $classroom['semester'],
+                    'school_year' => $classroom['school_year']
+                ],
+                'enrollment_stats' => [
+                    'total_enrolled' => $total_enrolled,
+                    'recent_enrollments' => $recent_enrollments
+                ]
+            ];
+            
+            return json_response(true, 'Enrollment statistics retrieved successfully', $stats);
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Failed to retrieve enrollment statistics: ' . $e->getMessage(), null, 500);
         }
+    }
+
+    /**
+     * Get all grades for a specific class (Teacher only)
+     * GET /api/teacher/classroom/{class_code}/grades
+     */
+    public function classroom_grades_get($class_code) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
         
-        // Verify that this teacher owns the classroom
-        if ($classroom['teacher_id'] != $user_data['user_id']) {
-            return json_response(false, 'Access denied. You can only view statistics for your own classes.', null, 403);
+        try {
+            // Get classroom by code and verify teacher ownership
+            $this->load->model('Classroom_model');
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom || $classroom['teacher_id'] != $user_data['user_id']) {
+                return json_response(false, 'Classroom not found or access denied', null, 404);
+            }
+            
+            // Get query parameters
+            $task_id = $this->input->get('task_id'); // Optional: filter by specific task
+            $student_id = $this->input->get('student_id'); // Optional: filter by specific student
+            
+            // Get all tasks for this class
+            $tasks_query = $this->db->select('ct.*')
+                ->from('class_tasks ct')
+                ->where("ct.class_codes LIKE '%\"$class_code\"%'")
+                ->where('ct.is_draft', 0)
+                ->where('ct.is_scheduled', 0)
+                ->order_by('ct.due_date', 'ASC');
+            
+            if ($task_id) {
+                $tasks_query->where('ct.task_id', $task_id);
+            }
+            
+            $tasks = $tasks_query->get()->result_array();
+            
+            // Get all enrolled students - using raw query to handle collation
+            $students_sql = "SELECT 
+                            ce.student_id, 
+                            u.full_name, 
+                            u.student_num, 
+                            u.email, 
+                            u.profile_pic
+                        FROM classroom_enrollments ce
+                        JOIN users u ON ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci
+                        WHERE ce.classroom_id = ?
+                        AND ce.status = 'active'";
+            
+            $students_params = [$classroom['id']];
+            
+            if ($student_id) {
+                $students_sql .= " AND ce.student_id = ?";
+                $students_params[] = $student_id;
+            }
+            
+            $students_sql .= " ORDER BY u.full_name ASC";
+            
+            $students = $this->db->query($students_sql, $students_params)->result_array();
+            
+            // Get all submissions and grades
+            $submissions_query = $this->db->select('ts.*, ct.title as task_title, ct.points as task_points, ct.type as task_type')
+                ->from('task_submissions ts')
+                ->join('class_tasks ct', 'ts.task_id = ct.task_id')
+                ->where("ct.class_codes LIKE '%\"$class_code\"%'")
+                ->where('ct.is_draft', 0)
+                ->where('ct.is_scheduled', 0);
+            
+            if ($task_id) {
+                $submissions_query->where('ts.task_id', $task_id);
+            }
+            if ($student_id) {
+                $submissions_query->where('ts.student_id', $student_id);
+            }
+            
+            $submissions = $submissions_query->get()->result_array();
+            
+            // Organize data for the grades table
+            $grades_data = [];
+            $task_summary = [];
+            
+            foreach ($students as $student) {
+                $student_grades = [
+                    'student_id' => $student['student_id'],
+                    'student_name' => $student['full_name'],
+                    'student_num' => $student['student_num'],
+                    'email' => $student['email'],
+                    'profile_pic' => $student['profile_pic'],
+                    'assignments' => [],
+                    'total_points' => 0,
+                    'total_earned' => 0,
+                    'average_grade' => 0
+                ];
+                
+                $student_total_points = 0;
+                $student_total_earned = 0;
+                $graded_count = 0;
+                
+                foreach ($tasks as $task) {
+                    $assignment_grade = [
+                        'task_id' => $task['task_id'],
+                        'task_title' => $task['title'],
+                        'task_type' => $task['type'],
+                        'points' => $task['points'],
+                        'due_date' => $task['due_date'],
+                        'submission_id' => null,
+                        'grade' => null,
+                        'grade_percentage' => null,
+                        'feedback' => null,
+                        'status' => 'not_submitted',
+                        'submitted_at' => null,
+                        'attachment_url' => null
+                    ];
+                    
+                    // Find submission for this student and task
+                    foreach ($submissions as $submission) {
+                        if ($submission['student_id'] == $student['student_id'] && 
+                            $submission['task_id'] == $task['task_id']) {
+                            
+                            $assignment_grade['submission_id'] = $submission['submission_id'];
+                            $assignment_grade['grade'] = $submission['grade'];
+                            $assignment_grade['feedback'] = $submission['feedback'];
+                            $assignment_grade['submitted_at'] = $submission['submitted_at'];
+                            $assignment_grade['attachment_url'] = $submission['attachment_url'];
+                            
+                            if ($submission['grade'] !== null) {
+                                $assignment_grade['status'] = 'graded';
+                                $assignment_grade['grade_percentage'] = round(($submission['grade'] / $task['points']) * 100, 1);
+                                $student_total_earned += $submission['grade'];
+                                $graded_count++;
+                            } else {
+                                $assignment_grade['status'] = 'submitted';
+                            }
+                            
+                            break;
+                        }
+                    }
+                    
+                    $student_total_points += $task['points'];
+                    $student_grades['assignments'][] = $assignment_grade;
+                }
+                
+                // Calculate student averages
+                $student_grades['total_points'] = $student_total_points;
+                $student_grades['total_earned'] = $student_total_earned;
+                $student_grades['average_grade'] = $graded_count > 0 ? round($student_total_earned / $graded_count, 1) : 0;
+                
+                $grades_data[] = $student_grades;
+            }
+            
+            // Calculate class statistics
+            $class_stats = [
+                'total_students' => count($students),
+                'total_assignments' => count($tasks),
+                'total_submissions' => count($submissions),
+                'graded_submissions' => count(array_filter($submissions, function($s) { return $s['grade'] !== null; })),
+                'average_class_grade' => 0
+            ];
+            
+            // Calculate class average
+            $total_grades = 0;
+            $total_graded = 0;
+            foreach ($grades_data as $student) {
+                if ($student['total_earned'] > 0) {
+                    $total_grades += $student['total_earned'];
+                    $total_graded += $student['total_points'];
+                }
+            }
+            $class_stats['average_class_grade'] = $total_graded > 0 ? round(($total_grades / $total_graded) * 100, 1) : 0;
+            
+            $response_data = [
+                'classroom' => [
+                    'class_code' => $classroom['class_code'],
+                    'title' => $classroom['title'],
+                    'semester' => $classroom['semester'],
+                    'school_year' => $classroom['school_year']
+                ],
+                'tasks' => array_map(function($task) {
+                    return [
+                        'task_id' => $task['task_id'],
+                        'title' => $task['title'],
+                        'type' => $task['type'],
+                        'points' => $task['points'],
+                        'due_date' => $task['due_date']
+                    ];
+                }, $tasks),
+                'students' => $grades_data,
+                'statistics' => $class_stats,
+                'filters' => [
+                    'current_task_filter' => $task_id ?: 'all',
+                    'current_student_filter' => $student_id ?: 'all'
+                ]
+            ];
+            
+            return json_response(true, 'Class grades retrieved successfully', $response_data);
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Failed to retrieve class grades: ' . $e->getMessage(), null, 500);
         }
-        
-        // Get enrollment statistics
-        $total_enrolled = $this->db->where('classroom_id', $classroom['id'])
-            ->where('status', 'active')
-            ->count_all_results('classroom_enrollments');
-        
-        $total_inactive = $this->db->where('classroom_id', $classroom['id'])
-            ->where('status', 'inactive')
-            ->count_all_results('classroom_enrollments');
-        
-        $total_dropped = $this->db->where('classroom_id', $classroom['id'])
-            ->where('status', 'dropped')
-            ->count_all_results('classroom_enrollments');
-        
-        // Get recent enrollments (last 7 days)
-        $recent_enrollments = $this->db->where('classroom_id', $classroom['id'])
-            ->where('status', 'active')
-            ->where('enrolled_at >=', date('Y-m-d H:i:s', strtotime('-7 days')))
-            ->count_all_results('classroom_enrollments');
-        
-        $stats = [
-            'class_code' => $classroom['class_code'],
-            'total_enrolled' => $total_enrolled,
-            'total_inactive' => $total_inactive,
-            'total_dropped' => $total_dropped,
-            'recent_enrollments' => $recent_enrollments,
-            'total_enrollments' => $total_enrolled + $total_inactive + $total_dropped
-        ];
-        
-        return json_response(true, 'Enrollment statistics retrieved successfully', $stats);
     }
 }

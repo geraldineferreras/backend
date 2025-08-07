@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Student Grades API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .performance-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .grade-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background: white;
+        }
+        .grade-item.graded {
+            border-left: 4px solid #28a745;
+        }
+        .grade-item.submitted {
+            border-left: 4px solid #ffc107;
+        }
+        .grade-item.not-submitted {
+            border-left: 4px solid #dc3545;
+        }
+        .grade-score {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #28a745;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .status-graded {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-submitted {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-not-submitted {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .filters {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Student Grades API</h1>
+        <p>This page tests the new endpoint for students to get their grades per task.</p>
+        
+        <div class="form-group">
+            <label for="token">JWT Token:</label>
+            <input type="text" id="token" placeholder="Enter your JWT token">
+        </div>
+        
+        <div class="form-group">
+            <label for="classCode">Class Code (Optional):</label>
+            <input type="text" id="classCode" placeholder="Enter class code to filter (e.g., ABC123)">
+        </div>
+        
+        <div class="form-group">
+            <label for="statusFilter">Status Filter:</label>
+            <select id="statusFilter">
+                <option value="">All Statuses</option>
+                <option value="graded">Graded</option>
+                <option value="submitted">Submitted</option>
+                <option value="not_submitted">Not Submitted</option>
+            </select>
+        </div>
+        
+        <button onclick="testGetGrades()">Get My Grades</button>
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        async function testGetGrades() {
+            const token = document.getElementById('token').value.trim();
+            const classCode = document.getElementById('classCode').value.trim();
+            const statusFilter = document.getElementById('statusFilter').value;
+            const resultDiv = document.getElementById('result');
+            
+            if (!token) {
+                showResult('Error: JWT token is required', 'error');
+                return;
+            }
+            
+            try {
+                // Build URL with query parameters
+                let url = '/api/student/grades';
+                const params = new URLSearchParams();
+                if (classCode) params.append('class_code', classCode);
+                if (statusFilter) params.append('status', statusFilter);
+                if (params.toString()) {
+                    url += '?' + params.toString();
+                }
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayGrades(data);
+                } else {
+                    showResult(`Error ${response.status}: ${data.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                showResult(`Network error: ${error.message}`, 'error');
+            }
+        }
+        
+        function displayGrades(data) {
+            const resultDiv = document.getElementById('result');
+            let html = '<h3>Student Grades</h3>';
+            
+            // Academic Performance
+            if (data.data.academic_performance) {
+                const perf = data.data.academic_performance;
+                html += `<div class="performance-card">
+                    <h4>📊 Academic Performance</h4>
+                    <p><strong>Student:</strong> ${perf.student_name}</p>
+                    <p><strong>Average Grade:</strong> ${perf.average_grade}%</p>
+                    <p><strong>Total Assignments:</strong> ${perf.total_assignments}</p>
+                    <p><strong>Graded Assignments:</strong> ${perf.graded_assignments}</p>
+                </div>`;
+            }
+            
+            // Filters
+            if (data.data.filters) {
+                const filters = data.data.filters;
+                html += `<div class="filters">
+                    <h4>🔍 Available Filters</h4>
+                    <p><strong>Status Filter:</strong> ${filters.current_status_filter}</p>
+                    <p><strong>Class Filter:</strong> ${filters.current_class_filter}</p>
+                    <p><strong>Available Statuses:</strong> ${filters.available_statuses.join(', ')}</p>
+                    <p><strong>Available Classes:</strong> ${filters.available_classes.length} classes</p>
+                </div>`;
+            }
+            
+            // Grades List
+            if (data.data.grades && data.data.grades.length > 0) {
+                html += '<h4>📝 Assignment Grades</h4>';
+                data.data.grades.forEach(grade => {
+                    const statusClass = `status-${grade.status.replace('_', '-')}`;
+                    const itemClass = `grade-item ${grade.status.replace('_', '-')}`;
+                    
+                    html += `<div class="${itemClass}">
+                        <h5>${grade.title}</h5>
+                        <p><strong>Type:</strong> ${grade.type}</p>
+                        <p><strong>Due Date:</strong> ${new Date(grade.due_date).toLocaleDateString()}</p>
+                        <p><strong>Points:</strong> ${grade.points}</p>
+                        <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${grade.status.replace('_', ' ').toUpperCase()}</span></p>`;
+                    
+                    if (grade.grade !== null) {
+                        html += `<p class="grade-score">Grade: ${grade.grade}/${grade.points} (${grade.grade_percentage}%)</p>`;
+                    }
+                    
+                    if (grade.feedback) {
+                        html += `<p><strong>Feedback:</strong> ${grade.feedback}</p>`;
+                    }
+                    
+                    if (grade.submitted_at) {
+                        html += `<p><strong>Submitted:</strong> ${new Date(grade.submitted_at).toLocaleString()}</p>`;
+                    }
+                    
+                    if (grade.attachment_count > 0) {
+                        html += `<p><strong>Attachments:</strong> ${grade.attachment_count} file(s)</p>`;
+                    }
+                    
+                    if (grade.class_code) {
+                        html += `<p><strong>Class:</strong> ${grade.class_code}</p>`;
+                    }
+                    
+                    html += '</div>';
+                });
+            } else {
+                html += '<p><em>No grades found</em></p>';
+            }
+            
+            // Raw JSON
+            html += '<h4>Raw Response:</h4>';
+            html += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            
+            resultDiv.innerHTML = html;
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result success';
+        }
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.style.display = 'block';
+            resultDiv.className = `result ${type}`;
+        }
+        
+        function clearResults() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'none';
+            resultDiv.innerHTML = '';
+        }
+    </script>
+</body>
+</html> 

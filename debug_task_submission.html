@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Task Submission</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        input[type="file"] {
+            padding: 10px;
+            border: 2px dashed #ddd;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background: #007bff;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Debug Task Submission</h1>
+        <p>This tool helps debug file upload issues with task submissions.</p>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="showTab('debug')">Debug Upload</div>
+            <div class="tab" onclick="showTab('test')">Test Submission</div>
+            <div class="tab" onclick="showTab('info')">Info</div>
+        </div>
+        
+        <div id="debug" class="tab-content active">
+            <h2>Debug File Upload</h2>
+            <p>This will send your file to a debug endpoint to see what the server receives.</p>
+            
+            <form id="debugForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="debug_token">JWT Token:</label>
+                    <input type="text" id="debug_token" name="debug_token" placeholder="Enter your JWT token" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="debug_file">File to Upload:</label>
+                    <input type="file" id="debug_file" name="attachment" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.ppt,.pptx,.xls,.xlsx,.txt,.zip,.rar,.mp4,.mp3">
+                </div>
+                
+                <div class="form-group">
+                    <label for="debug_content">Submission Content (Optional):</label>
+                    <textarea id="debug_content" name="submission_content" placeholder="Enter submission content..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="debug_class_code">Class Code:</label>
+                    <input type="text" id="debug_class_code" name="class_code" placeholder="e.g., MATH101" required>
+                </div>
+                
+                <button type="submit">Debug Upload</button>
+            </form>
+            
+            <div id="debugResponse"></div>
+        </div>
+        
+        <div id="test" class="tab-content">
+            <h2>Test Actual Submission</h2>
+            <p>This will attempt to submit to the actual task submission endpoint.</p>
+            
+            <form id="testForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="test_task_id">Task ID:</label>
+                    <input type="text" id="test_task_id" name="test_task_id" value="23" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="test_token">JWT Token:</label>
+                    <input type="text" id="test_token" name="test_token" placeholder="Enter your JWT token" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="test_file">File to Upload:</label>
+                    <input type="file" id="test_file" name="attachment" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.ppt,.pptx,.xls,.xlsx,.txt,.zip,.rar,.mp4,.mp3">
+                </div>
+                
+                <div class="form-group">
+                    <label for="test_content">Submission Content (Optional):</label>
+                    <textarea id="test_content" name="submission_content" placeholder="Enter submission content..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="test_class_code">Class Code:</label>
+                    <input type="text" id="test_class_code" name="class_code" placeholder="e.g., MATH101" required>
+                </div>
+                
+                <button type="submit">Test Submission</button>
+            </form>
+            
+            <div id="testResponse"></div>
+        </div>
+        
+        <div id="info" class="tab-content">
+            <h2>Debugging Information</h2>
+            
+            <h3>Common Issues:</h3>
+            <ul>
+                <li><strong>File not being sent:</strong> Check if your frontend is using FormData correctly</li>
+                <li><strong>Wrong field name:</strong> The API expects 'attachment' as the field name</li>
+                <li><strong>Content-Type header:</strong> Must be 'multipart/form-data' for file uploads</li>
+                <li><strong>File size:</strong> Maximum 10MB allowed</li>
+                <li><strong>File type:</strong> Only specific file types are allowed</li>
+            </ul>
+            
+            <h3>Expected Request Format:</h3>
+            <pre><code>
+// Multipart Form Data
+Content-Type: multipart/form-data
+Authorization: Bearer your_jwt_token
+
+Form Fields:
+- submission_content: "Your text content"
+- class_code: "MATH101"
+- attachment: [file data]
+            </code></pre>
+            
+            <h3>Frontend Code Example:</h3>
+            <pre><code>
+const formData = new FormData();
+formData.append('submission_content', 'Your content');
+formData.append('class_code', 'MATH101');
+formData.append('attachment', fileInput.files[0]);
+
+fetch('/api/tasks/23/submit', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer ' + token
+  },
+  body: formData
+});
+            </code></pre>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+
+        // Debug form submission
+        document.getElementById('debugForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const token = document.getElementById('debug_token').value;
+            const responseDiv = document.getElementById('debugResponse');
+            
+            try {
+                const response = await fetch('/api/tasks/debug-submit', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                responseDiv.className = data.success ? 'response success' : 'response error';
+                responseDiv.innerHTML = `
+                    <strong>Status:</strong> ${response.status} ${response.statusText}
+                    <br><strong>Response:</strong>
+                    <br>${JSON.stringify(data, null, 2)}
+                `;
+                
+            } catch (error) {
+                responseDiv.className = 'response error';
+                responseDiv.innerHTML = `
+                    <strong>Error:</strong>
+                    <br>${error.message}
+                `;
+            }
+        });
+
+        // Test form submission
+        document.getElementById('testForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const token = document.getElementById('test_token').value;
+            const taskId = document.getElementById('test_task_id').value;
+            const responseDiv = document.getElementById('testResponse');
+            
+            try {
+                const response = await fetch(`/api/tasks/${taskId}/submit`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                responseDiv.className = data.success ? 'response success' : 'response error';
+                responseDiv.innerHTML = `
+                    <strong>Status:</strong> ${response.status} ${response.statusText}
+                    <br><strong>Response:</strong>
+                    <br>${JSON.stringify(data, null, 2)}
+                `;
+                
+            } catch (error) {
+                responseDiv.className = 'response error';
+                responseDiv.innerHTML = `
+                    <strong>Error:</strong>
+                    <br>${error.message}
+                `;
+            }
+        });
+
+        // Load token from localStorage if available
+        window.addEventListener('load', function() {
+            const savedToken = localStorage.getItem('token');
+            if (savedToken) {
+                document.getElementById('debug_token').value = savedToken;
+                document.getElementById('test_token').value = savedToken;
+            }
+        });
+    </script>
+</body>
+</html> 

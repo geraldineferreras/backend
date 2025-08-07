@@ -132,10 +132,14 @@ $route['api/attendance/teacher-assignments']['get'] = 'api/AttendanceController/
 $route['api/attendance/student']['get'] = 'api/AttendanceController/student_get';
 
 // Student APIs
-$route['api/student/grades']['get'] = 'studentcontroller/get_my_grades';
+$route['api/student/grades']['get'] = 'api/StudentController/grades_get';
 $route['api/student/join-class']['post'] = 'api/StudentController/join_class';
 $route['api/student/my-classes']['get'] = 'api/StudentController/my_classes';
 $route['api/student/leave-class']['delete'] = 'api/StudentController/leave_class';
+$route['api/student/debug-classes']['get'] = 'api/StudentController/debug_classes';
+$route['api/student/classroom/(:any)/people']['get'] = 'api/StudentController/classroom_people_get/$1';
+$route['api/student/classroom/(:any)/stream']['get'] = 'api/StudentController/classroom_stream_get/$1';
+$route['api/student/classroom/(:any)/stream']['post'] = 'api/StudentController/classroom_stream_post/$1';
 
 // Excuse Letter Management
 $route['api/excuse-letters/submit']['post'] = 'api/ExcuseLetterController/submit_post';
@@ -214,11 +218,14 @@ $route['api/teacher/classroom/(:any)/stream/(:num)/comment/(:num)']['delete'] = 
 // Teacher Classroom Student Management
 $route['api/teacher/classroom/(:any)/students']['get'] = 'api/TeacherController/classroom_students_get/$1';
 $route['api/teacher/classroom/(:any)/enrollment-stats']['get'] = 'api/TeacherController/classroom_enrollment_stats_get/$1';
+$route['api/teacher/classroom/(:any)/grades']['get'] = 'api/TeacherController/classroom_grades_get/$1';
 
 // Task Management
 $route['api/tasks/create']['post'] = 'api/TaskController/create_post';
 $route['api/tasks/teacher']['get'] = 'api/TaskController/teacher_get';
 $route['api/tasks/student']['get'] = 'api/TaskController/student_get';
+$route['api/tasks/student/assigned']['get'] = 'api/TaskController/student_assigned_get';
+$route['api/tasks/student/(:num)']['get'] = 'api/TaskController/student_task_get/$1';
 $route['api/tasks/(:num)']['get'] = 'api/TaskController/task_get/$1';
 $route['api/tasks/(:num)']['put'] = 'api/TaskController/task_put/$1';
 $route['api/tasks/(:num)']['delete'] = 'api/TaskController/task_delete/$1';
@@ -236,6 +243,7 @@ $route['api/tasks/files/(:any)']['get'] = 'api/TaskController/serve_file/$1';
 $route['api/tasks/submissions/files/(:any)']['get'] = 'api/TaskController/serve_submission_file/$1';
 $route['api/tasks/(:num)/preview']['get'] = 'api/TaskController/preview_file/$1';
 $route['api/tasks/test-upload']['get'] = 'api/TaskController/test_upload_get';
+$route['api/tasks/debug-assignments']['get'] = 'api/TaskController/debug_assignments_get';
 $route['api/tasks/available-students']['get'] = 'api/TaskController/available_students_get';
 $route['api/tasks/(:num)/assigned-students']['get'] = 'api/TaskController/assigned_students_get/$1';
 $route['api/tasks/(:num)/assign-students']['post'] = 'api/TaskController/assign_students_post/$1';
@@ -266,4 +274,13 @@ $route['file/(:any)/(:any)'] = 'file/serve/$1/$2';
 // Test route
 $route['api/test/upload'] = 'api/Test/upload_test';
 
-
+// Notification Management
+$route['api/notifications']['get'] = 'api/NotificationController/get_notifications';
+$route['api/notifications/(:num)/read']['put'] = 'api/NotificationController/mark_as_read/$1';
+$route['api/notifications/mark-all-read']['put'] = 'api/NotificationController/mark_all_as_read';
+$route['api/notifications/(:num)']['delete'] = 'api/NotificationController/delete_notification/$1';
+$route['api/notifications/settings']['get'] = 'api/NotificationController/get_settings';
+$route['api/notifications/settings']['put'] = 'api/NotificationController/update_settings';
+$route['api/notifications/unread-count']['get'] = 'api/NotificationController/get_unread_count';
+$route['api/notifications/recent']['get'] = 'api/NotificationController/get_recent';
+$route['api/notifications/urgent']['get'] = 'api/NotificationController/get_urgent';
