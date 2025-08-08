@@ -198,6 +198,88 @@ class Task_model extends CI_Model {
         return $this->db->insert_id();
     }
     
+    /**
+     * Submit task with multiple attachments
+     */
+    public function submit_task_with_attachments($submission_data, $attachments = []) {
+        $this->db->trans_start();
+        
+        // Insert the main submission
+        $submission_data['submitted_at'] = date('Y-m-d H:i:s');
+        $this->db->insert('task_submissions', $submission_data);
+        $submission_id = $this->db->insert_id();
+        
+        // Insert attachments if provided
+        if (!empty($attachments)) {
+            foreach ($attachments as $attachment) {
+                $attachment['submission_id'] = $submission_id;
+                $attachment['created_at'] = date('Y-m-d H:i:s');
+                $this->db->insert('task_submission_attachments', $attachment);
+            }
+        }
+        
+        $this->db->trans_complete();
+        
+        if ($this->db->trans_status() === FALSE) {
+            return false;
+        }
+        
+        return $submission_id;
+    }
+    
+    /**
+     * Get attachments for a submission
+     */
+    public function get_submission_attachments($submission_id) {
+        return $this->db->where('submission_id', $submission_id)
+            ->order_by('created_at', 'ASC')
+            ->get('task_submission_attachments')->result_array();
+    }
+    
+    /**
+     * Get submission with attachments
+     */
+    public function get_submission_with_attachments($submission_id) {
+        $submission = $this->db->where('submission_id', $submission_id)
+            ->get('task_submissions')->row_array();
+            
+        if ($submission) {
+            $submission['attachments'] = $this->get_submission_attachments($submission_id);
+        }
+        
+        return $submission;
+    }
+    
+    /**
+     * Get student submission with attachments
+     */
+    public function get_student_submission_with_attachments($task_id, $student_id, $class_code) {
+        $submission = $this->get_student_submission($task_id, $student_id, $class_code);
+        
+        if ($submission) {
+            $submission['attachments'] = $this->get_submission_attachments($submission['submission_id']);
+        }
+        
+        return $submission;
+    }
+    
+    /**
+     * Delete attachment
+     */
+    public function delete_attachment($attachment_id, $submission_id) {
+        return $this->db->where('attachment_id', $attachment_id)
+            ->where('submission_id', $submission_id)
+            ->delete('task_submission_attachments');
+    }
+    
+    /**
+     * Get attachment count for submission
+     */
+    public function get_attachment_count($submission_id) {
+        return $this->db->where('submission_id', $submission_id)
+            ->count_all_results('task_submission_attachments');
+    }
+    
     public function update_submission($submission_id, $data) {
         $this->db->where('submission_id', $submission_id);
         return $this->db->update('task_submissions', $data);
@@ -513,5 +595,44 @@ class Task_model extends CI_Model {
                 ORDER BY class_tasks.created_at DESC";
         
         return $this->db->query($sql, [json_encode($class_code), $student_id, $class_code])->result_array();
+    }
+
+    /**
+     * Get all student submissions with attachments for a specific task (Teacher only)
+     */
+    public function get_task_submissions_with_attachments($task_id, $teacher_id) {
+        // First verify the task belongs to the teacher
+        $task = $this->get_by_id($task_id);
+        if (!$task || $task['teacher_id'] != $teacher_id) {
+            return null;
+        }
+        
+        // Get all submissions for this task with student information
+        $sql = "SELECT 
+                    ts.*,
+                    u.full_name as student_name,
+                    u.student_num,
+                    u.email,
+                    u.profile_pic
+                FROM task_submissions ts
+                LEFT JOIN users u ON ts.student_id = u.user_id COLLATE utf8mb4_general_ci
+                WHERE ts.task_id = ?
+                ORDER BY ts.submitted_at ASC";
+        
+        $submissions = $this->db->query($sql, [$task_id])->result_array();
+        
+        // Add attachments to each submission
+        foreach ($submissions as &$submission) {
+            $submission['attachments'] = $this->get_submission_attachments($submission['submission_id']);
+            $submission['attachment_count'] = count($submission['attachments']);
+        }
+        
+        return [
+            'task' => $task,
+            'submissions' => $submissions,
+            'total_submissions' => count($submissions),
+            'submitted_count' => count(array_filter($submissions, function($s) { return $s['submission_id'] !== null; })),
+            'graded_count' => count(array_filter($submissions, function($s) { return $s['grade'] !== null; }))
+        ];
     }
 } 

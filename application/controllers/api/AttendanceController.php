@@ -92,21 +92,22 @@ class AttendanceController extends BaseController
             }
 
             // Get students enrolled in this class through classroom_enrollments
-            $students = $this->db->select('
-                users.user_id,
-                users.full_name,
-                users.student_num,
-                users.email,
-                users.section_id
-            ')
-            ->from('users')
-            ->join('classroom_enrollments', 'users.user_id = classroom_enrollments.student_id')
-            ->where('classroom_enrollments.classroom_id', $classroom['id'])
-            ->where('classroom_enrollments.status', 'active')
-            ->where('users.role', 'student')
-            ->where('users.status', 'active')
-            ->order_by('users.full_name', 'ASC')
-            ->get()->result_array();
+            // Use raw SQL to handle collation properly
+            $sql = "SELECT 
+                        users.user_id,
+                        users.full_name,
+                        users.student_num,
+                        users.email,
+                        users.section_id
+                    FROM users 
+                    JOIN classroom_enrollments ON users.user_id = classroom_enrollments.student_id COLLATE utf8mb4_unicode_ci
+                    WHERE classroom_enrollments.classroom_id = ? 
+                    AND classroom_enrollments.status = 'active'
+                    AND users.role = 'student'
+                    AND users.status = 'active'
+                    ORDER BY users.full_name ASC";
+            
+            $students = $this->db->query($sql, [$classroom['id']])->result_array();
 
             // If date is provided, check for excuse letters
             if ($date) {
@@ -337,6 +338,19 @@ class AttendanceController extends BaseController
                 ];
             }
 
+            // Send notification to student
+            $this->load->helper('notification');
+            create_attendance_notification(
+                $data->student_id,
+                $attendance_id,
+                $final_status,
+                $class['subject_name'],
+                $class['section_name'],
+                $data->date,
+                $attendance_data['time_in'],
+                $attendance_data['notes']
+            );
+
             $this->send_success($attendance_record, $message);
         } catch (Exception $e) {
             $this->send_error('Failed to record attendance: ' . $e->getMessage(), 500);
@@ -479,6 +493,20 @@ class AttendanceController extends BaseController
                 } else {
                     // Insert new record
                     $this->db->insert('attendance', $attendance_data);
+                    $attendance_id = $this->db->insert_id();
+                    
+                    // Send notification to student for new attendance record
+                    $this->load->helper('notification');
+                    create_attendance_notification(
+                        $record->student_id,
+                        $attendance_id,
+                        $final_status,
+                        $class['subject_name'],
+                        $class['section_name'],
+                        $data->date,
+                        $attendance_data['time_in'],
+                        $attendance_data['notes']
+                    );
                 }
 
                 $success_count++;
@@ -516,13 +544,14 @@ class AttendanceController extends BaseController
         }
 
         try {
-            // Verify teacher has access to this class
+            // Verify teacher has access to this class (from classes table - subject offering)
             $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
                 ->from('classes')
                 ->join('subjects', 'classes.subject_id = subjects.id', 'left')
                 ->join('sections', 'classes.section_id = sections.section_id', 'left')
                 ->where('classes.class_id', $class_id)
                 ->where('classes.teacher_id', $user_data['user_id'])
+                ->where('classes.status', 'active')
                 ->get()->row_array();
 
             if (!$class) {
@@ -544,7 +573,7 @@ class AttendanceController extends BaseController
                 return;
             }
 
-            // Get attendance records
+            // Get attendance records using the class_id from classes table
             $records = $this->db->select('
                 attendance.*,
                 users.full_name as student_name,
@@ -559,20 +588,20 @@ class AttendanceController extends BaseController
             ->get()->result_array();
 
             // Get all enrolled students (to show who hasn't been recorded)
-            $enrolled_students = $this->db->select('
-                users.user_id,
-                users.full_name,
-                users.student_num,
-                users.email
-            ')
-            ->from('users')
-            ->join('classroom_enrollments', 'users.user_id = classroom_enrollments.student_id')
-            ->where('classroom_enrollments.classroom_id', $classroom['id'])
-            ->where('classroom_enrollments.status', 'active')
-            ->where('users.role', 'student')
-            ->where('users.status', 'active')
-            ->order_by('users.full_name', 'ASC')
-            ->get()->result_array();
+            $enrolled_sql = "SELECT 
+                                users.user_id,
+                                users.full_name,
+                                users.student_num,
+                                users.email
+                            FROM users 
+                            JOIN classroom_enrollments ON users.user_id = classroom_enrollments.student_id COLLATE utf8mb4_unicode_ci
+                            WHERE classroom_enrollments.classroom_id = ? 
+                            AND classroom_enrollments.status = 'active'
+                            AND users.role = 'student'
+                            AND users.status = 'active'
+                            ORDER BY users.full_name ASC";
+            
+            $enrolled_students = $this->db->query($enrolled_sql, [$classroom['id']])->result_array();
 
             // Create a map of recorded students
             $recorded_students = [];
@@ -625,6 +654,7 @@ class AttendanceController extends BaseController
 
             $this->send_success([
                 'class' => $class,
+                'classroom' => $classroom,
                 'date' => $date,
                 'records' => $records,
                 'summary' => $summary
@@ -683,8 +713,35 @@ class AttendanceController extends BaseController
                 $update_data['notes'] = $data->notes;
             }
 
+            // Get the old attendance record for comparison
+            $old_attendance = $this->db->select('attendance.*, subjects.subject_name, sections.section_name')
+                ->from('attendance')
+                ->join('classes', 'attendance.class_id = classes.class_id', 'left')
+                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                ->where('attendance.attendance_id', $attendance_id)
+                ->get()->row_array();
+
+            $old_status = $old_attendance['status'];
+            
             $this->db->where('attendance_id', $attendance_id);
             $this->db->update('attendance', $update_data);
+
+            // Send notification to student if status changed
+            if (isset($data->status) && $data->status !== $old_status) {
+                $this->load->helper('notification');
+                create_attendance_update_notification(
+                    $attendance['student_id'],
+                    $attendance_id,
+                    $old_status,
+                    $data->status,
+                    $old_attendance['subject_name'],
+                    $old_attendance['section_name'],
+                    $attendance['date'],
+                    $update_data['time_in'] ?? $attendance['time_in'],
+                    $update_data['notes'] ?? $attendance['notes']
+                );
+            }
 
             $this->send_success(null, 'Attendance updated successfully');
         } catch (Exception $e) {

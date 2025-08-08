@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Scoring System Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .scoring-info {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .attendance-breakdown {
+            background-color: #e9ecef;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+        .attendance-breakdown h4 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .score-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Attendance Scoring System Test</h1>
+    
+    <div class="scoring-info">
+        <h3>📊 Attendance Scoring System (6-Point Scale)</h3>
+        <div class="score-item">
+            <span><strong>Present:</strong></span>
+            <span>6 points (100%)</span>
+        </div>
+        <div class="score-item">
+            <span><strong>Late:</strong></span>
+            <span>4 points (67%)</span>
+        </div>
+        <div class="score-item">
+            <span><strong>Excused:</strong></span>
+            <span>5 points (83%)</span>
+        </div>
+        <div class="score-item">
+            <span><strong>Absent:</strong></span>
+            <span>0 points (0%)</span>
+        </div>
+        <p><em>Formula: (Total Earned Score / (Total Sessions × 6)) × 100</em></p>
+    </div>
+
+    <div class="container">
+        <h2>Test Comprehensive Grades Endpoint</h2>
+        <div class="form-group">
+            <label for="baseUrl">Base URL:</label>
+            <input type="text" id="baseUrl" value="http://localhost/scms_new_backup" placeholder="Enter your base URL">
+        </div>
+        <div class="form-group">
+            <label for="classCode">Class Code:</label>
+            <input type="text" id="classCode" value="A4V9TE" placeholder="Enter class code">
+        </div>
+        <div class="form-group">
+            <label for="jwtToken">JWT Token:</label>
+            <input type="text" id="jwtToken" placeholder="Enter JWT token">
+        </div>
+        <div class="form-group">
+            <label for="attendanceWeight">Attendance Weight (%):</label>
+            <input type="number" id="attendanceWeight" value="10" min="0" max="100">
+        </div>
+        <div class="form-group">
+            <label for="activityWeight">Activity Weight (%):</label>
+            <input type="number" id="activityWeight" value="30" min="0" max="100">
+        </div>
+        <div class="form-group">
+            <label for="assignmentQuizWeight">Assignment/Quiz Weight (%):</label>
+            <input type="number" id="assignmentQuizWeight" value="30" min="0" max="100">
+        </div>
+        <div class="form-group">
+            <label for="majorExamWeight">Major Exam Weight (%):</label>
+            <input type="number" id="majorExamWeight" value="30" min="0" max="100">
+        </div>
+        
+        <button onclick="testComprehensiveGrades()">Test Comprehensive Grades</button>
+        <button onclick="testExportGrades()">Test Export Grades</button>
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Attendance Calculation Examples</h2>
+        <div class="attendance-breakdown">
+            <h4>Example 1: Student with 5 sessions</h4>
+            <p><strong>Attendance:</strong> 3 Present, 1 Late, 1 Absent</p>
+            <div class="score-item">
+                <span>Present (3 × 6):</span>
+                <span>18 points</span>
+            </div>
+            <div class="score-item">
+                <span>Late (1 × 4):</span>
+                <span>4 points</span>
+            </div>
+            <div class="score-item">
+                <span>Absent (1 × 0):</span>
+                <span>0 points</span>
+            </div>
+            <div class="score-item">
+                <span><strong>Total Earned:</strong></span>
+                <span><strong>22 points</strong></span>
+            </div>
+            <div class="score-item">
+                <span><strong>Max Possible (5 × 6):</strong></span>
+                <span><strong>30 points</strong></span>
+            </div>
+            <div class="score-item">
+                <span><strong>Percentage:</strong></span>
+                <span><strong>(22/30) × 100 = 73.33%</strong></span>
+            </div>
+        </div>
+
+        <div class="attendance-breakdown">
+            <h4>Example 2: Student with 3 sessions</h4>
+            <p><strong>Attendance:</strong> 2 Present, 1 Excused</p>
+            <div class="score-item">
+                <span>Present (2 × 6):</span>
+                <span>12 points</span>
+            </div>
+            <div class="score-item">
+                <span>Excused (1 × 5):</span>
+                <span>5 points</span>
+            </div>
+            <div class="score-item">
+                <span><strong>Total Earned:</strong></span>
+                <span><strong>17 points</strong></span>
+            </div>
+            <div class="score-item">
+                <span><strong>Max Possible (3 × 6):</strong></span>
+                <span><strong>18 points</strong></span>
+            </div>
+            <div class="score-item">
+                <span><strong>Percentage:</strong></span>
+                <span><strong>(17/18) × 100 = 94.44%</strong></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function testComprehensiveGrades() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const classCode = document.getElementById('classCode').value;
+            const jwtToken = document.getElementById('jwtToken').value;
+            const attendanceWeight = document.getElementById('attendanceWeight').value;
+            const activityWeight = document.getElementById('activityWeight').value;
+            const assignmentQuizWeight = document.getElementById('assignmentQuizWeight').value;
+            const majorExamWeight = document.getElementById('majorExamWeight').value;
+
+            if (!baseUrl || !classCode || !jwtToken) {
+                showResult('Please fill in all required fields.', 'error');
+                return;
+            }
+
+            const url = `${baseUrl}/api/teacher/classroom/${classCode}/comprehensive-grades?attendance_weight=${attendanceWeight}&activity_weight=${activityWeight}&assignment_quiz_weight=${assignmentQuizWeight}&major_exam_weight=${majorExamWeight}`;
+
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                let resultText = '✅ Comprehensive Grades Response:\n\n';
+                resultText += JSON.stringify(data, null, 2);
+                
+                // Analyze attendance data
+                if (data.status && data.data && data.data.students) {
+                    resultText += '\n\n📊 ATTENDANCE ANALYSIS:\n';
+                    resultText += '='.repeat(50) + '\n';
+                    
+                    data.data.students.forEach((student, index) => {
+                        resultText += `\n${index + 1}. ${student.student_name} (${student.student_num}):\n`;
+                        resultText += `   Total Sessions: ${student.attendance.total_sessions}\n`;
+                        resultText += `   Present: ${student.attendance.present_sessions}\n`;
+                        resultText += `   Late: ${student.attendance.late_sessions}\n`;
+                        resultText += `   Absent: ${student.attendance.absent_sessions}\n`;
+                        resultText += `   Excused: ${student.attendance.excused_sessions}\n`;
+                        resultText += `   Total Earned Score: ${student.attendance.total_earned_score}\n`;
+                        resultText += `   Max Possible Score: ${student.attendance.max_possible_score}\n`;
+                        resultText += `   Max Possible Total: ${student.attendance.max_possible_total}\n`;
+                        resultText += `   Attendance Percentage: ${student.attendance.attendance_percentage}%\n`;
+                        resultText += `   Weighted Score: ${student.attendance.weighted_score}\n`;
+                        
+                        // Calculate expected score manually
+                        const expectedScore = student.attendance.total_earned_score;
+                        const expectedMax = student.attendance.max_possible_total;
+                        const expectedPercentage = expectedMax > 0 ? (expectedScore / expectedMax) * 100 : 0;
+                        
+                        resultText += `   Expected Score: ${expectedScore}/${expectedMax} = ${expectedPercentage.toFixed(2)}%\n`;
+                        
+                        // Verify calculation
+                        const actualPercentage = student.attendance.attendance_percentage;
+                        if (Math.abs(actualPercentage - expectedPercentage) < 0.01) {
+                            resultText += `   ✅ Calculation Verified!\n`;
+                        } else {
+                            resultText += `   ❌ Calculation Mismatch!\n`;
+                        }
+                    });
+                }
+                
+                showResult(resultText, 'success');
+            })
+            .catch(error => {
+                showResult(`❌ Error: ${error.message}`, 'error');
+            });
+        }
+
+        function testExportGrades() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const classCode = document.getElementById('classCode').value;
+            const jwtToken = document.getElementById('jwtToken').value;
+            const attendanceWeight = document.getElementById('attendanceWeight').value;
+            const activityWeight = document.getElementById('activityWeight').value;
+            const assignmentQuizWeight = document.getElementById('assignmentQuizWeight').value;
+            const majorExamWeight = document.getElementById('majorExamWeight').value;
+
+            if (!baseUrl || !classCode || !jwtToken) {
+                showResult('Please fill in all required fields.', 'error');
+                return;
+            }
+
+            const url = `${baseUrl}/api/teacher/classroom/${classCode}/export-grades?attendance_weight=${attendanceWeight}&activity_weight=${activityWeight}&assignment_quiz_weight=${assignmentQuizWeight}&major_exam_weight=${majorExamWeight}`;
+
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.blob();
+                } else {
+                    return response.json();
+                }
+            })
+            .then(data => {
+                if (data instanceof Blob) {
+                    // Create download link for CSV file
+                    const url = window.URL.createObjectURL(data);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `grades_${classCode}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    showResult('✅ CSV file downloaded successfully!', 'success');
+                } else {
+                    showResult(`❌ Export Error: ${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            })
+            .catch(error => {
+                showResult(`❌ Error: ${error.message}`, 'error');
+            });
+        }
+
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.className = `result ${type}`;
+            resultDiv.style.display = 'block';
+            resultDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function clearResults() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'none';
+        }
+    </script>
+</body>
+</html>

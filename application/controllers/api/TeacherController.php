@@ -46,6 +46,15 @@ class TeacherController extends BaseController
         
         $result = [];
         foreach ($classrooms as $classroom) {
+            // Find corresponding class (subject offering) for this classroom
+            $class = $this->db->select('classes.class_id')
+                ->from('classes')
+                ->where('classes.subject_id', $classroom['subject_id'])
+                ->where('classes.section_id', $classroom['section_id'])
+                ->where('classes.teacher_id', $classroom['teacher_id'])
+                ->where('classes.status', 'active')
+                ->get()->row_array();
+            
             // Fetch subject name
             $subject = $this->Subject_model->get_by_id($classroom['subject_id']);
             $subject_name = $subject ? $subject['subject_name'] : '';
@@ -55,6 +64,7 @@ class TeacherController extends BaseController
             // Count students in section (users table, role=student)
             $student_count = $this->db->where('section_id', $classroom['section_id'])->where('role', 'student')->count_all_results('users');
             $result[] = [
+                'class_id' => $class ? $class['class_id'] : $classroom['id'], // Use subject offering class_id if found, otherwise fallback to classroom id
                 'class_code' => $classroom['class_code'],
                 'subject_name' => $subject_name,
                 'section_name' => $section_name,
@@ -138,7 +148,17 @@ class TeacherController extends BaseController
             // Get class_code
             $classroom = $this->Classroom_model->get_by_id($id);
             $class_code = $classroom['class_code'];
+            // Find corresponding class (subject offering) for this classroom
+            $class = $this->db->select('classes.class_id')
+                ->from('classes')
+                ->where('classes.subject_id', $data['subject_id'])
+                ->where('classes.section_id', $data['section_id'])
+                ->where('classes.teacher_id', $user_data['user_id'])
+                ->where('classes.status', 'active')
+                ->get()->row_array();
+            
             $response = [
+                'class_id' => $class ? $class['class_id'] : $id, // Use subject offering class_id if found, otherwise fallback to classroom id
                 'class_code' => $class_code,
                 'subject_name' => $subject_name,
                 'section_name' => $section_name,
@@ -195,7 +215,18 @@ class TeacherController extends BaseController
         $section = $this->Section_model->get_by_id($classroom['section_id']);
         $section_name = $section ? $section['section_name'] : '';
         $student_count = $this->db->where('section_id', $classroom['section_id'])->where('role', 'student')->count_all_results('users');
+        
+        // Find corresponding class (subject offering) for this classroom
+        $class = $this->db->select('classes.class_id')
+            ->from('classes')
+            ->where('classes.subject_id', $classroom['subject_id'])
+            ->where('classes.section_id', $classroom['section_id'])
+            ->where('classes.teacher_id', $classroom['teacher_id'])
+            ->where('classes.status', 'active')
+            ->get()->row_array();
+        
         $response = [
+            'class_id' => $class ? $class['class_id'] : $classroom['id'], // Use subject offering class_id if found, otherwise fallback to classroom id
             'class_code' => $classroom['class_code'],
             'subject_name' => $subject_name,
             'section_name' => $section_name,
@@ -885,6 +916,50 @@ class TeacherController extends BaseController
             
             $submissions = $submissions_query->get()->result_array();
             
+            // Get attendance records for this class
+            $actual_class_id_for_attendance = null;
+            
+            // Find the correct class_id for attendance records
+            $classes_query = $this->db->select('class_id')
+                ->from('classes')
+                ->where('subject_id', $classroom['subject_id'])
+                ->where('section_id', $classroom['section_id'])
+                ->where('teacher_id', $classroom['teacher_id'])
+                ->get();
+            
+            $class_ids = $classes_query->result_array();
+            
+            // Find the class_id that has actual attendance records
+            foreach ($class_ids as $class) {
+                $attendance_count = $this->db->where('class_id', $class['class_id'])
+                    ->from('attendance')
+                    ->count_all_results();
+                
+                if ($attendance_count > 0) {
+                    $actual_class_id_for_attendance = $class['class_id'];
+                    break;
+                }
+            }
+            
+            // If no class_id with attendance found, use the first one
+            if (!$actual_class_id_for_attendance && !empty($class_ids)) {
+                $actual_class_id_for_attendance = $class_ids[0]['class_id'];
+            }
+            
+            $attendance_records = [];
+            if ($actual_class_id_for_attendance) {
+                $attendance_query = $this->db->select('a.*, u.full_name as student_name, u.student_num, u.email')
+                    ->from('attendance a')
+                    ->join('users u', 'a.student_id = u.user_id')
+                    ->where('a.class_id', $actual_class_id_for_attendance);
+                
+                if ($student_id) {
+                    $attendance_query->where('a.student_id', $student_id);
+                }
+                
+                $attendance_records = $attendance_query->get()->result_array();
+            }
+            
             // Organize data for the grades table
             $grades_data = [];
             $task_summary = [];
@@ -896,6 +971,17 @@ class TeacherController extends BaseController
                     'student_num' => $student['student_num'],
                     'email' => $student['email'],
                     'profile_pic' => $student['profile_pic'],
+                    'attendance' => [
+                        'total_sessions' => 0,
+                        'present_sessions' => 0,
+                        'late_sessions' => 0,
+                        'absent_sessions' => 0,
+                        'excused_sessions' => 0,
+                        'total_earned_score' => 0,
+                        'max_possible_score' => 6,
+                        'max_possible_total' => 0,
+                        'attendance_percentage' => 0
+                    ],
                     'assignments' => [],
                     'total_points' => 0,
                     'total_earned' => 0,
@@ -905,6 +991,66 @@ class TeacherController extends BaseController
                 $student_total_points = 0;
                 $student_total_earned = 0;
                 $graded_count = 0;
+                
+                // Calculate attendance for this student
+                $student_attendance = array_filter($attendance_records, function($record) use ($student) {
+                    return $record['student_id'] === $student['student_id'];
+                });
+                
+                $total_sessions = count($student_attendance);
+                $present_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'present';
+                }));
+                $late_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'late';
+                }));
+                $absent_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'absent';
+                }));
+                $excused_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'excused';
+                }));
+                
+                // Calculate attendance score based on 6-point scale
+                $max_possible_score = 6;
+                $total_earned_score = 0;
+                
+                foreach ($student_attendance as $record) {
+                    $status = strtolower($record['status']);
+                    switch ($status) {
+                        case 'present':
+                            $total_earned_score += 6;
+                            break;
+                        case 'late':
+                            $total_earned_score += 4;
+                            break;
+                        case 'excused':
+                            $total_earned_score += 5;
+                            break;
+                        case 'absent':
+                            $total_earned_score += 0;
+                            break;
+                        default:
+                            $total_earned_score += 0;
+                            break;
+                    }
+                }
+                
+                $max_possible_total = $total_sessions * $max_possible_score;
+                $attendance_percentage = $max_possible_total > 0 ? 
+                    ($total_earned_score / $max_possible_total) * 100 : 0;
+                
+                $student_grades['attendance'] = [
+                    'total_sessions' => $total_sessions,
+                    'present_sessions' => $present_sessions,
+                    'late_sessions' => $late_sessions,
+                    'absent_sessions' => $absent_sessions,
+                    'excused_sessions' => $excused_sessions,
+                    'total_earned_score' => $total_earned_score,
+                    'max_possible_score' => $max_possible_score,
+                    'max_possible_total' => $max_possible_total,
+                    'attendance_percentage' => round($attendance_percentage, 2)
+                ];
                 
                 foreach ($tasks as $task) {
                     $assignment_grade = [
@@ -1006,6 +1152,964 @@ class TeacherController extends BaseController
             
         } catch (Exception $e) {
             return json_response(false, 'Failed to retrieve class grades: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    /**
+     * Get comprehensive grades for a specific class with customizable percentages (Teacher only)
+     * GET /api/teacher/classroom/{class_code}/comprehensive-grades
+     */
+    public function classroom_comprehensive_grades_get($class_code) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+        
+        try {
+            // Get classroom by code and verify teacher ownership
+            $this->load->model('Classroom_model');
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom || $classroom['teacher_id'] != $user_data['user_id']) {
+                return json_response(false, 'Classroom not found or access denied', null, 404);
+            }
+            
+            // Get query parameters for customizable percentages
+            $attendance_weight = (float)($this->input->get('attendance_weight') ?: 10);
+            $activity_weight = (float)($this->input->get('activity_weight') ?: 30);
+            $assignment_quiz_weight = (float)($this->input->get('assignment_quiz_weight') ?: 30);
+            $major_exam_weight = (float)($this->input->get('major_exam_weight') ?: 30);
+            
+            // Validate weights total 100%
+            $total_weight = $attendance_weight + $activity_weight + $assignment_quiz_weight + $major_exam_weight;
+            if (abs($total_weight - 100) > 0.01) {
+                return json_response(false, 'Weights must total 100%. Current total: ' . $total_weight . '%', null, 400);
+            }
+            
+            // Get all enrolled students
+            $students_sql = "SELECT 
+                            ce.student_id, 
+                            u.full_name, 
+                            u.student_num, 
+                            u.email, 
+                            u.profile_pic
+                        FROM classroom_enrollments ce
+                        JOIN users u ON ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci
+                        WHERE ce.classroom_id = ?
+                        AND ce.status = 'active'
+                        ORDER BY u.full_name ASC";
+            
+            $students = $this->db->query($students_sql, [$classroom['id']])->result_array();
+            
+            // Get all tasks for this class categorized by type
+            $tasks_query = $this->db->select('ct.*')
+                ->from('class_tasks ct')
+                ->where("ct.class_codes LIKE '%\"$class_code\"%'")
+                ->where('ct.is_draft', 0)
+                ->where('ct.is_scheduled', 0)
+                ->order_by('ct.type', 'ASC')
+                ->order_by('ct.created_at', 'ASC');
+            
+            $tasks = $tasks_query->get()->result_array();
+            
+            // Categorize tasks
+            $attendance_tasks = [];
+            $activity_tasks = [];
+            $assignment_quiz_tasks = [];
+            $major_exam_tasks = [];
+            
+            foreach ($tasks as $task) {
+                switch ($task['type']) {
+                    case 'activity':
+                        $activity_tasks[] = $task;
+                        break;
+                    case 'quiz':
+                        $assignment_quiz_tasks[] = $task;
+                        break;
+                    case 'assignment':
+                        $assignment_quiz_tasks[] = $task;
+                        break;
+                    case 'exam':
+                        $major_exam_tasks[] = $task;
+                        break;
+                    case 'project':
+                        $major_exam_tasks[] = $task;
+                        break;
+                    default:
+                        $assignment_quiz_tasks[] = $task;
+                        break;
+                }
+            }
+            
+            // Get the corresponding class_id from the 'classes' table
+            // This is crucial because attendance.class_id refers to the 'classes' table's class_id (VARCHAR)
+            // not the 'classrooms' table's ID (INT)
+            $class_offerings = $this->db->select('class_id')
+                                      ->from('classes')
+                                      ->where('subject_id', $classroom['subject_id'])
+                                      ->where('section_id', $classroom['section_id'])
+                                      ->where('teacher_id', $classroom['teacher_id'])
+                                      ->where('status', 'active')
+                                      ->get()->result_array();
+
+            $actual_class_id_for_attendance = null;
+            $attendance_records = [];
+
+            // Check each class offering to find the one with attendance records
+            foreach ($class_offerings as $class_offering) {
+                $class_id = $class_offering['class_id'];
+                
+                // Check if this class has attendance records
+                $attendance_count = $this->db->select('COUNT(*) as count')
+                                           ->from('attendance')
+                                           ->where('teacher_id', $user_data['user_id'])
+                                           ->where('class_id', $class_id)
+                                           ->get()->row_array();
+                
+                if ($attendance_count && $attendance_count['count'] > 0) {
+                    $actual_class_id_for_attendance = $class_id;
+                    break;
+                }
+            }
+
+            // If no class with attendance found, use the first class offering (fallback)
+            if (!$actual_class_id_for_attendance && !empty($class_offerings)) {
+                $actual_class_id_for_attendance = $class_offerings[0]['class_id'];
+                log_message('info', 'No attendance records found for any class offering. Using first class_id: ' . $actual_class_id_for_attendance);
+            }
+
+            if (!$actual_class_id_for_attendance) {
+                // Log a warning or handle the case where no matching class offering is found
+                log_message('warning', 'No matching class offering found for classroom ID: ' . $classroom['id'] . ' for attendance retrieval.');
+                // If no class offering, there won't be attendance records for it, so return empty attendance
+                $attendance_records = [];
+            } else {
+                // Get attendance records for this class
+                $attendance_records = $this->db->select('
+                    attendance.*,
+                    users.full_name as student_name,
+                    users.student_num
+                ')
+                ->from('attendance')
+                ->join('users', 'attendance.student_id = users.user_id', 'left')
+                ->where('attendance.teacher_id', $user_data['user_id'])
+                ->where('attendance.class_id', $actual_class_id_for_attendance)
+                ->get()->result_array();
+            }
+            
+            // Get all submissions and grades
+            $submissions_query = $this->db->select('ts.*, ct.title as task_title, ct.points as task_points, ct.type as task_type')
+                ->from('task_submissions ts')
+                ->join('class_tasks ct', 'ts.task_id = ct.task_id')
+                ->where("ct.class_codes LIKE '%\"$class_code\"%'")
+                ->where('ct.is_draft', 0)
+                ->where('ct.is_scheduled', 0);
+            
+            $submissions = $submissions_query->get()->result_array();
+            
+            // Organize data for comprehensive grades
+            $comprehensive_grades = [];
+            $category_summary = [
+                'attendance' => [
+                    'total_possible' => 0,
+                    'total_earned' => 0,
+                    'weight' => $attendance_weight
+                ],
+                'activity' => [
+                    'total_possible' => 0,
+                    'total_earned' => 0,
+                    'weight' => $activity_weight
+                ],
+                'assignment_quiz' => [
+                    'total_possible' => 0,
+                    'total_earned' => 0,
+                    'weight' => $assignment_quiz_weight
+                ],
+                'major_exam' => [
+                    'total_possible' => 0,
+                    'total_earned' => 0,
+                    'weight' => $major_exam_weight
+                ]
+            ];
+            
+            foreach ($students as $student) {
+                $student_grades = [
+                    'student_id' => $student['student_id'],
+                    'student_name' => $student['full_name'],
+                    'student_num' => $student['student_num'],
+                    'email' => $student['email'],
+                    'profile_pic' => $student['profile_pic'],
+                    'attendance' => [
+                        'total_sessions' => 0,
+                        'present_sessions' => 0,
+                        'late_sessions' => 0,
+                        'absent_sessions' => 0,
+                        'excused_sessions' => 0,
+                        'total_earned_score' => 0,
+                        'max_possible_score' => 0,
+                        'max_possible_total' => 0,
+                        'attendance_percentage' => 0,
+                        'weighted_score' => 0
+                    ],
+                    'activities' => [],
+                    'assignments_quizzes' => [],
+                    'major_exams' => [],
+                    'category_scores' => [
+                        'attendance' => 0,
+                        'activity' => 0,
+                        'assignment_quiz' => 0,
+                        'major_exam' => 0
+                    ],
+                    'final_grade' => 0
+                ];
+                
+                // Calculate attendance
+                $student_attendance = array_filter($attendance_records, function($record) use ($student) {
+                    return $record['student_id'] === $student['student_id'];
+                });
+                
+                $total_sessions = count($student_attendance);
+                $present_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'present';
+                }));
+                $late_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'late';
+                }));
+                $absent_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'absent';
+                }));
+                $excused_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'excused';
+                }));
+                
+                // Calculate attendance score based on 6-point scale
+                $max_possible_score = 6;
+                $total_earned_score = 0;
+                
+                foreach ($student_attendance as $record) {
+                    $status = strtolower($record['status']);
+                    switch ($status) {
+                        case 'present':
+                            $total_earned_score += 6;
+                            break;
+                        case 'late':
+                            $total_earned_score += 4;
+                            break;
+                        case 'excused':
+                            $total_earned_score += 5;
+                            break;
+                        case 'absent':
+                            $total_earned_score += 0;
+                            break;
+                        default:
+                            $total_earned_score += 0;
+                            break;
+                    }
+                }
+                
+                $max_possible_total = $total_sessions * $max_possible_score;
+                $attendance_percentage = $max_possible_total > 0 ? 
+                    ($total_earned_score / $max_possible_total) * 100 : 0;
+                
+                $student_grades['attendance'] = [
+                    'total_sessions' => $total_sessions,
+                    'present_sessions' => $present_sessions,
+                    'late_sessions' => $late_sessions,
+                    'absent_sessions' => $absent_sessions,
+                    'excused_sessions' => $excused_sessions,
+                    'total_earned_score' => $total_earned_score,
+                    'max_possible_score' => $max_possible_score,
+                    'max_possible_total' => $max_possible_total,
+                    'attendance_percentage' => round($attendance_percentage, 2),
+                    'weighted_score' => round(($attendance_percentage * $attendance_weight) / 100, 2)
+                ];
+                
+                // Process activities
+                foreach ($activity_tasks as $task) {
+                    $task_grade = [
+                        'task_id' => $task['task_id'],
+                        'title' => $task['title'],
+                        'type' => $task['type'],
+                        'points' => $task['points'],
+                        'grade' => null,
+                        'grade_percentage' => 0,
+                        'status' => 'not_submitted',
+                        'submitted_at' => null,
+                        'feedback' => null
+                    ];
+                    
+                    // Find submission for this task and student
+                    foreach ($submissions as $submission) {
+                        if ($submission['student_id'] === $student['student_id'] && 
+                            $submission['task_id'] === $task['task_id']) {
+                            
+                            $task_grade['grade'] = $submission['grade'];
+                            $task_grade['status'] = $submission['grade'] !== null ? 'graded' : 'submitted';
+                            $task_grade['submitted_at'] = $submission['submitted_at'];
+                            $task_grade['feedback'] = $submission['feedback'];
+                            
+                            if ($submission['grade'] !== null) {
+                                $task_grade['grade_percentage'] = round(($submission['grade'] / $task['points']) * 100, 2);
+                            }
+                            break;
+                        }
+                    }
+                    
+                    $student_grades['activities'][] = $task_grade;
+                }
+                
+                // Process assignments and quizzes
+                foreach ($assignment_quiz_tasks as $task) {
+                    $task_grade = [
+                        'task_id' => $task['task_id'],
+                        'title' => $task['title'],
+                        'type' => $task['type'],
+                        'points' => $task['points'],
+                        'grade' => null,
+                        'grade_percentage' => 0,
+                        'status' => 'not_submitted',
+                        'submitted_at' => null,
+                        'feedback' => null
+                    ];
+                    
+                    foreach ($submissions as $submission) {
+                        if ($submission['student_id'] === $student['student_id'] && 
+                            $submission['task_id'] === $task['task_id']) {
+                            
+                            $task_grade['grade'] = $submission['grade'];
+                            $task_grade['status'] = $submission['grade'] !== null ? 'graded' : 'submitted';
+                            $task_grade['submitted_at'] = $submission['submitted_at'];
+                            $task_grade['feedback'] = $submission['feedback'];
+                            
+                            if ($submission['grade'] !== null) {
+                                $task_grade['grade_percentage'] = round(($submission['grade'] / $task['points']) * 100, 2);
+                            }
+                            break;
+                        }
+                    }
+                    
+                    $student_grades['assignments_quizzes'][] = $task_grade;
+                }
+                
+                // Process major exams
+                foreach ($major_exam_tasks as $task) {
+                    $task_grade = [
+                        'task_id' => $task['task_id'],
+                        'title' => $task['title'],
+                        'type' => $task['type'],
+                        'points' => $task['points'],
+                        'grade' => null,
+                        'grade_percentage' => 0,
+                        'status' => 'not_submitted',
+                        'submitted_at' => null,
+                        'feedback' => null
+                    ];
+                    
+                    foreach ($submissions as $submission) {
+                        if ($submission['student_id'] === $student['student_id'] && 
+                            $submission['task_id'] === $task['task_id']) {
+                            
+                            $task_grade['grade'] = $submission['grade'];
+                            $task_grade['status'] = $submission['grade'] !== null ? 'graded' : 'submitted';
+                            $task_grade['submitted_at'] = $submission['submitted_at'];
+                            $task_grade['feedback'] = $submission['feedback'];
+                            
+                            if ($submission['grade'] !== null) {
+                                $task_grade['grade_percentage'] = round(($submission['grade'] / $task['points']) * 100, 2);
+                            }
+                            break;
+                        }
+                    }
+                    
+                    $student_grades['major_exams'][] = $task_grade;
+                }
+                
+                // Calculate category averages
+                $activity_avg = $this->calculate_category_average($student_grades['activities']);
+                $assignment_quiz_avg = $this->calculate_category_average($student_grades['assignments_quizzes']);
+                $major_exam_avg = $this->calculate_category_average($student_grades['major_exams']);
+                
+                $student_grades['category_scores'] = [
+                    'attendance' => $student_grades['attendance']['weighted_score'],
+                    'activity' => round(($activity_avg * $activity_weight) / 100, 2),
+                    'assignment_quiz' => round(($assignment_quiz_avg * $assignment_quiz_weight) / 100, 2),
+                    'major_exam' => round(($major_exam_avg * $major_exam_weight) / 100, 2)
+                ];
+                
+                // Calculate final grade
+                $final_grade = $student_grades['category_scores']['attendance'] + 
+                              $student_grades['category_scores']['activity'] + 
+                              $student_grades['category_scores']['assignment_quiz'] + 
+                              $student_grades['category_scores']['major_exam'];
+                
+                $student_grades['final_grade'] = round($final_grade, 2);
+                
+                $comprehensive_grades[] = $student_grades;
+            }
+            
+            // Calculate class statistics
+            $class_stats = [
+                'total_students' => count($students),
+                'total_activities' => count($activity_tasks),
+                'total_assignments_quizzes' => count($assignment_quiz_tasks),
+                'total_major_exams' => count($major_exam_tasks),
+                'total_submissions' => count($submissions),
+                'graded_submissions' => count(array_filter($submissions, function($s) { 
+                    return $s['grade'] !== null; 
+                })),
+                'average_final_grade' => 0,
+                'weights' => [
+                    'attendance' => $attendance_weight,
+                    'activity' => $activity_weight,
+                    'assignment_quiz' => $assignment_quiz_weight,
+                    'major_exam' => $major_exam_weight
+                ]
+            ];
+            
+            // Calculate class average
+            $total_final_grade = 0;
+            $students_with_grades = 0;
+            foreach ($comprehensive_grades as $student) {
+                if ($student['final_grade'] > 0) {
+                    $total_final_grade += $student['final_grade'];
+                    $students_with_grades++;
+                }
+            }
+            $class_stats['average_final_grade'] = $students_with_grades > 0 ? 
+                round($total_final_grade / $students_with_grades, 2) : 0;
+            
+            $response_data = [
+                'classroom' => [
+                    'class_code' => $classroom['class_code'],
+                    'title' => $classroom['title'],
+                    'semester' => $classroom['semester'],
+                    'school_year' => $classroom['school_year']
+                ],
+                'tasks_summary' => [
+                    'activities' => array_map(function($task) {
+                        return [
+                            'task_id' => $task['task_id'],
+                            'title' => $task['title'],
+                            'type' => $task['type'],
+                            'points' => $task['points']
+                        ];
+                    }, $activity_tasks),
+                    'assignments_quizzes' => array_map(function($task) {
+                        return [
+                            'task_id' => $task['task_id'],
+                            'title' => $task['title'],
+                            'type' => $task['type'],
+                            'points' => $task['points']
+                        ];
+                    }, $assignment_quiz_tasks),
+                    'major_exams' => array_map(function($task) {
+                        return [
+                            'task_id' => $task['task_id'],
+                            'title' => $task['title'],
+                            'type' => $task['type'],
+                            'points' => $task['points']
+                        ];
+                    }, $major_exam_tasks)
+                ],
+                'students' => $comprehensive_grades,
+                'statistics' => $class_stats
+            ];
+            
+            return json_response(true, 'Comprehensive grades retrieved successfully', $response_data);
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Failed to retrieve comprehensive grades: ' . $e->getMessage(), null, 500);
+        }
+    }
+    
+    /**
+     * Export comprehensive grades to XLSX format with formulas and formatting
+     * GET /api/teacher/classroom/{class_code}/export-grades
+     */
+    public function classroom_export_grades_get($class_code) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+        
+        try {
+            // Get classroom by code and verify teacher ownership
+            $this->load->model('Classroom_model');
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom || $classroom['teacher_id'] != $user_data['user_id']) {
+                return json_response(false, 'Classroom not found or access denied', null, 404);
+            }
+            
+            // Get customizable percentages
+            $attendance_weight = (float)($this->input->get('attendance_weight') ?: 10);
+            $activity_weight = (float)($this->input->get('activity_weight') ?: 30);
+            $assignment_quiz_weight = (float)($this->input->get('assignment_quiz_weight') ?: 30);
+            $major_exam_weight = (float)($this->input->get('major_exam_weight') ?: 30);
+            
+            // Validate weights total 100%
+            $total_weight = $attendance_weight + $activity_weight + $assignment_quiz_weight + $major_exam_weight;
+            if (abs($total_weight - 100) > 0.01) {
+                return json_response(false, 'Weights must total 100%. Current total: ' . $total_weight . '%', null, 400);
+            }
+            
+            // Get comprehensive grades data
+            $grades_data = $this->get_comprehensive_grades_data($classroom, $user_data, [
+                'attendance_weight' => $attendance_weight,
+                'activity_weight' => $activity_weight,
+                'assignment_quiz_weight' => $assignment_quiz_weight,
+                'major_exam_weight' => $major_exam_weight
+            ]);
+            
+            // Generate XLSX file
+            $this->generate_grades_xlsx($grades_data, $classroom, [
+                'attendance_weight' => $attendance_weight,
+                'activity_weight' => $activity_weight,
+                'assignment_quiz_weight' => $assignment_quiz_weight,
+                'major_exam_weight' => $major_exam_weight
+            ]);
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Failed to export grades: ' . $e->getMessage(), null, 500);
+        }
+    }
+    
+    /**
+     * Helper method to calculate category average
+     */
+    private function calculate_category_average($tasks) {
+        $total_grade = 0;
+        $graded_count = 0;
+        
+        foreach ($tasks as $task) {
+            if ($task['grade'] !== null) {
+                $total_grade += $task['grade_percentage'];
+                $graded_count++;
+            }
+        }
+        
+        return $graded_count > 0 ? round($total_grade / $graded_count, 2) : 0;
+    }
+    
+    /**
+     * Helper method to get comprehensive grades data
+     */
+    private function get_comprehensive_grades_data($classroom, $user_data, $weights) {
+        try {
+            $attendance_weight = $weights['attendance_weight'];
+            $activity_weight = $weights['activity_weight'];
+            $assignment_quiz_weight = $weights['assignment_quiz_weight'];
+            $major_exam_weight = $weights['major_exam_weight'];
+            $class_code = $classroom['class_code'];
+            
+            // Get all enrolled students
+            $students_sql = "SELECT 
+                            ce.student_id, 
+                            u.full_name, 
+                            u.student_num, 
+                            u.email, 
+                            u.profile_pic
+                        FROM classroom_enrollments ce
+                        JOIN users u ON ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci
+                        WHERE ce.classroom_id = ?
+                        AND ce.status = 'active'
+                        ORDER BY u.full_name ASC";
+            
+            $students = $this->db->query($students_sql, [$classroom['id']])->result_array();
+            
+            // Get all tasks for this class categorized by type
+            $tasks_query = $this->db->select('ct.*')
+                ->from('class_tasks ct')
+                ->where("ct.class_codes LIKE '%\"$class_code\"%'")
+                ->where('ct.is_draft', 0)
+                ->where('ct.is_scheduled', 0)
+                ->order_by('ct.type', 'ASC')
+                ->order_by('ct.created_at', 'ASC');
+            
+            $tasks = $tasks_query->get()->result_array();
+            
+            // Categorize tasks
+            $attendance_tasks = [];
+            $activity_tasks = [];
+            $assignment_quiz_tasks = [];
+            $major_exam_tasks = [];
+            
+            foreach ($tasks as $task) {
+                switch ($task['type']) {
+                    case 'activity':
+                        $activity_tasks[] = $task;
+                        break;
+                    case 'quiz':
+                        $assignment_quiz_tasks[] = $task;
+                        break;
+                    case 'assignment':
+                        $assignment_quiz_tasks[] = $task;
+                        break;
+                    case 'exam':
+                        $major_exam_tasks[] = $task;
+                        break;
+                    case 'project':
+                        $major_exam_tasks[] = $task;
+                        break;
+                    default:
+                        $assignment_quiz_tasks[] = $task;
+                        break;
+                }
+            }
+            
+            // Get the corresponding class_id from the 'classes' table
+            // This is crucial because attendance.class_id refers to the 'classes' table's class_id (VARCHAR)
+            // not the 'classrooms' table's ID (INT)
+            $class_offerings = $this->db->select('class_id')
+                                      ->from('classes')
+                                      ->where('subject_id', $classroom['subject_id'])
+                                      ->where('section_id', $classroom['section_id'])
+                                      ->where('teacher_id', $classroom['teacher_id'])
+                                      ->where('status', 'active')
+                                      ->get()->result_array();
+
+            $actual_class_id_for_attendance = null;
+            $attendance_records = [];
+
+            // Check each class offering to find the one with attendance records
+            foreach ($class_offerings as $class_offering) {
+                $class_id = $class_offering['class_id'];
+                
+                // Check if this class has attendance records
+                $attendance_count = $this->db->select('COUNT(*) as count')
+                                           ->from('attendance')
+                                           ->where('teacher_id', $user_data['user_id'])
+                                           ->where('class_id', $class_id)
+                                           ->get()->row_array();
+                
+                if ($attendance_count && $attendance_count['count'] > 0) {
+                    $actual_class_id_for_attendance = $class_id;
+                    break;
+                }
+            }
+
+            // If no class with attendance found, use the first class offering (fallback)
+            if (!$actual_class_id_for_attendance && !empty($class_offerings)) {
+                $actual_class_id_for_attendance = $class_offerings[0]['class_id'];
+                log_message('info', 'No attendance records found for any class offering. Using first class_id: ' . $actual_class_id_for_attendance);
+            }
+
+            if (!$actual_class_id_for_attendance) {
+                // Log a warning or handle the case where no matching class offering is found
+                log_message('warning', 'No matching class offering found for classroom ID: ' . $classroom['id'] . ' for attendance retrieval.');
+                // If no class offering, there won't be attendance records for it, so return empty attendance
+                $attendance_records = [];
+            } else {
+                // Get attendance records for this class
+                $attendance_records = $this->db->select('
+                    attendance.*,
+                    users.full_name as student_name,
+                    users.student_num
+                ')
+                ->from('attendance')
+                ->join('users', 'attendance.student_id = users.user_id', 'left')
+                ->where('attendance.teacher_id', $user_data['user_id'])
+                ->where('attendance.class_id', $actual_class_id_for_attendance)
+                ->get()->result_array();
+            }
+            
+            // Get all submissions and grades
+            $submissions_query = $this->db->select('ts.*, ct.title as task_title, ct.points as task_points, ct.type as task_type')
+                ->from('task_submissions ts')
+                ->join('class_tasks ct', 'ts.task_id = ct.task_id')
+                ->where("ct.class_codes LIKE '%\"$class_code\"%'")
+                ->where('ct.is_draft', 0)
+                ->where('ct.is_scheduled', 0);
+            
+            $submissions = $submissions_query->get()->result_array();
+            
+            // Organize data for comprehensive grades
+            $comprehensive_grades = [];
+            
+            foreach ($students as $student) {
+                $student_grades = [
+                    'student_id' => $student['student_id'],
+                    'student_name' => $student['full_name'],
+                    'student_num' => $student['student_num'],
+                    'email' => $student['email'],
+                    'profile_pic' => $student['profile_pic'],
+                    'attendance' => [
+                        'total_sessions' => 0,
+                        'present_sessions' => 0,
+                        'late_sessions' => 0,
+                        'absent_sessions' => 0,
+                        'excused_sessions' => 0,
+                        'total_earned_score' => 0,
+                        'max_possible_score' => 0,
+                        'max_possible_total' => 0,
+                        'attendance_percentage' => 0,
+                        'weighted_score' => 0
+                    ],
+                    'activities' => [],
+                    'assignments_quizzes' => [],
+                    'major_exams' => [],
+                    'category_scores' => [
+                        'attendance' => 0,
+                        'activity' => 0,
+                        'assignment_quiz' => 0,
+                        'major_exam' => 0
+                    ],
+                    'final_grade' => 0
+                ];
+                
+                // Calculate attendance
+                $student_attendance = array_filter($attendance_records, function($record) use ($student) {
+                    return $record['student_id'] === $student['student_id'];
+                });
+                
+                $total_sessions = count($student_attendance);
+                $present_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'present';
+                }));
+                $late_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'late';
+                }));
+                $absent_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'absent';
+                }));
+                $excused_sessions = count(array_filter($student_attendance, function($record) {
+                    return strtolower($record['status']) === 'excused';
+                }));
+                
+                // Calculate attendance score based on 6-point scale
+                $max_possible_score = 6;
+                $total_earned_score = 0;
+                
+                foreach ($student_attendance as $record) {
+                    $status = strtolower($record['status']);
+                    switch ($status) {
+                        case 'present':
+                            $total_earned_score += 6;
+                            break;
+                        case 'late':
+                            $total_earned_score += 4;
+                            break;
+                        case 'excused':
+                            $total_earned_score += 5;
+                            break;
+                        case 'absent':
+                            $total_earned_score += 0;
+                            break;
+                        default:
+                            $total_earned_score += 0;
+                            break;
+                    }
+                }
+                
+                $max_possible_total = $total_sessions * $max_possible_score;
+                $attendance_percentage = $max_possible_total > 0 ? 
+                    ($total_earned_score / $max_possible_total) * 100 : 0;
+                
+                $student_grades['attendance'] = [
+                    'total_sessions' => $total_sessions,
+                    'present_sessions' => $present_sessions,
+                    'late_sessions' => $late_sessions,
+                    'absent_sessions' => $absent_sessions,
+                    'excused_sessions' => $excused_sessions,
+                    'total_earned_score' => $total_earned_score,
+                    'max_possible_score' => $max_possible_score,
+                    'max_possible_total' => $max_possible_total,
+                    'attendance_percentage' => round($attendance_percentage, 2),
+                    'weighted_score' => round(($attendance_percentage * $attendance_weight) / 100, 2)
+                ];
+                
+                // Process activities
+                foreach ($activity_tasks as $task) {
+                    $task_grade = [
+                        'task_id' => $task['task_id'],
+                        'title' => $task['title'],
+                        'type' => $task['type'],
+                        'points' => $task['points'],
+                        'grade' => null,
+                        'grade_percentage' => 0,
+                        'status' => 'not_submitted',
+                        'submitted_at' => null,
+                        'feedback' => null
+                    ];
+                    
+                    // Find submission for this task and student
+                    foreach ($submissions as $submission) {
+                        if ($submission['student_id'] === $student['student_id'] && 
+                            $submission['task_id'] === $task['task_id']) {
+                            
+                            $task_grade['grade'] = $submission['grade'];
+                            $task_grade['status'] = $submission['grade'] !== null ? 'graded' : 'submitted';
+                            $task_grade['submitted_at'] = $submission['submitted_at'];
+                            $task_grade['feedback'] = $submission['feedback'];
+                            
+                            if ($submission['grade'] !== null) {
+                                $task_grade['grade_percentage'] = round(($submission['grade'] / $task['points']) * 100, 2);
+                            }
+                            break;
+                        }
+                    }
+                    
+                    $student_grades['activities'][] = $task_grade;
+                }
+                
+                // Process assignments and quizzes
+                foreach ($assignment_quiz_tasks as $task) {
+                    $task_grade = [
+                        'task_id' => $task['task_id'],
+                        'title' => $task['title'],
+                        'type' => $task['type'],
+                        'points' => $task['points'],
+                        'grade' => null,
+                        'grade_percentage' => 0,
+                        'status' => 'not_submitted',
+                        'submitted_at' => null,
+                        'feedback' => null
+                    ];
+                    
+                    foreach ($submissions as $submission) {
+                        if ($submission['student_id'] === $student['student_id'] && 
+                            $submission['task_id'] === $task['task_id']) {
+                            
+                            $task_grade['grade'] = $submission['grade'];
+                            $task_grade['status'] = $submission['grade'] !== null ? 'graded' : 'submitted';
+                            $task_grade['submitted_at'] = $submission['submitted_at'];
+                            $task_grade['feedback'] = $submission['feedback'];
+                            
+                            if ($submission['grade'] !== null) {
+                                $task_grade['grade_percentage'] = round(($submission['grade'] / $task['points']) * 100, 2);
+                            }
+                            break;
+                        }
+                    }
+                    
+                    $student_grades['assignments_quizzes'][] = $task_grade;
+                }
+                
+                // Process major exams
+                foreach ($major_exam_tasks as $task) {
+                    $task_grade = [
+                        'task_id' => $task['task_id'],
+                        'title' => $task['title'],
+                        'type' => $task['type'],
+                        'points' => $task['points'],
+                        'grade' => null,
+                        'grade_percentage' => 0,
+                        'status' => 'not_submitted',
+                        'submitted_at' => null,
+                        'feedback' => null
+                    ];
+                    
+                    foreach ($submissions as $submission) {
+                        if ($submission['student_id'] === $student['student_id'] && 
+                            $submission['task_id'] === $task['task_id']) {
+                            
+                            $task_grade['grade'] = $submission['grade'];
+                            $task_grade['status'] = $submission['grade'] !== null ? 'graded' : 'submitted';
+                            $task_grade['submitted_at'] = $submission['submitted_at'];
+                            $task_grade['feedback'] = $submission['feedback'];
+                            
+                            if ($submission['grade'] !== null) {
+                                $task_grade['grade_percentage'] = round(($submission['grade'] / $task['points']) * 100, 2);
+                            }
+                            break;
+                        }
+                    }
+                    
+                    $student_grades['major_exams'][] = $task_grade;
+                }
+                
+                // Calculate category averages
+                $activity_avg = $this->calculate_category_average($student_grades['activities']);
+                $assignment_quiz_avg = $this->calculate_category_average($student_grades['assignments_quizzes']);
+                $major_exam_avg = $this->calculate_category_average($student_grades['major_exams']);
+                
+                $student_grades['category_scores'] = [
+                    'attendance' => $student_grades['attendance']['weighted_score'],
+                    'activity' => round(($activity_avg * $activity_weight) / 100, 2),
+                    'assignment_quiz' => round(($assignment_quiz_avg * $assignment_quiz_weight) / 100, 2),
+                    'major_exam' => round(($major_exam_avg * $major_exam_weight) / 100, 2)
+                ];
+                
+                // Calculate final grade
+                $final_grade = $student_grades['category_scores']['attendance'] + 
+                              $student_grades['category_scores']['activity'] + 
+                              $student_grades['category_scores']['assignment_quiz'] + 
+                              $student_grades['category_scores']['major_exam'];
+                
+                $student_grades['final_grade'] = round($final_grade, 2);
+                
+                $comprehensive_grades[] = $student_grades;
+            }
+            
+            return [
+                'students' => $comprehensive_grades,
+                'classroom' => $classroom,
+                'weights' => $weights
+            ];
+            
+        } catch (Exception $e) {
+            log_message('error', 'Failed to get comprehensive grades data: ' . $e->getMessage());
+            return [
+                'students' => [],
+                'classroom' => $classroom,
+                'weights' => $weights
+            ];
+        }
+    }
+    
+    /**
+     * Helper method to generate XLSX file with formulas and formatting
+     */
+    private function generate_grades_xlsx($grades_data, $classroom, $weights) {
+        try {
+            // Check if we have valid data
+            if (!isset($grades_data['students']) || !is_array($grades_data['students'])) {
+                throw new Exception('No student data available for export');
+            }
+            
+            // Create filename
+            $filename = preg_replace('/[^a-zA-Z0-9\s]/', '', $classroom['title']) . '_Grades_' . date('Y-m-d') . '.csv';
+            $filename = str_replace(' ', '_', $filename);
+            
+            // Set headers for CSV download
+            header('Content-Type: text/csv');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Cache-Control: no-cache, must-revalidate');
+            header('Expires: Sat, 26 Jul 1997 05:00:00 GMT');
+            
+            $output = fopen('php://output', 'w');
+            
+            // Add headers
+            fputcsv($output, ['Student Name', 'Student Number', 'Attendance %', 'Activity %', 'Assignment/Quiz %', 'Major Exam %', 'Final Grade']);
+            
+            // Add data rows
+            if (empty($grades_data['students'])) {
+                // Add a row indicating no data
+                fputcsv($output, ['No students found', '', '', '', '', '', '']);
+            } else {
+                foreach ($grades_data['students'] as $student) {
+                    // Ensure all required fields exist
+                    $student_name = isset($student['student_name']) ? $student['student_name'] : 'Unknown';
+                    $student_num = isset($student['student_num']) ? $student['student_num'] : '';
+                    $attendance_percentage = isset($student['attendance']['attendance_percentage']) ? $student['attendance']['attendance_percentage'] : 0;
+                    $activity_avg = $this->calculate_category_average($student['activities'] ?? []);
+                    $assignment_quiz_avg = $this->calculate_category_average($student['assignments_quizzes'] ?? []);
+                    $major_exam_avg = $this->calculate_category_average($student['major_exams'] ?? []);
+                    $final_grade = isset($student['final_grade']) ? $student['final_grade'] : 0;
+                    
+                    fputcsv($output, [
+                        $student_name,
+                        $student_num,
+                        $attendance_percentage,
+                        $activity_avg,
+                        $assignment_quiz_avg,
+                        $major_exam_avg,
+                        $final_grade
+                    ]);
+                }
+            }
+            
+            fclose($output);
+            
+        } catch (Exception $e) {
+            // If there's an error, return a simple error message
+            header('Content-Type: text/plain');
+            header('Content-Disposition: attachment; filename="error.txt"');
+            echo "Error generating grades export: " . $e->getMessage();
         }
     }
 }

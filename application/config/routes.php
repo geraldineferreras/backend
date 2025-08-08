@@ -219,6 +219,8 @@ $route['api/teacher/classroom/(:any)/stream/(:num)/comment/(:num)']['delete'] = 
 $route['api/teacher/classroom/(:any)/students']['get'] = 'api/TeacherController/classroom_students_get/$1';
 $route['api/teacher/classroom/(:any)/enrollment-stats']['get'] = 'api/TeacherController/classroom_enrollment_stats_get/$1';
 $route['api/teacher/classroom/(:any)/grades']['get'] = 'api/TeacherController/classroom_grades_get/$1';
+$route['api/teacher/classroom/(:any)/comprehensive-grades']['get'] = 'api/TeacherController/classroom_comprehensive_grades_get/$1';
+$route['api/teacher/classroom/(:any)/export-grades']['get'] = 'api/TeacherController/classroom_export_grades_get/$1';
 
 // Task Management
 $route['api/tasks/create']['post'] = 'api/TaskController/create_post';
@@ -237,6 +239,10 @@ $route['api/tasks/(:num)/submit']['post'] = 'api/TaskController/submit_post/$1';
 $route['api/tasks/(:num)/comments']['get'] = 'api/TaskController/comments_get/$1';
 $route['api/tasks/(:num)/comments']['post'] = 'api/TaskController/comment_post/$1';
 $route['api/tasks/submissions/(:num)/grade']['post'] = 'api/TaskController/grade_submission_post/$1';
+$route['api/tasks/submissions/(:num)']['get'] = 'api/TaskController/submission_get/$1';
+$route['api/tasks/submissions/(:num)/attachments/(:num)']['delete'] = 'api/TaskController/delete_attachment_delete/$1/$2';
+$route['api/tasks/(:num)/submission']['get'] = 'api/TaskController/student_submission_get/$1';
+$route['api/tasks/(:num)/submissions']['get'] = 'api/TaskController/task_submissions_get/$1';
 $route['api/tasks/(:num)/stats']['get'] = 'api/TaskController/stats_get/$1';
 $route['api/tasks/(:num)/bulk-grade']['post'] = 'api/TaskController/bulk_grade_post/$1';
 $route['api/tasks/files/(:any)']['get'] = 'api/TaskController/serve_file/$1';

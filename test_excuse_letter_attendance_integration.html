@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excuse Letter Attendance Integration Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #fafafa;
+        }
+        .section h2 {
+            color: #2c3e50;
+            margin-top: 0;
+        }
+        .step {
+            background: #e8f4fd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+        }
+        .endpoint {
+            background: #27ae60;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            display: inline-block;
+            margin: 5px 0;
+        }
+        .method {
+            background: #e74c3c;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .note {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎓 Excuse Letter Attendance Integration Test</h1>
+        
+        <div class="section">
+            <h2>📋 Feature Overview</h2>
+            <p>This feature automatically marks a student's attendance as "Excused" when a teacher approves their excuse letter.</p>
+            
+            <div class="note">
+                <strong>How it works:</strong>
+                <ul>
+                    <li>Student submits an excuse letter for a specific date</li>
+                    <li>Teacher reviews and approves the excuse letter</li>
+                    <li>System automatically creates or updates attendance record with "Excused" status</li>
+                    <li>Student receives notification about the approval</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🔄 Testing Workflow</h2>
+            
+            <div class="step">
+                <h3>Step 1: Submit Excuse Letter (Student)</h3>
+                <div class="endpoint">POST /api/excuse-letters/submit</div>
+                <div class="code-block">
+{
+    "class_id": "11",
+    "date_absent": "2025-08-08",
+    "reason": "Medical appointment - had a doctor's checkup"
+}
+                </div>
+                <button onclick="submitExcuseLetter()">Submit Excuse Letter</button>
+                <div id="submitResult" class="result"></div>
+            </div>
+
+            <div class="step">
+                <h3>Step 2: Check Current Attendance Status</h3>
+                <div class="endpoint">GET /api/attendance/records/11/2025-08-08</div>
+                <button onclick="checkAttendance()">Check Attendance</button>
+                <div id="attendanceResult" class="result"></div>
+            </div>
+
+            <div class="step">
+                <h3>Step 3: Approve Excuse Letter (Teacher)</h3>
+                <div class="endpoint">PUT /api/excuse-letters/update/{letter_id}</div>
+                <div class="code-block">
+{
+    "status": "approved",
+    "teacher_notes": "Excuse approved. Medical appointments are valid reasons for absence."
+}
+                </div>
+                <button onclick="approveExcuseLetter()">Approve Excuse Letter</button>
+                <div id="approveResult" class="result"></div>
+            </div>
+
+            <div class="step">
+                <h3>Step 4: Verify Attendance is Marked as Excused</h3>
+                <div class="endpoint">GET /api/attendance/records/11/2025-08-08</div>
+                <button onclick="verifyAttendance()">Verify Attendance</button>
+                <div id="verifyResult" class="result"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🔍 What Happens Behind the Scenes</h2>
+            
+            <div class="success">
+                <strong>When a teacher approves an excuse letter:</strong>
+                <ol>
+                    <li>System checks if attendance record exists for that student, class, and date</li>
+                    <li>If attendance exists: Updates status to "Excused" and adds note</li>
+                    <li>If no attendance exists: Creates new attendance record with "Excused" status</li>
+                    <li>Sends notification to student about approval</li>
+                    <li>Logs the action for audit purposes</li>
+                </ol>
+            </div>
+
+            <div class="code-block">
+// Example of what gets inserted/updated in attendance table:
+{
+    "student_id": "STU689439A21701A102",
+    "class_id": "11",
+    "date": "2025-08-08",
+    "status": "Excused",
+    "notes": "Automatically marked as excused due to approved excuse letter",
+    "teacher_id": "TEA6860CA834786E482",
+    "created_at": "2025-08-08 23:37:50",
+    "updated_at": "2025-08-08 23:37:50"
+}
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 Expected Results</h2>
+            
+            <div class="note">
+                <strong>Before approval:</strong>
+                <ul>
+                    <li>Student appears in attendance list with <code>status: null</code></li>
+                    <li>Or may have existing status like "Absent" or "Present"</li>
+                </ul>
+            </div>
+
+            <div class="success">
+                <strong>After approval:</strong>
+                <ul>
+                    <li>Student's attendance status changes to <code>"Excused"</code></li>
+                    <li>Notes field shows: "Automatically marked as excused due to approved excuse letter"</li>
+                    <li>Student receives notification about the approval</li>
+                    <li>Attendance summary shows +1 in "excused" count</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const baseUrl = 'http://localhost/scms_new_backup/index.php';
+        let currentLetterId = null;
+
+        async function submitExcuseLetter() {
+            const resultDiv = document.getElementById('submitResult');
+            resultDiv.textContent = 'Submitting excuse letter...';
+            
+            try {
+                const response = await fetch(`${baseUrl}/api/excuse-letters/submit`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer YOUR_STUDENT_TOKEN_HERE'
+                    },
+                    body: JSON.stringify({
+                        class_id: "11",
+                        date_absent: "2025-08-08",
+                        reason: "Medical appointment - had a doctor's checkup"
+                    })
+                });
+                
+                const data = await response.json();
+                resultDiv.textContent = JSON.stringify(data, null, 2);
+                
+                if (data.status && data.data && data.data.letter_id) {
+                    currentLetterId = data.data.letter_id;
+                }
+            } catch (error) {
+                resultDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        async function checkAttendance() {
+            const resultDiv = document.getElementById('attendanceResult');
+            resultDiv.textContent = 'Checking attendance...';
+            
+            try {
+                const response = await fetch(`${baseUrl}/api/attendance/records/11/2025-08-08`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer YOUR_TEACHER_TOKEN_HERE'
+                    }
+                });
+                
+                const data = await response.json();
+                resultDiv.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        async function approveExcuseLetter() {
+            if (!currentLetterId) {
+                document.getElementById('approveResult').textContent = 'Error: No letter ID available. Please submit an excuse letter first.';
+                return;
+            }
+            
+            const resultDiv = document.getElementById('approveResult');
+            resultDiv.textContent = 'Approving excuse letter...';
+            
+            try {
+                const response = await fetch(`${baseUrl}/api/excuse-letters/update/${currentLetterId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer YOUR_TEACHER_TOKEN_HERE'
+                    },
+                    body: JSON.stringify({
+                        status: "approved",
+                        teacher_notes: "Excuse approved. Medical appointments are valid reasons for absence."
+                    })
+                });
+                
+                const data = await response.json();
+                resultDiv.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        async function verifyAttendance() {
+            const resultDiv = document.getElementById('verifyResult');
+            resultDiv.textContent = 'Verifying attendance...';
+            
+            try {
+                const response = await fetch(`${baseUrl}/api/attendance/records/11/2025-08-08`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer YOUR_TEACHER_TOKEN_HERE'
+                    }
+                });
+                
+                const data = await response.json();
+                resultDiv.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance API Collation Fix Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <h1>Attendance API Collation Fix Test</h1>
+    
+    <div class="form-group">
+        <label for="baseUrl">Base URL:</label>
+        <input type="text" id="baseUrl" value="http://localhost:8080/scms_new_backup" placeholder="Enter base URL">
+    </div>
+    
+    <div class="form-group">
+        <label for="teacherToken">Teacher JWT Token:</label>
+        <textarea id="teacherToken" rows="3" placeholder="Enter teacher JWT token"></textarea>
+    </div>
+    
+    <div class="form-group">
+        <label for="classId">Class ID:</label>
+        <input type="text" id="classId" value="3" placeholder="Enter class ID">
+    </div>
+    
+    <div class="form-group">
+        <label for="date">Date (YYYY-MM-DD):</label>
+        <input type="text" id="date" value="2025-01-08" placeholder="Enter date">
+    </div>
+    
+    <div>
+        <button onclick="testStudentsEndpoint()">Test Students Endpoint</button>
+        <button onclick="testRecordsEndpoint()">Test Records Endpoint</button>
+        <button onclick="testBoth()">Test Both Endpoints</button>
+    </div>
+    
+    <div id="result" class="result" style="display: none;"></div>
+
+    <script>
+        async function makeRequest(url, token) {
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.text();
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${data}`);
+                }
+                
+                return {
+                    success: true,
+                    data: data,
+                    status: response.status
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
+        }
+        
+        function showResult(content, isError = false) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = content;
+            resultDiv.style.display = 'block';
+            resultDiv.className = `result ${isError ? 'error' : 'success'}`;
+        }
+        
+        async function testStudentsEndpoint() {
+            const baseUrl = document.getElementById('baseUrl').value.trim();
+            const token = document.getElementById('teacherToken').value.trim();
+            const classId = document.getElementById('classId').value.trim();
+            
+            if (!baseUrl || !token || !classId) {
+                showResult('Please fill in all required fields.', true);
+                return;
+            }
+            
+            const url = `${baseUrl}/api/attendance/students/${classId}`;
+            showResult('Testing Students Endpoint...\nURL: ' + url);
+            
+            const result = await makeRequest(url, token);
+            
+            if (result.success) {
+                showResult(`✅ Students Endpoint Test Successful!\n\nStatus: ${result.status}\n\nResponse:\n${result.data}`);
+            } else {
+                showResult(`❌ Students Endpoint Test Failed!\n\nError: ${result.error}`, true);
+            }
+        }
+        
+        async function testRecordsEndpoint() {
+            const baseUrl = document.getElementById('baseUrl').value.trim();
+            const token = document.getElementById('teacherToken').value.trim();
+            const classId = document.getElementById('classId').value.trim();
+            const date = document.getElementById('date').value.trim();
+            
+            if (!baseUrl || !token || !classId || !date) {
+                showResult('Please fill in all required fields.', true);
+                return;
+            }
+            
+            const url = `${baseUrl}/api/attendance/records/${classId}/${date}`;
+            showResult('Testing Records Endpoint...\nURL: ' + url);
+            
+            const result = await makeRequest(url, token);
+            
+            if (result.success) {
+                showResult(`✅ Records Endpoint Test Successful!\n\nStatus: ${result.status}\n\nResponse:\n${result.data}`);
+            } else {
+                showResult(`❌ Records Endpoint Test Failed!\n\nError: ${result.error}`, true);
+            }
+        }
+        
+        async function testBoth() {
+            const baseUrl = document.getElementById('baseUrl').value.trim();
+            const token = document.getElementById('teacherToken').value.trim();
+            const classId = document.getElementById('classId').value.trim();
+            const date = document.getElementById('date').value.trim();
+            
+            if (!baseUrl || !token || !classId || !date) {
+                showResult('Please fill in all required fields.', true);
+                return;
+            }
+            
+            showResult('Testing Both Endpoints...\n');
+            
+            // Test Students endpoint
+            const studentsUrl = `${baseUrl}/api/attendance/students/${classId}`;
+            const studentsResult = await makeRequest(studentsUrl, token);
+            
+            let resultText = '';
+            
+            if (studentsResult.success) {
+                resultText += `✅ Students Endpoint: SUCCESS\nStatus: ${studentsResult.status}\n\n`;
+            } else {
+                resultText += `❌ Students Endpoint: FAILED\nError: ${studentsResult.error}\n\n`;
+            }
+            
+            // Test Records endpoint
+            const recordsUrl = `${baseUrl}/api/attendance/records/${classId}/${date}`;
+            const recordsResult = await makeRequest(recordsUrl, token);
+            
+            if (recordsResult.success) {
+                resultText += `✅ Records Endpoint: SUCCESS\nStatus: ${recordsResult.status}\n\n`;
+            } else {
+                resultText += `❌ Records Endpoint: FAILED\nError: ${recordsResult.error}\n\n`;
+            }
+            
+            showResult(resultText, !studentsResult.success || !recordsResult.success);
+        }
+    </script>
+</body>
+</html>

@@ -32,6 +32,8 @@ class TaskController extends BaseController
             $data->points = $this->input->post('points');
             $data->instructions = $this->input->post('instructions');
             $data->class_codes = json_decode($this->input->post('class_codes'), true);
+            $data->assignment_type = $this->input->post('assignment_type') ?? 'classroom';
+            $data->assigned_students = json_decode($this->input->post('assigned_students'), true);
             $data->allow_comments = $this->input->post('allow_comments') ? 1 : 0;
             $data->is_draft = $this->input->post('is_draft') ? 1 : 0;
             $data->is_scheduled = $this->input->post('is_scheduled') ? 1 : 0;
@@ -560,8 +562,13 @@ class TaskController extends BaseController
     }
 
     /**
-     * Submit task (Student only)
+     * Submit task (Student only) - Enhanced with multiple file support
      * POST /api/tasks/{task_id}/submit
+     * 
+     * Supports three methods for multiple files:
+     * 1. Multiple files with same field name (attachment[])
+     * 2. Multiple files with different field names (attachment1, attachment2, etc.)
+     * 3. JSON array of attachment URLs
      */
     public function submit_post($task_id)
     {
@@ -577,40 +584,79 @@ class TaskController extends BaseController
             $data->submission_content = $this->input->post('submission_content');
             $data->class_code = $this->input->post('class_code');
             
-            // Handle file upload
-            $attachment_url = null;
-            $attachment_type = null;
+            // Handle multiple file uploads
+            $attachments = [];
             
-            if (isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
-                $upload_config = [
-                    'upload_path' => './uploads/submissions/',
-                    'allowed_types' => 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3',
-                    'max_size' => 10240, // 10MB
-                    'encrypt_name' => true,
-                    'overwrite' => false
-                ];
-
-                if (!is_dir($upload_config['upload_path'])) {
-                    mkdir($upload_config['upload_path'], 0755, true);
-                }
-
-                $this->load->library('upload', $upload_config);
-
-                if ($this->upload->do_upload('attachment')) {
-                    $upload_data = $this->upload->data();
-                    $attachment_url = 'uploads/submissions/' . $upload_data['file_name'];
-                    $attachment_type = 'file';
-                } else {
-                    $this->send_error('File upload failed: ' . $this->upload->display_errors('', ''), 400);
-                    return;
+            // Method 1: Multiple files with same field name (attachment[])
+            if (isset($_FILES['attachment']) && is_array($_FILES['attachment']['name'])) {
+                $file_count = count($_FILES['attachment']['name']);
+                
+                for ($i = 0; $i < $file_count; $i++) {
+                    if ($_FILES['attachment']['error'][$i] === UPLOAD_ERR_OK) {
+                        $uploaded_file = $this->upload_single_file($_FILES['attachment']['tmp_name'][$i], $_FILES['attachment']['name'][$i]);
+                        if ($uploaded_file) {
+                            $attachments[] = $uploaded_file;
+                        }
+                    }
                 }
             }
+            // Method 2: Multiple files with different field names (attachment1, attachment2, etc.)
+            else {
+                $attachment_fields = [];
+                foreach ($_FILES as $key => $file) {
+                    if (strpos($key, 'attachment') === 0 && $file['error'] === UPLOAD_ERR_OK) {
+                        $attachment_fields[] = $key;
+                    }
+                }
+                
+                foreach ($attachment_fields as $field_name) {
+                    $uploaded_file = $this->upload_single_file($_FILES[$field_name]['tmp_name'], $_FILES[$field_name]['name']);
+                    if ($uploaded_file) {
+                        $attachments[] = $uploaded_file;
+                    }
+                }
+            }
+            
+            // Legacy support: Single file upload
+            if (empty($attachments) && isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
+                $uploaded_file = $this->upload_single_file($_FILES['attachment']['tmp_name'], $_FILES['attachment']['name']);
+                if ($uploaded_file) {
+                    $attachments[] = $uploaded_file;
+                }
+            }
+            
         } else {
             $data = $this->get_json_input();
             if (!$data) return;
             
-            $attachment_url = $data->attachment_url ?? null;
-            $attachment_type = $data->attachment_type ?? null;
+            // Handle JSON attachments
+            $attachments = [];
+            if (isset($data->attachments) && is_array($data->attachments)) {
+                foreach ($data->attachments as $attachment) {
+                    $attachments[] = [
+                        'file_name' => $attachment->file_name ?? 'external_file',
+                        'original_name' => $attachment->original_name ?? $attachment->file_name ?? 'external_file',
+                        'file_path' => $attachment->file_path ?? '',
+                        'file_size' => $attachment->file_size ?? 0,
+                        'mime_type' => $attachment->mime_type ?? 'application/octet-stream',
+                        'attachment_type' => $attachment->attachment_type ?? 'link',
+                        'attachment_url' => $attachment->attachment_url ?? ''
+                    ];
+                }
+            } else {
+                // Legacy support: Single attachment
+                if (isset($data->attachment_url) && isset($data->attachment_type)) {
+                    $attachments[] = [
+                        'file_name' => 'external_file',
+                        'original_name' => 'external_file',
+                        'file_path' => '',
+                        'file_size' => 0,
+                        'mime_type' => 'application/octet-stream',
+                        'attachment_type' => $data->attachment_type,
+                        'attachment_url' => $data->attachment_url
+                    ];
+                }
+            }
         }
 
         // Debug: Log what we received
@@ -618,9 +664,9 @@ class TaskController extends BaseController
         error_log("Task submission debug - POST data: " . print_r($this->input->post(), true));
         error_log("Task submission debug - FILES data: " . print_r($_FILES, true));
         error_log("Task submission debug - submission_content: " . ($data->submission_content ?? 'NULL'));
-        error_log("Task submission debug - attachment_url: " . ($attachment_url ?? 'NULL'));
+        error_log("Task submission debug - attachments count: " . count($attachments));
 
-        if (empty($data->submission_content) && empty($attachment_url)) {
+        if (empty($data->submission_content) && empty($attachments)) {
             $this->send_error('At least one attachment is required', 400);
             return;
         }
@@ -656,21 +702,69 @@ class TaskController extends BaseController
                 'student_id' => $user_data['user_id'],
                 'class_code' => $data->class_code,
                 'submission_content' => $data->submission_content ?? null,
-                'attachment_type' => $attachment_type,
-                'attachment_url' => $attachment_url
+                'attachment_type' => null, // Will be handled by attachments table
+                'attachment_url' => null   // Will be handled by attachments table
             ];
 
-            $submission_id = $this->Task_model->submit_task($submission_data);
+            // Use new method for multiple attachments
+            $submission_id = $this->Task_model->submit_task_with_attachments($submission_data, $attachments);
             if ($submission_id) {
                 // Send notification to teacher about the submission
                 $this->send_submission_notification($task, $user_data, $submission_id, $data->class_code);
                 
-                $this->send_success(['submission_id' => $submission_id], 'Task submitted successfully', 201);
+                $this->send_success([
+                    'submission_id' => $submission_id,
+                    'attachments_count' => count($attachments)
+                ], 'Task submitted successfully', 201);
             } else {
                 $this->send_error('Failed to submit task', 500);
             }
         } catch (Exception $e) {
             $this->send_error('Failed to submit task: ' . $e->getMessage(), 500);
+        }
+    }
+    
+    /**
+     * Upload a single file and return attachment data
+     */
+    private function upload_single_file($tmp_name, $original_name) {
+        $upload_config = [
+            'upload_path' => './uploads/submissions/',
+            'allowed_types' => 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3',
+            'max_size' => 10240, // 10MB
+            'encrypt_name' => true,
+            'overwrite' => false
+        ];
+
+        if (!is_dir($upload_config['upload_path'])) {
+            mkdir($upload_config['upload_path'], 0755, true);
+        }
+
+        $this->load->library('upload', $upload_config);
+        
+        // Set the file data for upload
+        $_FILES['temp_file'] = [
+            'name' => $original_name,
+            'type' => $_FILES['attachment']['type'] ?? 'application/octet-stream',
+            'tmp_name' => $tmp_name,
+            'error' => UPLOAD_ERR_OK,
+            'size' => $_FILES['attachment']['size'] ?? 0
+        ];
+
+        if ($this->upload->do_upload('temp_file')) {
+            $upload_data = $this->upload->data();
+            return [
+                'file_name' => $upload_data['file_name'],
+                'original_name' => $original_name,
+                'file_path' => 'uploads/submissions/' . $upload_data['file_name'],
+                'file_size' => $upload_data['file_size'],
+                'mime_type' => $upload_data['file_type'],
+                'attachment_type' => 'file',
+                'attachment_url' => 'uploads/submissions/' . $upload_data['file_name']
+            ];
+        } else {
+            $this->send_error('File upload failed: ' . $this->upload->display_errors('', ''), 400);
+            return false;
         }
     }
 
@@ -1399,6 +1493,29 @@ class TaskController extends BaseController
     }
 
     /**
+     * Get all student submissions with attachments for a specific task (Teacher only)
+     * GET /api/tasks/{task_id}/submissions
+     */
+    public function task_submissions_get($task_id)
+    {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        try {
+            $result = $this->Task_model->get_task_submissions_with_attachments($task_id, $user_data['user_id']);
+            
+            if (!$result) {
+                $this->send_error('Task not found or access denied', 404);
+                return;
+            }
+
+            $this->send_success($result, 'Task submissions retrieved successfully');
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve task submissions: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * Send notifications to students when a task is created
      */
     private function send_task_notifications($task_id, $task, $class_codes, $teacher_data)
@@ -1539,6 +1656,97 @@ class TaskController extends BaseController
         } catch (Exception $e) {
             // Log error but don't fail the grading
             log_message('error', "Failed to send grade notification: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get submission with attachments
+     * GET /api/tasks/submissions/{submission_id}
+     */
+    public function submission_get($submission_id)
+    {
+        $user_data = require_auth($this);
+        if (!$user_data) return;
+
+        try {
+            $submission = $this->Task_model->get_submission_with_attachments($submission_id);
+            if (!$submission) {
+                $this->send_error('Submission not found', 404);
+                return;
+            }
+
+            // Check access permissions
+            if ($user_data['role'] === 'student') {
+                if ($submission['student_id'] !== $user_data['user_id']) {
+                    $this->send_error('Access denied', 403);
+                    return;
+                }
+            } elseif ($user_data['role'] === 'teacher') {
+                $task = $this->Task_model->get_by_id($submission['task_id']);
+                if (!$task || $task['teacher_id'] !== $user_data['user_id']) {
+                    $this->send_error('Access denied', 403);
+                    return;
+                }
+            }
+
+            $this->send_success($submission, 'Submission retrieved successfully');
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve submission: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Delete attachment
+     * DELETE /api/tasks/submissions/{submission_id}/attachments/{attachment_id}
+     */
+    public function delete_attachment_delete($submission_id, $attachment_id)
+    {
+        $user_data = require_student($this);
+        if (!$user_data) return;
+
+        try {
+            // Check if submission belongs to student
+            $submission = $this->Task_model->get_student_submission($submission_id, $user_data['user_id']);
+            if (!$submission) {
+                $this->send_error('Submission not found or access denied', 404);
+                return;
+            }
+
+            $success = $this->Task_model->delete_attachment($attachment_id, $submission_id);
+            if ($success) {
+                $this->send_success(null, 'Attachment deleted successfully');
+            } else {
+                $this->send_error('Failed to delete attachment', 500);
+            }
+        } catch (Exception $e) {
+            $this->send_error('Failed to delete attachment: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get student submission with attachments
+     * GET /api/tasks/{task_id}/submission
+     */
+    public function student_submission_get($task_id)
+    {
+        $user_data = require_student($this);
+        if (!$user_data) return;
+
+        $class_code = $this->input->get('class_code');
+        if (empty($class_code)) {
+            $this->send_error('Class code is required', 400);
+            return;
+        }
+
+        try {
+            $submission = $this->Task_model->get_student_submission_with_attachments($task_id, $user_data['user_id'], $class_code);
+            if ($submission) {
+                $this->send_success($submission, 'Submission retrieved successfully');
+            } else {
+                $this->send_success(null, 'No submission found');
+            }
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve submission: ' . $e->getMessage(), 500);
         }
     }
 } 

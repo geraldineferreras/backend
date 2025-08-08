@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Teacher Submissions API</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        .submission-card { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }
+        .student-info { display: flex; align-items: center; margin-bottom: 10px; }
+        .student-avatar { width: 40px; height: 40px; border-radius: 50%; background-color: #007bff; color: white; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold; }
+        .attachment-list { margin-top: 10px; }
+        .attachment-item { background-color: #f8f9fa; padding: 5px; margin: 2px 0; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>Test Teacher Submissions API Endpoint</h1>
+    
+    <div class="test-section info">
+        <h3>Endpoint Information</h3>
+        <p><strong>URL:</strong> <code>GET {{base_url}}/api/tasks/{task_id}/submissions</code></p>
+        <p><strong>Required Headers:</strong> <code>Authorization: Bearer {teacher_token}</code></p>
+        <p><strong>Description:</strong> Get all student submissions with attachments for a specific task (Teacher only)</p>
+    </div>
+
+    <div class="test-section">
+        <h3>Test Configuration</h3>
+        <label for="baseUrl">Base URL:</label>
+        <input type="text" id="baseUrl" value="http://localhost/scms_new_backup" style="width: 300px; margin: 5px;">
+        <br>
+        <label for="taskId">Task ID:</label>
+        <input type="number" id="taskId" value="58" style="margin: 5px;">
+        <br>
+        <label for="token">Authorization Token:</label>
+        <input type="text" id="token" value="teacher_token" style="width: 300px; margin: 5px;">
+    </div>
+
+    <div class="test-section">
+        <h3>Test Actions</h3>
+        <button onclick="testTeacherSubmissions()">Test Teacher Submissions Endpoint</button>
+        <button onclick="testWithDifferentTask()">Test with Task ID 1</button>
+        <button onclick="testWithoutToken()">Test without Authorization</button>
+    </div>
+
+    <div class="test-section">
+        <h3>Test Results</h3>
+        <div id="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Expected Response Format</h3>
+        <pre>{
+  "status": "success",
+  "message": "Task submissions retrieved successfully",
+  "data": {
+    "task": {
+      "task_id": 58,
+      "title": "Task Testing due date",
+      "type": "EXAM",
+      "points": 50,
+      "due_date": "2025-08-11"
+    },
+    "submissions": [
+      {
+        "submission_id": 1,
+        "student_id": "S001",
+        "student_name": "CHRISTINE NOAH G. SINGIAN",
+        "student_num": "2022311852",
+        "submission_content": "My submission content...",
+        "submitted_at": "2024-01-15 10:30:00",
+        "grade": null,
+        "feedback": null,
+        "status": "submitted",
+        "attachments": [
+          {
+            "attachment_id": 1,
+            "file_name": "document.pdf",
+            "original_name": "my_document.pdf",
+            "file_path": "uploads/submissions/abc123.pdf",
+            "file_size": 1024000,
+            "mime_type": "application/pdf",
+            "attachment_type": "file"
+          }
+        ],
+        "attachment_count": 1
+      }
+    ],
+    "total_submissions": 3,
+    "submitted_count": 2,
+    "graded_count": 0
+  }
+}</pre>
+    </div>
+
+    <script>
+        async function testTeacherSubmissions() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const taskId = document.getElementById('taskId').value;
+            const token = document.getElementById('token').value;
+            
+            const url = `${baseUrl}/api/tasks/${taskId}/submissions`;
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const responseText = await response.text();
+                const resultsDiv = document.getElementById('results');
+                
+                let statusClass = response.ok ? 'success' : 'error';
+                let statusText = response.ok ? 'SUCCESS' : 'ERROR';
+                
+                let displayContent = `
+                    <div class="${statusClass}">
+                        <h4>${statusText} - Status: ${response.status}</h4>
+                        <p><strong>URL:</strong> ${url}</p>
+                        <p><strong>Response:</strong></p>
+                        <pre>${responseText}</pre>
+                    </div>
+                `;
+                
+                // If successful, try to parse and display formatted data
+                if (response.ok) {
+                    try {
+                        const data = JSON.parse(responseText);
+                        if (data.data && data.data.submissions) {
+                            displayContent += `
+                                <div class="info">
+                                    <h4>Formatted Submissions:</h4>
+                                    <p><strong>Task:</strong> ${data.data.task?.title || 'N/A'}</p>
+                                    <p><strong>Total Submissions:</strong> ${data.data.total_submissions}</p>
+                                    <p><strong>Submitted:</strong> ${data.data.submitted_count}</p>
+                                    <p><strong>Graded:</strong> ${data.data.graded_count}</p>
+                                    
+                                    <h5>Student Submissions:</h5>
+                                    ${data.data.submissions.map(submission => `
+                                        <div class="submission-card">
+                                            <div class="student-info">
+                                                <div class="student-avatar">${getInitials(submission.student_name)}</div>
+                                                <div>
+                                                    <strong>${submission.student_name}</strong><br>
+                                                    <small>ID: ${submission.student_num}</small><br>
+                                                    <small>Status: ${submission.status || 'submitted'}</small><br>
+                                                    <small>Grade: ${submission.grade || '--'}/${data.data.task?.points || '--'}</small>
+                                                </div>
+                                            </div>
+                                            ${submission.submission_content ? `<p><strong>Content:</strong> ${submission.submission_content}</p>` : ''}
+                                            ${submission.attachments && submission.attachments.length > 0 ? `
+                                                <div class="attachment-list">
+                                                    <strong>Attachments (${submission.attachment_count}):</strong>
+                                                    ${submission.attachments.map(attachment => `
+                                                        <div class="attachment-item">
+                                                            📎 ${attachment.original_name} (${formatFileSize(attachment.file_size)})
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                            ` : '<p><em>No attachments</em></p>'}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `;
+                        }
+                    } catch (e) {
+                        console.log('Could not parse response for formatting');
+                    }
+                }
+                
+                resultsDiv.innerHTML = displayContent;
+            } catch (error) {
+                document.getElementById('results').innerHTML = `
+                    <div class="error">
+                        <h4>NETWORK ERROR</h4>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p><strong>URL:</strong> ${url}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function getInitials(name) {
+            if (!name) return '?';
+            return name.split(' ').map(n => n.charAt(0)).join('').toUpperCase().substring(0, 2);
+        }
+
+        function formatFileSize(bytes) {
+            if (!bytes) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function testWithDifferentTask() {
+            document.getElementById('taskId').value = '1';
+            testTeacherSubmissions();
+        }
+
+        function testWithoutToken() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const taskId = document.getElementById('taskId').value;
+            
+            const url = `${baseUrl}/api/tasks/${taskId}/submissions`;
+            
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.text())
+            .then(responseText => {
+                document.getElementById('results').innerHTML = `
+                    <div class="error">
+                        <h4>UNAUTHORIZED - Status: ${response.status}</h4>
+                        <p><strong>URL:</strong> ${url}</p>
+                        <p><strong>Response:</strong></p>
+                        <pre>${responseText}</pre>
+                    </div>
+                `;
+            })
+            .catch(error => {
+                document.getElementById('results').innerHTML = `
+                    <div class="error">
+                        <h4>NETWORK ERROR</h4>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p><strong>URL:</strong> ${url}</p>
+                    </div>
+                `;
+            });
+        }
+    </script>
+</body>
+</html>

@@ -529,6 +529,11 @@ class ExcuseLetterController extends BaseController
             $this->db->where('letter_id', $letter_id);
             $this->db->update('excuse_letters', $update_data);
 
+            // If status is approved, automatically mark attendance as excused
+            if (strtolower($data->status) === 'approved') {
+                $this->mark_attendance_as_excused($excuse_letter);
+            }
+
             // Send notification to student about the status update
             $this->send_excuse_letter_status_notification($excuse_letter, $data->status, $data->teacher_notes ?? null);
 
@@ -575,6 +580,89 @@ class ExcuseLetterController extends BaseController
             $this->send_success(null, 'Excuse letter deleted successfully');
         } catch (Exception $e) {
             $this->send_error('Failed to delete excuse letter: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Mark attendance as excused when excuse letter is approved
+     */
+    private function mark_attendance_as_excused($excuse_letter)
+    {
+        try {
+            $student_id = $excuse_letter['student_id'];
+            $class_id = $excuse_letter['class_id'];
+            $date_absent = $excuse_letter['date_absent'];
+            $teacher_id = $excuse_letter['teacher_id'];
+
+            // First, try to find the class in the classes table
+            $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
+                ->from('classes')
+                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                ->where('classes.class_id', $class_id)
+                ->get()->row_array();
+
+            // If not found in classes table, try to find corresponding classroom
+            if (!$class) {
+                $classroom = $this->db->select('classrooms.*, subjects.subject_name, sections.section_name')
+                    ->from('classrooms')
+                    ->join('subjects', 'classrooms.subject_id = subjects.id', 'left')
+                    ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
+                    ->where('classrooms.id', $class_id)
+                    ->get()->row_array();
+
+                if ($classroom) {
+                    // Find corresponding class in classes table based on subject and section
+                    $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
+                        ->from('classes')
+                        ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                        ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                        ->where('classes.subject_id', $classroom['subject_id'])
+                        ->where('classes.section_id', $classroom['section_id'])
+                        ->where('classes.teacher_id', $teacher_id)
+                        ->get()->row_array();
+                }
+            }
+
+            if (!$class) {
+                log_message('error', 'Class not found for excuse letter attendance marking. Class ID: ' . $class_id);
+                return;
+            }
+
+            // Check if attendance record already exists for this student, class, and date
+            $existing_attendance = $this->db->where('student_id', $student_id)
+                ->where('class_id', $class['class_id'])
+                ->where('date', $date_absent)
+                ->get('attendance')
+                ->row_array();
+
+            if ($existing_attendance) {
+                // Update existing attendance record
+                $this->db->where('attendance_id', $existing_attendance['attendance_id']);
+                $this->db->update('attendance', [
+                    'status' => 'Excused',
+                    'notes' => 'Automatically marked as excused due to approved excuse letter',
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+            } else {
+                // Create new attendance record
+                $this->db->insert('attendance', [
+                    'student_id' => $student_id,
+                    'subject_id' => $class['subject_id'],
+                    'class_id' => $class['class_id'],
+                    'date' => $date_absent,
+                    'time_in' => date('H:i:s'),
+                    'status' => 'Excused',
+                    'notes' => 'Automatically marked as excused due to approved excuse letter',
+                    'teacher_id' => $teacher_id,
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+            }
+
+            log_message('info', 'Attendance marked as excused for student ' . $student_id . ' on ' . $date_absent);
+        } catch (Exception $e) {
+            log_message('error', 'Failed to mark attendance as excused: ' . $e->getMessage());
         }
     }
 

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Attendance Status Fix</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .attendance-debug {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Attendance Status Fix</h1>
+        <p>This test will verify that the attendance status comparison fix works correctly.</p>
+        
+        <div class="form-group">
+            <label for="baseUrl">Base URL:</label>
+            <input type="text" id="baseUrl" value="http://localhost/scms_new_backup" placeholder="Enter base URL">
+        </div>
+        
+        <div class="form-group">
+            <label for="classCode">Class Code:</label>
+            <input type="text" id="classCode" value="A4V9TE" placeholder="Enter class code">
+        </div>
+        
+        <div class="form-group">
+            <label for="jwtToken">JWT Token:</label>
+            <input type="password" id="jwtToken" placeholder="Enter JWT token">
+        </div>
+        
+        <button onclick="testComprehensiveGrades()">Test Comprehensive Grades</button>
+        <button onclick="testExportGrades()">Test Export Grades</button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function testComprehensiveGrades() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const classCode = document.getElementById('classCode').value;
+            const jwtToken = document.getElementById('jwtToken').value;
+            
+            if (!baseUrl || !classCode || !jwtToken) {
+                showResult('Please fill in all fields', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${baseUrl}/api/teacher/classroom/${classCode}/comprehensive-grades?attendance_weight=10&activity_weight=30&assignment_quiz_weight=30&major_exam_weight=30`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${jwtToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.status) {
+                    let resultText = '✅ Comprehensive Grades Test Successful!\n\n';
+                    resultText += `Class: ${data.data.classroom.title}\n`;
+                    resultText += `Total Students: ${data.data.statistics.total_students}\n\n`;
+                    
+                    // Check attendance data specifically
+                    let attendanceIssues = [];
+                    let attendanceSuccess = 0;
+                    
+                    data.data.students.forEach((student, index) => {
+                        const attendance = student.attendance;
+                        resultText += `Student ${index + 1}: ${student.student_name}\n`;
+                        resultText += `  Total Sessions: ${attendance.total_sessions}\n`;
+                        resultText += `  Present: ${attendance.present_sessions}\n`;
+                        resultText += `  Late: ${attendance.late_sessions}\n`;
+                        resultText += `  Absent: ${attendance.absent_sessions}\n`;
+                        resultText += `  Excused: ${attendance.excused_sessions}\n`;
+                        resultText += `  Attendance %: ${attendance.attendance_percentage}%\n\n`;
+                        
+                        // Check if attendance data is properly calculated
+                        if (attendance.total_sessions > 0) {
+                            const calculatedTotal = attendance.present_sessions + attendance.late_sessions + 
+                                                  attendance.absent_sessions + attendance.excused_sessions;
+                            
+                            if (calculatedTotal === attendance.total_sessions) {
+                                attendanceSuccess++;
+                            } else {
+                                attendanceIssues.push(`${student.student_name}: Total sessions (${attendance.total_sessions}) doesn't match sum of individual statuses (${calculatedTotal})`);
+                            }
+                        }
+                    });
+                    
+                    if (attendanceIssues.length === 0 && attendanceSuccess > 0) {
+                        resultText += `🎉 ATTENDANCE FIX SUCCESSFUL! All ${attendanceSuccess} students have properly calculated attendance data.\n`;
+                    } else if (attendanceIssues.length > 0) {
+                        resultText += `⚠️ ATTENDANCE ISSUES FOUND:\n`;
+                        attendanceIssues.forEach(issue => {
+                            resultText += `  - ${issue}\n`;
+                        });
+                    } else {
+                        resultText += `ℹ️ No students have attendance records to test.\n`;
+                    }
+                    
+                    showResult(resultText, 'success');
+                } else {
+                    showResult(`❌ Error: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testExportGrades() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const classCode = document.getElementById('classCode').value;
+            const jwtToken = document.getElementById('jwtToken').value;
+            
+            if (!baseUrl || !classCode || !jwtToken) {
+                showResult('Please fill in all fields', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${baseUrl}/api/teacher/classroom/${classCode}/export-grades?attendance_weight=10&activity_weight=30&assignment_quiz_weight=30&major_exam_weight=30`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${jwtToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `grades_${classCode}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    showResult('✅ Export Grades Test Successful! File downloaded.', 'success');
+                } else {
+                    const errorData = await response.json();
+                    showResult(`❌ Export Error: ${errorData.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+        }
+    </script>
+</body>
+</html>

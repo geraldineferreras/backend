@@ -190,6 +190,7 @@ function get_notification_type_display($type) {
         'excuse_letter' => 'Excuse Letter',
         'grade' => 'Grade',
         'enrollment' => 'Enrollment',
+        'attendance' => 'Attendance',
         'system' => 'System'
     );
     
@@ -207,6 +208,7 @@ function get_notification_icon($type) {
         'excuse_letter' => '📄',
         'grade' => '📊',
         'enrollment' => '👥',
+        'attendance' => '📋',
         'system' => '⚙️'
     );
     
@@ -272,4 +274,105 @@ function get_class_teacher($class_code) {
     $CI->load->model('Teacher_model');
     
     return $CI->Teacher_model->get_teacher_by_class($class_code);
+}
+
+/**
+ * Create attendance notification for student
+ */
+function create_attendance_notification($student_id, $attendance_id, $status, $subject_name, $section_name, $date, $time_in = null, $notes = null) {
+    $CI =& get_instance();
+    
+    // Get student details
+    $student = $CI->db->select('full_name, email')
+        ->from('users')
+        ->where('user_id', $student_id)
+        ->get()->row_array();
+    
+    if (!$student) {
+        return false;
+    }
+    
+    // Determine notification title and message based on status
+    $status_display = ucfirst($status);
+    $title = "Attendance Recorded - {$status_display}";
+    
+    $message = "Your attendance has been recorded for {$subject_name} ({$section_name}) on {$date}.";
+    
+    if ($time_in) {
+        $message .= " Time in: {$time_in}";
+    }
+    
+    if ($notes) {
+        $message .= " Notes: {$notes}";
+    }
+    
+    // Add status-specific information
+    switch (strtolower($status)) {
+        case 'present':
+            $message .= " You were marked as present.";
+            break;
+        case 'late':
+            $message .= " You were marked as late.";
+            break;
+        case 'absent':
+            $message .= " You were marked as absent.";
+            break;
+        case 'excused':
+            $message .= " You were marked as excused (approved excuse letter).";
+            break;
+    }
+    
+    return create_notification(
+        $student_id,
+        'attendance',
+        $title,
+        $message,
+        $attendance_id,
+        'attendance',
+        null,
+        false
+    );
+}
+
+/**
+ * Create attendance update notification for student
+ */
+function create_attendance_update_notification($student_id, $attendance_id, $old_status, $new_status, $subject_name, $section_name, $date, $time_in = null, $notes = null) {
+    $CI =& get_instance();
+    
+    // Get student details
+    $student = $CI->db->select('full_name, email')
+        ->from('users')
+        ->where('user_id', $student_id)
+        ->get()->row_array();
+    
+    if (!$student) {
+        return false;
+    }
+    
+    $old_status_display = ucfirst($old_status);
+    $new_status_display = ucfirst($new_status);
+    $title = "Attendance Updated - {$new_status_display}";
+    
+    $message = "Your attendance has been updated for {$subject_name} ({$section_name}) on {$date}.";
+    $message .= " Status changed from {$old_status_display} to {$new_status_display}.";
+    
+    if ($time_in) {
+        $message .= " Time in: {$time_in}";
+    }
+    
+    if ($notes) {
+        $message .= " Notes: {$notes}";
+    }
+    
+    return create_notification(
+        $student_id,
+        'attendance',
+        $title,
+        $message,
+        $attendance_id,
+        'attendance',
+        null,
+        false
+    );
 } 

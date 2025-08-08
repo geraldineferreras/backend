@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grades with Attendance Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .attendance-info {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .attendance-breakdown {
+            background-color: #e9ecef;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+        .attendance-breakdown h4 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .score-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        .endpoint-info {
+            background-color: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Grades with Attendance Test</h1>
+    
+    <div class="endpoint-info">
+        <h3>📊 Updated Grades Endpoint</h3>
+        <p><strong>Endpoint:</strong> <code>GET /api/teacher/classroom/{class_code}/grades</code></p>
+        <p><strong>New Feature:</strong> Now includes attendance data with 6-point scoring system</p>
+        <p><strong>Attendance Scoring:</strong></p>
+        <ul>
+            <li>Present: 6 points (100%)</li>
+            <li>Late: 4 points (67%)</li>
+            <li>Excused: 5 points (83%)</li>
+            <li>Absent: 0 points (0%)</li>
+        </ul>
+    </div>
+
+    <div class="container">
+        <h2>Test Grades Endpoint with Attendance</h2>
+        <div class="form-group">
+            <label for="baseUrl">Base URL:</label>
+            <input type="text" id="baseUrl" value="http://localhost/scms_new_backup" placeholder="Enter your base URL">
+        </div>
+        <div class="form-group">
+            <label for="classCode">Class Code:</label>
+            <input type="text" id="classCode" value="A4V9TE" placeholder="Enter class code">
+        </div>
+        <div class="form-group">
+            <label for="jwtToken">JWT Token:</label>
+            <input type="text" id="jwtToken" placeholder="Enter JWT token">
+        </div>
+        <div class="form-group">
+            <label for="taskId">Task ID (Optional):</label>
+            <input type="text" id="taskId" placeholder="Filter by specific task ID">
+        </div>
+        <div class="form-group">
+            <label for="studentId">Student ID (Optional):</label>
+            <input type="text" id="studentId" placeholder="Filter by specific student ID">
+        </div>
+        
+        <button onclick="testGradesWithAttendance()">Test Grades with Attendance</button>
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Expected Response Structure</h2>
+        <div class="attendance-breakdown">
+            <h4>New Attendance Data in Student Object:</h4>
+            <pre>{
+  "student_id": "...",
+  "student_name": "...",
+  "student_num": "...",
+  "email": "...",
+  "profile_pic": "...",
+  "attendance": {
+    "total_sessions": 5,
+    "present_sessions": 3,
+    "late_sessions": 1,
+    "absent_sessions": 1,
+    "excused_sessions": 0,
+    "total_earned_score": 22,
+    "max_possible_score": 6,
+    "max_possible_total": 30,
+    "attendance_percentage": 73.33
+  },
+  "assignments": [...],
+  "total_points": 300,
+  "total_earned": 254,
+  "average_grade": 50.8
+}</pre>
+        </div>
+    </div>
+
+    <script>
+        function testGradesWithAttendance() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const classCode = document.getElementById('classCode').value;
+            const jwtToken = document.getElementById('jwtToken').value;
+            const taskId = document.getElementById('taskId').value;
+            const studentId = document.getElementById('studentId').value;
+
+            if (!baseUrl || !classCode || !jwtToken) {
+                showResult('Please fill in all required fields.', 'error');
+                return;
+            }
+
+            let url = `${baseUrl}/api/teacher/classroom/${classCode}/grades`;
+            const params = new URLSearchParams();
+            
+            if (taskId) {
+                params.append('task_id', taskId);
+            }
+            if (studentId) {
+                params.append('student_id', studentId);
+            }
+            
+            if (params.toString()) {
+                url += '?' + params.toString();
+            }
+
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                let resultText = '✅ Grades with Attendance Response:\n\n';
+                resultText += JSON.stringify(data, null, 2);
+                
+                // Analyze attendance data
+                if (data.status && data.data && data.data.students) {
+                    resultText += '\n\n📊 ATTENDANCE ANALYSIS:\n';
+                    resultText += '='.repeat(50) + '\n';
+                    
+                    data.data.students.forEach((student, index) => {
+                        resultText += `\n${index + 1}. ${student.student_name} (${student.student_num}):\n`;
+                        
+                        if (student.attendance) {
+                            resultText += `   📅 ATTENDANCE:\n`;
+                            resultText += `      Total Sessions: ${student.attendance.total_sessions}\n`;
+                            resultText += `      Present: ${student.attendance.present_sessions}\n`;
+                            resultText += `      Late: ${student.attendance.late_sessions}\n`;
+                            resultText += `      Absent: ${student.attendance.absent_sessions}\n`;
+                            resultText += `      Excused: ${student.attendance.excused_sessions}\n`;
+                            resultText += `      Total Earned Score: ${student.attendance.total_earned_score}\n`;
+                            resultText += `      Max Possible Score: ${student.attendance.max_possible_score}\n`;
+                            resultText += `      Max Possible Total: ${student.attendance.max_possible_total}\n`;
+                            resultText += `      Attendance Percentage: ${student.attendance.attendance_percentage}%\n`;
+                            
+                            // Calculate expected score manually
+                            const expectedScore = student.attendance.total_earned_score;
+                            const expectedMax = student.attendance.max_possible_total;
+                            const expectedPercentage = expectedMax > 0 ? (expectedScore / expectedMax) * 100 : 0;
+                            
+                            resultText += `      Expected Score: ${expectedScore}/${expectedMax} = ${expectedPercentage.toFixed(2)}%\n`;
+                            
+                            // Verify calculation
+                            const actualPercentage = student.attendance.attendance_percentage;
+                            if (Math.abs(actualPercentage - expectedPercentage) < 0.01) {
+                                resultText += `      ✅ Calculation Verified!\n`;
+                            } else {
+                                resultText += `      ❌ Calculation Mismatch!\n`;
+                            }
+                        } else {
+                            resultText += `   ❌ No attendance data found\n`;
+                        }
+                        
+                        resultText += `   📝 ASSIGNMENTS:\n`;
+                        resultText += `      Total Points: ${student.total_points}\n`;
+                        resultText += `      Total Earned: ${student.total_earned}\n`;
+                        resultText += `      Average Grade: ${student.average_grade}\n`;
+                        resultText += `      Assignment Count: ${student.assignments.length}\n`;
+                    });
+                }
+                
+                showResult(resultText, 'success');
+            })
+            .catch(error => {
+                showResult(`❌ Error: ${error.message}`, 'error');
+            });
+        }
+
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.className = `result ${type}`;
+            resultDiv.style.display = 'block';
+            resultDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function clearResults() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'none';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Comprehensive Grades - Fixed Attendance</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .attendance-info {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Comprehensive Grades - Fixed Attendance</h1>
+        
+        <div class="attendance-info">
+            <strong>What was fixed:</strong><br>
+            - The issue was that there were multiple classes with the same subject_id, section_id, and teacher_id<br>
+            - The code was only taking the first match (class_id = 11) but attendance records might be in the second class (class_id = 15)<br>
+            - Now the code checks all matching classes and uses the one that has attendance records
+        </div>
+
+        <div class="form-group">
+            <label for="baseUrl">Base URL:</label>
+            <input type="text" id="baseUrl" value="http://localhost:8080/scms_new_backup" placeholder="Enter base URL">
+        </div>
+
+        <div class="form-group">
+            <label for="classCode">Class Code:</label>
+            <input type="text" id="classCode" value="A4V9TE" placeholder="Enter class code">
+        </div>
+
+        <div class="form-group">
+            <label for="jwtToken">JWT Token:</label>
+            <input type="text" id="jwtToken" placeholder="Enter JWT token">
+        </div>
+
+        <div class="form-group">
+            <label for="attendanceWeight">Attendance Weight (%):</label>
+            <input type="number" id="attendanceWeight" value="10" min="0" max="100">
+        </div>
+
+        <div class="form-group">
+            <label for="activityWeight">Activity Weight (%):</label>
+            <input type="number" id="activityWeight" value="30" min="0" max="100">
+        </div>
+
+        <div class="form-group">
+            <label for="assignmentQuizWeight">Assignment/Quiz Weight (%):</label>
+            <input type="number" id="assignmentQuizWeight" value="30" min="0" max="100">
+        </div>
+
+        <div class="form-group">
+            <label for="majorExamWeight">Major Exam Weight (%):</label>
+            <input type="number" id="majorExamWeight" value="30" min="0" max="100">
+        </div>
+
+        <button onclick="testComprehensiveGrades()">Test Comprehensive Grades</button>
+        <button onclick="testExportGrades()">Test Export Grades</button>
+        <button onclick="clearResults()">Clear Results</button>
+
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        function testComprehensiveGrades() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const classCode = document.getElementById('classCode').value;
+            const jwtToken = document.getElementById('jwtToken').value;
+            const attendanceWeight = document.getElementById('attendanceWeight').value;
+            const activityWeight = document.getElementById('activityWeight').value;
+            const assignmentQuizWeight = document.getElementById('assignmentQuizWeight').value;
+            const majorExamWeight = document.getElementById('majorExamWeight').value;
+
+            if (!baseUrl || !classCode || !jwtToken) {
+                showResult('Please fill in all required fields.', 'error');
+                return;
+            }
+
+            const url = `${baseUrl}/api/teacher/classroom/${classCode}/comprehensive-grades?attendance_weight=${attendanceWeight}&activity_weight=${activityWeight}&assignment_quiz_weight=${assignmentQuizWeight}&major_exam_weight=${majorExamWeight}`;
+
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                let resultText = `URL: ${url}\n\nResponse:\n${JSON.stringify(data, null, 2)}`;
+                
+                // Check if attendance data is present
+                if (data.status && data.data && data.data.students) {
+                    let attendanceFound = false;
+                    let attendanceDetails = '';
+                    
+                    data.data.students.forEach(student => {
+                        if (student.attendance && student.attendance.total_sessions > 0) {
+                            attendanceFound = true;
+                            attendanceDetails += `\nStudent: ${student.student_name}\n`;
+                            attendanceDetails += `  Total Sessions: ${student.attendance.total_sessions}\n`;
+                            attendanceDetails += `  Present: ${student.attendance.present_sessions}\n`;
+                            attendanceDetails += `  Late: ${student.attendance.late_sessions}\n`;
+                            attendanceDetails += `  Absent: ${student.attendance.absent_sessions}\n`;
+                            attendanceDetails += `  Excused: ${student.attendance.excused_sessions}\n`;
+                            attendanceDetails += `  Attendance %: ${student.attendance.attendance_percentage}%\n`;
+                            attendanceDetails += `  Weighted Score: ${student.attendance.weighted_score}\n`;
+                        }
+                    });
+                    
+                    if (attendanceFound) {
+                        resultText += `\n\n✅ ATTENDANCE DATA FOUND!${attendanceDetails}`;
+                        showResult(resultText, 'success');
+                    } else {
+                        resultText += '\n\n❌ No attendance data found in the response.';
+                        showResult(resultText, 'error');
+                    }
+                } else {
+                    resultText += '\n\n❌ No students data found in the response.';
+                    showResult(resultText, 'error');
+                }
+            })
+            .catch(error => {
+                showResult(`Error: ${error.message}`, 'error');
+            });
+        }
+
+        function testExportGrades() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const classCode = document.getElementById('classCode').value;
+            const jwtToken = document.getElementById('jwtToken').value;
+            const attendanceWeight = document.getElementById('attendanceWeight').value;
+            const activityWeight = document.getElementById('activityWeight').value;
+            const assignmentQuizWeight = document.getElementById('assignmentQuizWeight').value;
+            const majorExamWeight = document.getElementById('majorExamWeight').value;
+
+            if (!baseUrl || !classCode || !jwtToken) {
+                showResult('Please fill in all required fields.', 'error');
+                return;
+            }
+
+            const url = `${baseUrl}/api/teacher/classroom/${classCode}/export-grades?attendance_weight=${attendanceWeight}&activity_weight=${activityWeight}&assignment_quiz_weight=${assignmentQuizWeight}&major_exam_weight=${majorExamWeight}`;
+
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.blob();
+                } else {
+                    return response.json().then(data => {
+                        throw new Error(JSON.stringify(data, null, 2));
+                    });
+                }
+            })
+            .then(blob => {
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `grades_${classCode}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                showResult(`✅ Export successful! File downloaded as grades_${classCode}.csv`, 'success');
+            })
+            .catch(error => {
+                showResult(`Error: ${error.message}`, 'error');
+            });
+        }
+
+        function showResult(text, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = text;
+            resultDiv.className = `result ${type}`;
+            resultDiv.style.display = 'block';
+        }
+
+        function clearResults() {
+            document.getElementById('result').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
