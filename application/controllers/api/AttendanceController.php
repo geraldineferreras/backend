@@ -26,23 +26,30 @@ class AttendanceController extends BaseController
         if (!$user_data) return;
 
         try {
-            // Get classes assigned to this teacher
-            $classes = $this->db->select('
-                classes.*, 
+            // Get classrooms assigned to this teacher and map to class_id
+            $classrooms = $this->db->select('
+                classrooms.id as class_id,
+                classrooms.subject_id,
+                classrooms.teacher_id,
+                classrooms.section_id,
+                classrooms.semester,
+                classrooms.school_year,
+                classrooms.is_active,
+                classrooms.created_at as date_created,
                 subjects.subject_name, 
                 subjects.subject_code,
                 sections.section_name
             ')
-            ->from('classes')
-            ->join('subjects', 'classes.subject_id = subjects.id', 'left')
-            ->join('sections', 'classes.section_id = sections.section_id', 'left')
-            ->where('classes.teacher_id', $user_data['user_id'])
-            ->where('classes.status', 'active')
+            ->from('classrooms')
+            ->join('subjects', 'classrooms.subject_id = subjects.id', 'left')
+            ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
+            ->where('classrooms.teacher_id', $user_data['user_id'])
+            ->where('classrooms.is_active', 1)
             ->order_by('subjects.subject_name', 'ASC')
             ->order_by('sections.section_name', 'ASC')
             ->get()->result_array();
 
-            $this->send_success($classes, 'Classes retrieved successfully');
+            $this->send_success($classrooms, 'Classes retrieved successfully');
         } catch (Exception $e) {
             $this->send_error('Failed to retrieve classes: ' . $e->getMessage(), 500);
         }
@@ -171,32 +178,61 @@ class AttendanceController extends BaseController
         }
 
         try {
-            // Verify teacher has access to this class
-            $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
-                ->from('classes')
-                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
-                ->join('sections', 'classes.section_id = sections.section_id', 'left')
-                ->where('classes.class_id', $data->class_id)
-                ->where('classes.teacher_id', $user_data['user_id'])
-                ->get()->row_array();
+            // First, check if the class_id is a classroom.id (integer) or classes.class_id (string)
+            $is_classroom_id = is_numeric($data->class_id);
+            
+            if ($is_classroom_id) {
+                // If it's a classroom.id, find the corresponding class
+                $classroom = $this->db->select('classrooms.*')
+                    ->from('classrooms')
+                    ->where('classrooms.id', $data->class_id)
+                    ->where('classrooms.teacher_id', $user_data['user_id'])
+                    ->where('classrooms.is_active', 1)
+                    ->get()->row_array();
 
-            if (!$class) {
-                $this->send_error('Class not found or access denied', 404);
-                return;
-            }
+                if (!$classroom) {
+                    $this->send_error('Classroom not found or access denied', 404);
+                    return;
+                }
 
-            // Find the corresponding classroom for this class
-            $classroom = $this->db->select('classrooms.*')
-                ->from('classrooms')
-                ->where('classrooms.subject_id', $class['subject_id'])
-                ->where('classrooms.section_id', $class['section_id'])
-                ->where('classrooms.teacher_id', $class['teacher_id'])
-                ->where('classrooms.is_active', 1)
-                ->get()->row_array();
+                // Find the corresponding class_id from classes table
+                $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
+                    ->from('classes')
+                    ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                    ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                    ->where('classes.subject_id', $classroom['subject_id'])
+                    ->where('classes.section_id', $classroom['section_id'])
+                    ->where('classes.teacher_id', $classroom['teacher_id'])
+                    ->where('classes.status', 'active')
+                    ->get()->row_array();
 
-            if (!$classroom) {
-                $this->send_error('No active classroom found for this class', 404);
-                return;
+                if (!$class) {
+                    $this->send_error('No active class found for this classroom', 404);
+                    return;
+                }
+            } else {
+                // If it's a classes.class_id, verify teacher has access to this class
+                $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
+                    ->from('classes')
+                    ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                    ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                    ->where('classes.class_id', $data->class_id)
+                    ->where('classes.teacher_id', $user_data['user_id'])
+                    ->get()->row_array();
+
+                if (!$class) {
+                    $this->send_error('Class not found or access denied', 404);
+                    return;
+                }
+
+                // Find the corresponding classroom for this class
+                $classroom = $this->db->select('classrooms.*')
+                    ->from('classrooms')
+                    ->where('classrooms.subject_id', $class['subject_id'])
+                    ->where('classrooms.section_id', $class['section_id'])
+                    ->where('classrooms.teacher_id', $class['teacher_id'])
+                    ->where('classrooms.is_active', 1)
+                    ->get()->row_array();
             }
 
             // Check if student is enrolled in the corresponding classroom
@@ -381,32 +417,61 @@ class AttendanceController extends BaseController
         }
 
         try {
-            // Verify teacher has access to this class
-            $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
-                ->from('classes')
-                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
-                ->join('sections', 'classes.section_id = sections.section_id', 'left')
-                ->where('classes.class_id', $data->class_id)
-                ->where('classes.teacher_id', $user_data['user_id'])
-                ->get()->row_array();
+            // First, check if the class_id is a classroom.id (integer) or classes.class_id (string)
+            $is_classroom_id = is_numeric($data->class_id);
+            
+            if ($is_classroom_id) {
+                // If it's a classroom.id, find the corresponding class
+                $classroom = $this->db->select('classrooms.*')
+                    ->from('classrooms')
+                    ->where('classrooms.id', $data->class_id)
+                    ->where('classrooms.teacher_id', $user_data['user_id'])
+                    ->where('classrooms.is_active', 1)
+                    ->get()->row_array();
 
-            if (!$class) {
-                $this->send_error('Class not found or access denied', 404);
-                return;
-            }
+                if (!$classroom) {
+                    $this->send_error('Classroom not found or access denied', 404);
+                    return;
+                }
 
-            // Find the corresponding classroom for this class
-            $classroom = $this->db->select('classrooms.*')
-                ->from('classrooms')
-                ->where('classrooms.subject_id', $class['subject_id'])
-                ->where('classrooms.section_id', $class['section_id'])
-                ->where('classrooms.teacher_id', $class['teacher_id'])
-                ->where('classrooms.is_active', 1)
-                ->get()->row_array();
+                // Find the corresponding class_id from classes table
+                $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
+                    ->from('classes')
+                    ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                    ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                    ->where('classes.subject_id', $classroom['subject_id'])
+                    ->where('classes.section_id', $classroom['section_id'])
+                    ->where('classes.teacher_id', $classroom['teacher_id'])
+                    ->where('classes.status', 'active')
+                    ->get()->row_array();
 
-            if (!$classroom) {
-                $this->send_error('No active classroom found for this class', 404);
-                return;
+                if (!$class) {
+                    $this->send_error('No active class found for this classroom', 404);
+                    return;
+                }
+            } else {
+                // If it's a classes.class_id, verify teacher has access to this class
+                $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
+                    ->from('classes')
+                    ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                    ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                    ->where('classes.class_id', $data->class_id)
+                    ->where('classes.teacher_id', $user_data['user_id'])
+                    ->get()->row_array();
+
+                if (!$class) {
+                    $this->send_error('Class not found or access denied', 404);
+                    return;
+                }
+
+                // Find the corresponding classroom for this class
+                $classroom = $this->db->select('classrooms.*')
+                    ->from('classrooms')
+                    ->where('classrooms.subject_id', $class['subject_id'])
+                    ->where('classrooms.section_id', $class['section_id'])
+                    ->where('classrooms.teacher_id', $class['teacher_id'])
+                    ->where('classrooms.is_active', 1)
+                    ->get()->row_array();
             }
 
             $this->db->trans_start();
@@ -544,36 +609,36 @@ class AttendanceController extends BaseController
         }
 
         try {
-            // Verify teacher has access to this class (from classes table - subject offering)
-            $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
-                ->from('classes')
-                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
-                ->join('sections', 'classes.section_id = sections.section_id', 'left')
-                ->where('classes.class_id', $class_id)
-                ->where('classes.teacher_id', $user_data['user_id'])
-                ->where('classes.status', 'active')
-                ->get()->row_array();
-
-            if (!$class) {
-                $this->send_error('Class not found or access denied', 404);
-                return;
-            }
-
-            // Find the corresponding classroom for this class
-            $classroom = $this->db->select('classrooms.*')
+            // Verify teacher has access to this classroom (using classrooms.id)
+            $classroom = $this->db->select('classrooms.*, subjects.subject_name, sections.section_name')
                 ->from('classrooms')
-                ->where('classrooms.subject_id', $class['subject_id'])
-                ->where('classrooms.section_id', $class['section_id'])
-                ->where('classrooms.teacher_id', $class['teacher_id'])
+                ->join('subjects', 'classrooms.subject_id = subjects.id', 'left')
+                ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
+                ->where('classrooms.id', $class_id)
+                ->where('classrooms.teacher_id', $user_data['user_id'])
                 ->where('classrooms.is_active', 1)
                 ->get()->row_array();
 
             if (!$classroom) {
-                $this->send_error('No active classroom found for this class', 404);
+                $this->send_error('Classroom not found or access denied', 404);
                 return;
             }
 
-            // Get attendance records using the class_id from classes table
+            // Find the corresponding class_id from classes table for this classroom
+            $class = $this->db->select('classes.class_id')
+                ->from('classes')
+                ->where('classes.subject_id', $classroom['subject_id'])
+                ->where('classes.section_id', $classroom['section_id'])
+                ->where('classes.teacher_id', $classroom['teacher_id'])
+                ->where('classes.status', 'active')
+                ->get()->row_array();
+
+            if (!$class) {
+                $this->send_error('No active class found for this classroom', 404);
+                return;
+            }
+
+            // Get attendance records using the class.class_id (which is stored in attendance table)
             $records = $this->db->select('
                 attendance.*,
                 users.full_name as student_name,
@@ -653,7 +718,6 @@ class AttendanceController extends BaseController
             }
 
             $this->send_success([
-                'class' => $class,
                 'classroom' => $classroom,
                 'date' => $date,
                 'records' => $records,
@@ -683,9 +747,9 @@ class AttendanceController extends BaseController
 
         try {
             // Get attendance record and verify teacher access
-            $attendance = $this->db->select('attendance.*, classes.teacher_id')
+            $attendance = $this->db->select('attendance.*, classrooms.teacher_id')
                 ->from('attendance')
-                ->join('classes', 'attendance.class_id = classes.class_id', 'left')
+                ->join('classrooms', 'attendance.class_id = classrooms.id', 'left')
                 ->where('attendance.attendance_id', $attendance_id)
                 ->get()->row_array();
 
@@ -716,9 +780,9 @@ class AttendanceController extends BaseController
             // Get the old attendance record for comparison
             $old_attendance = $this->db->select('attendance.*, subjects.subject_name, sections.section_name')
                 ->from('attendance')
-                ->join('classes', 'attendance.class_id = classes.class_id', 'left')
-                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
-                ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                ->join('classrooms', 'attendance.class_id = classrooms.id', 'left')
+                ->join('subjects', 'classrooms.subject_id = subjects.id', 'left')
+                ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
                 ->where('attendance.attendance_id', $attendance_id)
                 ->get()->row_array();
 
@@ -774,17 +838,18 @@ class AttendanceController extends BaseController
         }
 
         try {
-            // Verify teacher has access to this class
-            $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
-                ->from('classes')
-                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
-                ->join('sections', 'classes.section_id = sections.section_id', 'left')
-                ->where('classes.class_id', $class_id)
-                ->where('classes.teacher_id', $user_data['user_id'])
+            // Verify teacher has access to this classroom
+            $classroom = $this->db->select('classrooms.*, subjects.subject_name, sections.section_name')
+                ->from('classrooms')
+                ->join('subjects', 'classrooms.subject_id = subjects.id', 'left')
+                ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
+                ->where('classrooms.id', $class_id)
+                ->where('classrooms.teacher_id', $user_data['user_id'])
+                ->where('classrooms.is_active', 1)
                 ->get()->row_array();
 
-            if (!$class) {
-                $this->send_error('Class not found or access denied', 404);
+            if (!$classroom) {
+                $this->send_error('Classroom not found or access denied', 404);
                 return;
             }
 
@@ -795,7 +860,7 @@ class AttendanceController extends BaseController
                 DATE(date) as date
             ')
             ->from('attendance')
-            ->where('class_id', $class_id)
+            ->where('class_id', $classroom['id'])
             ->where('date >=', $date_from)
             ->where('date <=', $date_to)
             ->group_by(['status', 'DATE(date)'])
@@ -804,12 +869,12 @@ class AttendanceController extends BaseController
 
             // Get total students in class
             $total_students = $this->db->where('role', 'student')
-                ->where('section_id', $class['section_id'])
+                ->where('section_id', $classroom['section_id'])
                 ->where('status', 'active')
                 ->count_all_results('users');
 
             $this->send_success([
-                'class' => $class,
+                'classroom' => $classroom,
                 'date_range' => [
                     'from' => $date_from,
                     'to' => $date_to
@@ -848,17 +913,18 @@ class AttendanceController extends BaseController
         }
 
         try {
-            // Verify teacher has access to this class
-            $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
-                ->from('classes')
-                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
-                ->join('sections', 'classes.section_id = sections.section_id', 'left')
-                ->where('classes.class_id', $class_id)
-                ->where('classes.teacher_id', $user_data['user_id'])
+            // Verify teacher has access to this classroom
+            $classroom = $this->db->select('classrooms.*, subjects.subject_name, sections.section_name')
+                ->from('classrooms')
+                ->join('subjects', 'classrooms.subject_id = subjects.id', 'left')
+                ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
+                ->where('classrooms.id', $class_id)
+                ->where('classrooms.teacher_id', $user_data['user_id'])
+                ->where('classrooms.is_active', 1)
                 ->get()->row_array();
 
-            if (!$class) {
-                $this->send_error('Class not found or access denied', 404);
+            if (!$classroom) {
+                $this->send_error('Classroom not found or access denied', 404);
                 return;
             }
 
@@ -871,7 +937,7 @@ class AttendanceController extends BaseController
             ')
             ->from('attendance')
             ->join('users', 'attendance.student_id = users.user_id', 'left')
-            ->where('attendance.class_id', $class_id)
+            ->where('attendance.class_id', $classroom['id'])
             ->where('attendance.date >=', $date_from)
             ->where('attendance.date <=', $date_to)
             ->order_by('attendance.date', 'DESC')
@@ -880,7 +946,7 @@ class AttendanceController extends BaseController
 
             if ($format === 'csv') {
                 // Generate CSV
-                $filename = "attendance_report_{$class['subject_code']}_{$class['section_name']}_{$date_from}_to_{$date_to}.csv";
+                $filename = "attendance_report_{$classroom['class_code']}_{$classroom['section_name']}_{$date_from}_to_{$date_to}.csv";
                 
                 header('Content-Type: text/csv');
                 header('Content-Disposition: attachment; filename="' . $filename . '"');
@@ -901,8 +967,8 @@ class AttendanceController extends BaseController
                         $record['status'],
                         $record['time_in'],
                         $record['notes'],
-                        $class['subject_name'],
-                        $class['section_name']
+                        $classroom['subject_name'],
+                        $classroom['section_name']
                     ]);
                 }
                 
@@ -911,7 +977,7 @@ class AttendanceController extends BaseController
             } else {
                 // Return JSON
                 $this->send_success([
-                    'class' => $class,
+                    'classroom' => $classroom,
                     'date_range' => [
                         'from' => $date_from,
                         'to' => $date_to
@@ -941,9 +1007,9 @@ class AttendanceController extends BaseController
 
         try {
             // Get attendance record and verify teacher access
-            $attendance = $this->db->select('attendance.*, classes.teacher_id')
+            $attendance = $this->db->select('attendance.*, classrooms.teacher_id')
                 ->from('attendance')
-                ->join('classes', 'attendance.class_id = classes.class_id', 'left')
+                ->join('classrooms', 'attendance.class_id = classrooms.id', 'left')
                 ->where('attendance.attendance_id', $attendance_id)
                 ->get()->row_array();
 
@@ -1007,7 +1073,7 @@ class AttendanceController extends BaseController
             ')
             ->from('attendance')
             ->join('users', 'attendance.student_id = users.user_id', 'left')
-            ->join('classes', 'attendance.class_id = classes.class_id', 'left')
+            ->join('classrooms', 'attendance.class_id = classrooms.id', 'left')
             ->join('subjects', 'attendance.subject_id = subjects.id', 'left')
             ->join('sections', 'attendance.section_name = sections.section_name', 'left')
             ->where('attendance.teacher_id', $user_data['user_id']);
@@ -1040,7 +1106,7 @@ class AttendanceController extends BaseController
             ')
             ->from('attendance')
             ->join('users', 'attendance.student_id = users.user_id', 'left')
-            ->join('classes', 'attendance.class_id = classes.class_id', 'left')
+            ->join('classrooms', 'attendance.class_id = classrooms.id', 'left')
             ->join('subjects', 'attendance.subject_id = subjects.id', 'left')
             ->join('sections', 'attendance.section_name = sections.section_name', 'left')
             ->where('attendance.teacher_id', $user_data['user_id']);

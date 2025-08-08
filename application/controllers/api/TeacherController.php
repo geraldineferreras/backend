@@ -64,7 +64,7 @@ class TeacherController extends BaseController
             // Count students in section (users table, role=student)
             $student_count = $this->db->where('section_id', $classroom['section_id'])->where('role', 'student')->count_all_results('users');
             $result[] = [
-                'class_id' => $class ? $class['class_id'] : $classroom['id'], // Use subject offering class_id if found, otherwise fallback to classroom id
+                'class_id' => $classroom['id'], // Use classroom.id for attendance
                 'class_code' => $classroom['class_code'],
                 'subject_name' => $subject_name,
                 'section_name' => $section_name,
@@ -158,7 +158,7 @@ class TeacherController extends BaseController
                 ->get()->row_array();
             
             $response = [
-                'class_id' => $class ? $class['class_id'] : $id, // Use subject offering class_id if found, otherwise fallback to classroom id
+                'class_id' => $id, // Use classroom.id for attendance
                 'class_code' => $class_code,
                 'subject_name' => $subject_name,
                 'section_name' => $section_name,
@@ -226,7 +226,7 @@ class TeacherController extends BaseController
             ->get()->row_array();
         
         $response = [
-            'class_id' => $class ? $class['class_id'] : $classroom['id'], // Use subject offering class_id if found, otherwise fallback to classroom id
+            'class_id' => $classroom['id'], // Use classroom.id for attendance
             'class_code' => $classroom['class_code'],
             'subject_name' => $subject_name,
             'section_name' => $section_name,
