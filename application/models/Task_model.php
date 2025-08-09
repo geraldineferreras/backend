@@ -635,4 +635,18 @@ class Task_model extends CI_Model {
             'graded_count' => count(array_filter($submissions, function($s) { return $s['grade'] !== null; }))
         ];
     }
+
+    /**
+     * Get task by attachment filename
+     */
+    public function get_task_by_attachment($filename) {
+        $this->db->select('task_id, title, type, attachment_url, attachment_type, original_filename');
+        $this->db->from('class_tasks');
+        $this->db->where('attachment_url', $filename);
+        $this->db->where('attachment_type', 'file');
+        $this->db->limit(1);
+        
+        $query = $this->db->get();
+        return $query->num_rows() > 0 ? $query->row_array() : null;
+    }
 } 

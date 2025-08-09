@@ -75,6 +75,7 @@ class TaskController extends BaseController
                     $upload_data = $this->upload->data();
                     $attachment_url = $upload_data['file_name']; // Just the filename
                     $attachment_type = 'file';
+                    $original_filename = $_FILES['attachment']['name']; // Store the original filename
                     
                     // Verify file was actually saved
                     $file_path = $upload_path . $upload_data['file_name'];
@@ -136,6 +137,7 @@ class TaskController extends BaseController
                 'assigned_students' => $data->assigned_students ?? null,
                 'attachment_type' => $attachment_type,
                 'attachment_url' => $attachment_url,
+                'original_filename' => $original_filename ?? null,
                 'allow_comments' => $data->allow_comments,
                 'is_draft' => $data->is_draft,
                 'is_scheduled' => $data->is_scheduled,
@@ -1747,6 +1749,125 @@ class TaskController extends BaseController
             }
         } catch (Exception $e) {
             $this->send_error('Failed to retrieve submission: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get task file information including original filename
+     * GET /api/tasks/files/info/{filename}
+     */
+    public function get_task_file_info($filename)
+    {
+        $user_data = require_auth($this);
+        if (!$user_data) return;
+
+        try {
+            // Verify the file exists
+            $file_path = './uploads/tasks/' . $filename;
+            
+            if (!file_exists($file_path)) {
+                $this->send_error('File not found: ' . $filename, 404);
+                return;
+            }
+
+            // Get file info
+            $file_info = pathinfo($file_path);
+            $extension = strtolower($file_info['extension']);
+            $file_size = filesize($file_path);
+            $mime_type = $this->get_mime_type($extension);
+
+            // Try to find the task that uses this file
+            $task = $this->Task_model->get_task_by_attachment($filename);
+            
+            $response_data = [
+                'filename' => $filename,
+                'original_name' => $task ? ($task['original_filename'] ?: $task['title'] . '.' . $extension) : null,
+                'file_size' => $file_size,
+                'file_size_formatted' => $this->format_file_size($file_size),
+                'mime_type' => $mime_type,
+                'extension' => $extension,
+                'file_path' => 'uploads/tasks/' . $filename,
+                'download_url' => base_url("api/tasks/files/" . urlencode($filename)),
+                'task_info' => $task ? [
+                    'task_id' => $task['task_id'],
+                    'title' => $task['title'],
+                    'type' => $task['type']
+                ] : null
+            ];
+
+            $this->send_success($response_data, 'File information retrieved successfully');
+        } catch (Exception $e) {
+            $this->send_error('Failed to get file information: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get all task files with information
+     * GET /api/tasks/files/list
+     */
+    public function list_task_files()
+    {
+        $user_data = require_auth($this);
+        if (!$user_data) return;
+
+        try {
+            $upload_path = './uploads/tasks/';
+            
+            if (!is_dir($upload_path)) {
+                $this->send_success([], 'No task files found');
+                return;
+            }
+
+            $files = [];
+            $task_files = glob($upload_path . '*');
+            
+            foreach ($task_files as $file_path) {
+                if (is_file($file_path)) {
+                    $filename = basename($file_path);
+                    $file_info = pathinfo($file_path);
+                    $extension = strtolower($file_info['extension']);
+                    $file_size = filesize($file_path);
+                    
+                    // Try to find the task that uses this file
+                    $task = $this->Task_model->get_task_by_attachment($filename);
+                    
+                    $files[] = [
+                        'filename' => $filename,
+                        'original_name' => $task ? ($task['original_filename'] ?: $task['title'] . '.' . $extension) : null,
+                        'file_size' => $file_size,
+                        'file_size_formatted' => $this->format_file_size($file_size),
+                        'mime_type' => $this->get_mime_type($extension),
+                        'extension' => $extension,
+                        'file_path' => 'uploads/tasks/' . $filename,
+                        'download_url' => base_url("api/tasks/files/" . urlencode($filename)),
+                        'task_info' => $task ? [
+                            'task_id' => $task['task_id'],
+                            'title' => $task['title'],
+                            'type' => $task['type']
+                        ] : null
+                    ];
+                }
+            }
+
+            $this->send_success($files, 'Task files list retrieved successfully');
+        } catch (Exception $e) {
+            $this->send_error('Failed to list task files: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Format file size in human readable format
+     */
+    private function format_file_size($bytes)
+    {
+        if ($bytes >= 1073741824) {
+            return number_format($bytes / 1073741824, 2) . ' GB';
+        } elseif ($bytes >= 1048576) {
+            return number_format($bytes / 1048576, 2) . ' MB';
+        } elseif ($bytes >= 1024) {
+            return number_format($bytes / 1024, 2) . ' KB';
+        } else {
+            return $bytes . ' bytes';
         }
     }
 } 

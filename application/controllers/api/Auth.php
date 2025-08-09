@@ -932,6 +932,48 @@ class Auth extends BaseController {
             ]));
     }
 
+    /**
+     * Get current logged-in user's profile (including profile picture)
+     * GET /api/user/me
+     */
+    public function get_current_user() {
+        // Require authentication
+        $user_data = require_auth($this);
+        if (!$user_data) {
+            return; // Error response already sent
+        }
+        
+        try {
+            // Get complete user data from database
+            $user = $this->User_model->get_by_id($user_data['user_id']);
+            
+            if (!$user) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'User not found']));
+                return;
+            }
+            
+            // Remove sensitive information
+            unset($user['password']);
+            
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Current user profile retrieved successfully',
+                    'data' => $user
+                ]));
+        } catch (Exception $e) {
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to retrieve user profile: ' . $e->getMessage()]));
+        }
+    }
+
     // Handle OPTIONS preflight requests (CORS)
     public function options() {
         // The BaseController constructor handles CORS and exits for OPTIONS requests.

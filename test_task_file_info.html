@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task File Information API Testing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            color: #28a745;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .info {
+            color: #17a2b8;
+        }
+        .file-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .file-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .file-name {
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 5px;
+        }
+        .original-name {
+            color: #28a745;
+            font-style: italic;
+            margin-bottom: 5px;
+        }
+        .file-size {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        .task-info {
+            background-color: #e9ecef;
+            padding: 5px;
+            border-radius: 3px;
+            margin-top: 5px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Task File Information API Test</h1>
+        <p class="info">These endpoints help you get original filenames for task attachments that are stored with hashed names.</p>
+        
+        <div class="form-group">
+            <label for="jwtToken">JWT Token:</label>
+            <textarea id="jwtToken" rows="3" placeholder="Enter your JWT token here..."></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label for="filename">Task Filename (e.g., 55531ede80d7ff9617a3e073f55597c4.pdf):</label>
+            <input type="text" id="filename" placeholder="Enter the hashed filename...">
+        </div>
+        
+        <button onclick="getFileInfo()">Get File Information</button>
+        <button onclick="listAllFiles()">List All Task Files</button>
+        <button onclick="clearResponse()">Clear Response</button>
+        
+        <div id="response" class="response" style="display: none;"></div>
+    </div>
+
+    <script>
+        async function getFileInfo() {
+            const jwtToken = document.getElementById('jwtToken').value.trim();
+            const filename = document.getElementById('filename').value.trim();
+            const responseDiv = document.getElementById('response');
+            
+            if (!jwtToken) {
+                showResponse('Error: JWT token is required', 'error');
+                return;
+            }
+            
+            if (!filename) {
+                showResponse('Error: Filename is required', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/tasks/files/info/${encodeURIComponent(filename)}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${jwtToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    let responseText = `✅ Success!\n\n`;
+                    responseText += `Status: ${data.status}\n`;
+                    responseText += `Message: ${data.message}\n\n`;
+                    responseText += `File Information:\n`;
+                    responseText += `- Filename: ${data.data.filename}\n`;
+                    responseText += `- Original Name: ${data.data.original_name || 'Not available'}\n`;
+                    responseText += `- File Size: ${data.data.file_size_formatted}\n`;
+                    responseText += `- MIME Type: ${data.data.mime_type}\n`;
+                    responseText += `- Extension: ${data.data.extension}\n`;
+                    responseText += `- Download URL: ${data.data.download_url}\n`;
+                    
+                    if (data.data.task_info) {
+                        responseText += `\nTask Information:\n`;
+                        responseText += `- Task ID: ${data.data.task_info.task_id}\n`;
+                        responseText += `- Title: ${data.data.task_info.title}\n`;
+                        responseText += `- Type: ${data.data.task_info.type}\n`;
+                    }
+                    
+                    responseText += `\nFull Response:\n${JSON.stringify(data, null, 2)}`;
+                    
+                    showResponse(responseText, 'success');
+                } else {
+                    showResponse(`❌ Error: ${data.message}\n\nFull Response:\n${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResponse(`❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function listAllFiles() {
+            const jwtToken = document.getElementById('jwtToken').value.trim();
+            const responseDiv = document.getElementById('response');
+            
+            if (!jwtToken) {
+                showResponse('Error: JWT token is required', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/tasks/files/list', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${jwtToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    let responseText = `✅ Success!\n\n`;
+                    responseText += `Status: ${data.status}\n`;
+                    responseText += `Message: ${data.message}\n`;
+                    responseText += `Total Files: ${data.data.length}\n\n`;
+                    
+                    if (data.data.length > 0) {
+                        responseText += `Files List:\n`;
+                        responseText += `==========================================\n`;
+                        
+                        data.data.forEach((file, index) => {
+                            responseText += `${index + 1}. ${file.filename}\n`;
+                            responseText += `   Original Name: ${file.original_name || 'Not available'}\n`;
+                            responseText += `   Size: ${file.file_size_formatted}\n`;
+                            responseText += `   Type: ${file.mime_type}\n`;
+                            
+                            if (file.task_info) {
+                                responseText += `   Task: ${file.task_info.title} (ID: ${file.task_info.task_id})\n`;
+                            }
+                            responseText += `\n`;
+                        });
+                    } else {
+                        responseText += `No task files found.\n`;
+                    }
+                    
+                    responseText += `\nFull Response:\n${JSON.stringify(data, null, 2)}`;
+                    
+                    showResponse(responseText, 'success');
+                } else {
+                    showResponse(`❌ Error: ${data.message}\n\nFull Response:\n${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResponse(`❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function showResponse(text, type) {
+            const responseDiv = document.getElementById('response');
+            responseDiv.style.display = 'block';
+            responseDiv.innerHTML = text;
+            responseDiv.className = `response ${type}`;
+        }
+        
+        function clearResponse() {
+            const responseDiv = document.getElementById('response');
+            responseDiv.style.display = 'none';
+            responseDiv.innerHTML = '';
+        }
+        
+        // Auto-fill with sample data for testing
+        document.addEventListener('DOMContentLoaded', function() {
+            // You can uncomment the lines below and add sample data for testing
+            // document.getElementById('jwtToken').value = 'your_sample_jwt_token_here';
+            // document.getElementById('filename').value = '55531ede80d7ff9617a3e073f55597c4.pdf';
+        });
+    </script>
+</body>
+</html>

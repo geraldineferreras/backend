@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Current User Profile - API Testing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .profile-image {
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 2px solid #ddd;
+        }
+        .success {
+            color: #28a745;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .info {
+            color: #17a2b8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Current User Profile API Test</h1>
+        <p class="info">This endpoint gets the profile information of the currently logged-in user based on their JWT token.</p>
+        
+        <div class="form-group">
+            <label for="jwtToken">JWT Token:</label>
+            <textarea id="jwtToken" rows="3" placeholder="Enter your JWT token here..."></textarea>
+        </div>
+        
+        <button onclick="getCurrentUserProfile()">Get Current User Profile</button>
+        <button onclick="clearResponse()">Clear Response</button>
+        
+        <div id="response" class="response" style="display: none;"></div>
+    </div>
+
+    <script>
+        async function getCurrentUserProfile() {
+            const jwtToken = document.getElementById('jwtToken').value.trim();
+            const responseDiv = document.getElementById('response');
+            
+            if (!jwtToken) {
+                showResponse('Error: JWT token is required', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/user/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${jwtToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    let responseText = `✅ Success!\n\n`;
+                    responseText += `Status: ${data.status}\n`;
+                    responseText += `Message: ${data.message}\n\n`;
+                    responseText += `User Data:\n`;
+                    responseText += `- User ID: ${data.data.user_id}\n`;
+                    responseText += `- Full Name: ${data.data.full_name}\n`;
+                    responseText += `- Email: ${data.data.email}\n`;
+                    responseText += `- Role: ${data.data.role}\n`;
+                    responseText += `- Profile Picture: ${data.data.profile_pic || 'Not set'}\n`;
+                    responseText += `- Cover Picture: ${data.data.cover_pic || 'Not set'}\n`;
+                    responseText += `- Status: ${data.data.status}\n`;
+                    
+                    if (data.data.profile_pic) {
+                        responseText += `\nProfile Picture URL:\n`;
+                        responseText += `${window.location.origin}/image/profile/${data.data.profile_pic.replace('uploads/profile/', '')}\n\n`;
+                        
+                        // Display the image
+                        const imgUrl = `${window.location.origin}/image/profile/${data.data.profile_pic.replace('uploads/profile/', '')}`;
+                        responseText += `Profile Image:\n`;
+                        responseText += `<img src="${imgUrl}" alt="Profile Picture" class="profile-image" onerror="this.style.display='none'">\n`;
+                    }
+                    
+                    responseText += `\nFull Response:\n${JSON.stringify(data, null, 2)}`;
+                    
+                    showResponse(responseText, 'success');
+                } else {
+                    showResponse(`❌ Error: ${data.message}\n\nFull Response:\n${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResponse(`❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function showResponse(text, type) {
+            const responseDiv = document.getElementById('response');
+            responseDiv.style.display = 'block';
+            responseDiv.innerHTML = text;
+            responseDiv.className = `response ${type}`;
+        }
+        
+        function clearResponse() {
+            const responseDiv = document.getElementById('response');
+            responseDiv.style.display = 'none';
+            responseDiv.innerHTML = '';
+        }
+        
+        // Auto-fill with sample token for testing (remove in production)
+        document.addEventListener('DOMContentLoaded', function() {
+            // You can uncomment the line below and add a sample token for testing
+            // document.getElementById('jwtToken').value = 'your_sample_jwt_token_here';
+        });
+    </script>
+</body>
+</html>

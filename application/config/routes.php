@@ -69,6 +69,7 @@ $route['api/user']['put'] = 'api/auth/update_user';
 $route['api/user']['post'] = 'api/auth/update_user';
 $route['api/user']['delete'] = 'api/auth/delete_user';
 $route['api/user']['options'] = 'api/auth/options';
+$route['api/user/me']['get'] = 'api/auth/get_current_user';
 
 // Specific Update Routes
 $route['api/admin/update']['put'] = 'api/auth/update_user';
@@ -246,6 +247,8 @@ $route['api/tasks/(:num)/submissions']['get'] = 'api/TaskController/task_submiss
 $route['api/tasks/(:num)/stats']['get'] = 'api/TaskController/stats_get/$1';
 $route['api/tasks/(:num)/bulk-grade']['post'] = 'api/TaskController/bulk_grade_post/$1';
 $route['api/tasks/files/(:any)']['get'] = 'api/TaskController/serve_file/$1';
+$route['api/tasks/files/info/(:any)']['get'] = 'api/TaskController/get_task_file_info/$1';
+$route['api/tasks/files/list']['get'] = 'api/TaskController/list_task_files';
 $route['api/tasks/submissions/files/(:any)']['get'] = 'api/TaskController/serve_submission_file/$1';
 $route['api/tasks/(:num)/preview']['get'] = 'api/TaskController/preview_file/$1';
 $route['api/tasks/test-upload']['get'] = 'api/TaskController/test_upload_get';
