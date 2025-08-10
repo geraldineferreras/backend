@@ -589,10 +589,18 @@ class StudentController extends BaseController {
                     $formatted_post['like_count'] = is_array($likes) ? count($likes) : 0;
                 }
                 
-                // Add serving URLs for attachments
-                if (!empty($post['attachment_url'])) {
-                    $formatted_post['attachment_serving_url'] = get_file_url($post['attachment_url']);
-                    $formatted_post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                // Handle multiple attachments
+                if ($post['attachment_type'] === 'multiple' && isset($post['attachments'])) {
+                    $formatted_post['attachments'] = $post['attachments'];
+                    // Keep backward compatibility
+                    $formatted_post['attachment_serving_url'] = $post['attachment_serving_url'] ?? null;
+                    $formatted_post['attachment_file_type'] = $post['attachment_file_type'] ?? null;
+                } else {
+                    // Single attachment (backward compatibility)
+                    if (!empty($post['attachment_url'])) {
+                        $formatted_post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                        $formatted_post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                    }
                 }
                 
                 $formatted_posts[] = $formatted_post;

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Student Stream Multiple Attachments</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        .submit-btn {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        .submit-btn:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .attachments-section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .attachment-item {
+            background: white;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .attachment-item h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .attachment-details {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .file-link {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .file-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Student Stream Multiple Attachments</h1>
+    
+    <div class="container">
+        <h2>Student Stream API Test</h2>
+        <p>This test will retrieve stream posts from a classroom to see if multiple attachments are properly displayed.</p>
+        
+        <form id="streamForm">
+            <div class="form-group">
+                <label for="classCode">Class Code:</label>
+                <input type="text" id="classCode" name="classCode" value="A4V9TE" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="studentToken">Student JWT Token:</label>
+                <input type="text" id="studentToken" name="studentToken" placeholder="Enter your student JWT token" required>
+            </div>
+            
+            <button type="submit" class="submit-btn">Get Stream Posts</button>
+        </form>
+        
+        <div id="response"></div>
+    </div>
+    
+    <div class="container">
+        <h2>Instructions</h2>
+        <ol>
+            <li><strong>First, create a teacher post with multiple attachments:</strong>
+                <ul>
+                    <li>Use the teacher test file to create a post with multiple files</li>
+                    <li>Make sure the post is published (not draft)</li>
+                </ul>
+            </li>
+            <li><strong>Then test the student view:</strong>
+                <ul>
+                    <li>Get a valid student JWT token</li>
+                    <li>Enter the class code and token above</li>
+                    <li>Click "Get Stream Posts" to see if multiple attachments appear</li>
+                </ul>
+            </li>
+            <li><strong>Expected result:</strong>
+                <ul>
+                    <li>Posts with multiple attachments should show an "attachments" array</li>
+                    <li>Each attachment should have file details and serving URLs</li>
+                    <li>Backward compatibility should be maintained for single attachments</li>
+                </ul>
+            </li>
+        </ol>
+    </div>
+    
+    <script>
+        const BASE_URL = 'http://localhost/scms_new_backup';
+        
+        document.getElementById('streamForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const classCode = document.getElementById('classCode').value;
+            const studentToken = document.getElementById('studentToken').value;
+            
+            if (!studentToken) {
+                alert('Please enter a student JWT token');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${BASE_URL}/api/student/classroom/${classCode}/stream`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${studentToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                const responseDiv = document.getElementById('response');
+                if (result.success) {
+                    responseDiv.className = 'response success';
+                    
+                    let responseText = `Success: ${result.message}\n\n`;
+                    responseText += `Total Posts: ${result.data.length}\n\n`;
+                    
+                    // Display posts with attachments
+                    result.data.forEach((post, index) => {
+                        responseText += `=== Post ${index + 1} ===\n`;
+                        responseText += `ID: ${post.id}\n`;
+                        responseText += `Title: ${post.title || 'No title'}\n`;
+                        responseText += `Content: ${post.content}\n`;
+                        responseText += `Author: ${post.user_name}\n`;
+                        responseText += `Created: ${post.created_at}\n`;
+                        responseText += `Pinned: ${post.is_pinned ? 'Yes' : 'No'}\n`;
+                        responseText += `Likes: ${post.like_count}\n`;
+                        responseText += `Attachment Type: ${post.attachment_type || 'None'}\n`;
+                        
+                        if (post.attachment_type === 'multiple' && post.attachments) {
+                            responseText += `Multiple Attachments (${post.attachments.length}):\n`;
+                            post.attachments.forEach((attachment, attIndex) => {
+                                responseText += `  Attachment ${attIndex + 1}:\n`;
+                                responseText += `    File: ${attachment.original_name}\n`;
+                                responseText += `    Size: ${attachment.file_size} bytes\n`;
+                                responseText += `    Type: ${attachment.mime_type}\n`;
+                                responseText += `    Serving URL: ${attachment.serving_url}\n`;
+                            });
+                        } else if (post.attachment_url) {
+                            responseText += `Single Attachment:\n`;
+                            responseText += `  URL: ${post.attachment_url}\n`;
+                            responseText += `  Serving URL: ${post.attachment_serving_url || 'N/A'}\n`;
+                            responseText += `  File Type: ${post.attachment_file_type || 'N/A'}\n`;
+                        } else {
+                            responseText += `No Attachments\n`;
+                        }
+                        
+                        responseText += '\n';
+                    });
+                    
+                    responseDiv.textContent = responseText;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.textContent = `Error: ${result.message}\n\nDetails: ${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const responseDiv = document.getElementById('response');
+                responseDiv.className = 'response error';
+                responseDiv.textContent = `Network Error: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>

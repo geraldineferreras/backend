@@ -277,22 +277,50 @@ class TeacherController extends BaseController
         $user_data = require_teacher($this);
         if (!$user_data) return;
         $this->load->model('ClassroomStream_model');
+        $this->load->model('StreamAttachment_model');
 
-        // Check if multipart/form-data with files and JSON
-        if (isset($_FILES) && !empty($_FILES) && isset($_POST['data'])) {
-            $data = json_decode($_POST['data'], true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                return json_response(false, 'Invalid JSON format in data field', null, 400);
+        // Support both raw JSON bodies and multipart form-data (with or without a 'data' field)
+        $contentType = $this->input->server('CONTENT_TYPE') ?? '';
+        $isMultipart = stripos($contentType, 'multipart/form-data') !== false;
+
+        if ($isMultipart) {
+            // Prefer a JSON blob in 'data' when provided; otherwise read individual form fields
+            if (isset($_POST['data'])) {
+                $data = json_decode($_POST['data'], true);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    return json_response(false, 'Invalid JSON format in data field', null, 400);
+                }
+            } else {
+                // Build data from standard form fields
+                $data = [
+                    'title' => $this->input->post('title'),
+                    'content' => $this->input->post('content'),
+                    'is_draft' => (int)($this->input->post('is_draft') ?? 0),
+                    'is_scheduled' => (int)($this->input->post('is_scheduled') ?? 0),
+                    'scheduled_at' => $this->input->post('scheduled_at') ?: null,
+                    'allow_comments' => (int)($this->input->post('allow_comments') ?? 1),
+                ];
+
+                // Optional student_ids can come as JSON or comma-separated
+                $studentIds = $this->input->post('student_ids');
+                if (!empty($studentIds)) {
+                    if (is_string($studentIds)) {
+                        $decoded = json_decode($studentIds, true);
+                        $data['student_ids'] = json_last_error() === JSON_ERROR_NONE ? $decoded : array_filter(array_map('trim', explode(',', $studentIds)));
+                    } elseif (is_array($studentIds)) {
+                        $data['student_ids'] = $studentIds;
+                    }
+                }
             }
-            
-            // Handle multiple file uploads
+
+            // Handle one or many file uploads
             $uploaded_files = [];
             $upload_path = FCPATH . 'uploads/announcement/';
             if (!is_dir($upload_path)) {
                 mkdir($upload_path, 0755, true);
             }
             
-            // Process each uploaded file
+            // Normalize to support both single field 'attachment' and many fields
             foreach ($_FILES as $field_name => $file_data) {
                 if ($file_data['error'] === UPLOAD_ERR_OK) {
                     $config['upload_path'] = $upload_path;
@@ -338,8 +366,11 @@ class TeacherController extends BaseController
                             'field_name' => $field_name,
                             'file_path' => $file_path,
                             'file_name' => $upload_data['file_name'],
+                            'original_name' => $original_name,
                             'file_size' => $upload_data['file_size'],
-                            'file_type' => $upload_data['file_type']
+                            'mime_type' => $upload_data['file_type'],
+                            'attachment_type' => 'file',
+                            'attachment_url' => $file_path
                         ];
                     } else {
                         $error = $this->upload->display_errors('', '');
@@ -348,10 +379,15 @@ class TeacherController extends BaseController
                 }
             }
             
-            // Store file information in data
+            // Store file information in data. For compatibility, use a single string when only one file is uploaded
             if (!empty($uploaded_files)) {
-                $data['attachment_type'] = 'multiple';
-                $data['attachment_url'] = json_encode($uploaded_files);
+                if (count($uploaded_files) === 1) {
+                    $data['attachment_type'] = 'file';
+                    $data['attachment_url'] = $uploaded_files[0]['file_path'];
+                } else {
+                    $data['attachment_type'] = 'multiple';
+                    $data['attachment_url'] = json_encode($uploaded_files);
+                }
             }
         } else {
             // Fallback to JSON body (raw)
@@ -387,6 +423,11 @@ class TeacherController extends BaseController
         
         $id = $this->ClassroomStream_model->insert($insert_data);
         if ($id) {
+            // Handle multiple attachments if files were uploaded
+            if (!empty($uploaded_files) && count($uploaded_files) > 1) {
+                $this->StreamAttachment_model->insert_multiple($id, $uploaded_files);
+            }
+            
             $post = $this->ClassroomStream_model->get_by_id($id);
             
             // Create notifications for students if post is published (not draft)

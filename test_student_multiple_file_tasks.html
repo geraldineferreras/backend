@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Multiple File Tasks Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .endpoint-section {
+            border-left: 4px solid #007bff;
+            padding-left: 15px;
+            margin-bottom: 30px;
+        }
+        .endpoint-title {
+            color: #007bff;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .endpoint-url {
+            background-color: #e9ecef;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin-bottom: 10px;
+        }
+        .status-success {
+            color: #28a745;
+        }
+        .status-error {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎓 Student Multiple File Tasks Test</h1>
+    <p>Test the new endpoints for accessing tasks with multiple file attachments</p>
+
+    <div class="container">
+        <h2>🔑 Authentication</h2>
+        <div class="form-group">
+            <label for="token">JWT Token:</label>
+            <input type="text" id="token" placeholder="Enter your JWT token here" style="width: 100%;">
+        </div>
+        <div class="form-group">
+            <label for="baseUrl">Base URL:</label>
+            <input type="text" id="baseUrl" value="http://localhost/scms_new_backup" style="width: 100%;">
+        </div>
+    </div>
+
+    <!-- Get All Tasks with Attachments -->
+    <div class="container endpoint-section">
+        <div class="endpoint-title">📋 Get All Tasks with Attachments</div>
+        <div class="endpoint-url">GET /api/tasks/student?class_code=CLASS_CODE</div>
+        
+        <div class="form-group">
+            <label for="classCode1">Class Code:</label>
+            <input type="text" id="classCode1" placeholder="e.g., J56NHD" value="J56NHD">
+        </div>
+        
+        <button onclick="getAllTasks()">Get All Tasks</button>
+        <div id="response1" class="response" style="display: none;"></div>
+    </div>
+
+    <!-- Get Individually Assigned Tasks -->
+    <div class="container endpoint-section">
+        <div class="endpoint-title">👤 Get Individually Assigned Tasks</div>
+        <div class="endpoint-url">GET /api/tasks/student/assigned?class_code=CLASS_CODE</div>
+        
+        <div class="form-group">
+            <label for="classCode2">Class Code:</label>
+            <input type="text" id="classCode2" placeholder="e.g., J56NHD" value="J56NHD">
+        </div>
+        
+        <button onclick="getAssignedTasks()">Get Assigned Tasks</button>
+        <div id="response2" class="response" style="display: none;"></div>
+    </div>
+
+    <!-- Get Specific Task Details -->
+    <div class="container endpoint-section">
+        <div class="endpoint-title">📄 Get Specific Task Details</div>
+        <div class="endpoint-url">GET /api/tasks/student/{task_id}</div>
+        
+        <div class="form-group">
+            <label for="taskId">Task ID:</label>
+            <input type="text" id="taskId" placeholder="e.g., 70">
+        </div>
+        
+        <button onclick="getTaskDetails()">Get Task Details</button>
+        <div id="response3" class="response" style="display: none;"></div>
+    </div>
+
+    <!-- Get Task Attachments -->
+    <div class="container endpoint-section">
+        <div class="endpoint-title">📎 Get Task Attachments</div>
+        <div class="endpoint-url">GET /api/tasks/student/{task_id}/attachments</div>
+        
+        <div class="form-group">
+            <label for="taskId2">Task ID:</label>
+            <input type="text" id="taskId2" placeholder="e.g., 70">
+        </div>
+        
+        <button onclick="getTaskAttachments()">Get Task Attachments</button>
+        <div id="response4" class="response" style="display: none;"></div>
+    </div>
+
+    <!-- Download Task File -->
+    <div class="container endpoint-section">
+        <div class="endpoint-title">⬇️ Download Task File</div>
+        <div class="endpoint-url">GET /api/tasks/files/{filename}</div>
+        
+        <div class="form-group">
+            <label for="filename">Filename:</label>
+            <input type="text" id="filename" placeholder="e.g., 8bfd66a8d88a3a70614d36aa3192a7bf.pdf">
+        </div>
+        
+        <button onclick="downloadFile()">Download File</button>
+        <div id="response5" class="response" style="display: none;"></div>
+    </div>
+
+    <script>
+        function getAuthHeaders() {
+            const token = document.getElementById('token').value;
+            if (!token) {
+                alert('Please enter your JWT token first!');
+                return null;
+            }
+            return {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            };
+        }
+
+        function getBaseUrl() {
+            return document.getElementById('baseUrl').value;
+        }
+
+        function showResponse(responseId, data, isSuccess = true) {
+            const responseDiv = document.getElementById(responseId);
+            responseDiv.style.display = 'block';
+            responseDiv.innerHTML = JSON.stringify(data, null, 2);
+            responseDiv.className = 'response ' + (isSuccess ? 'status-success' : 'status-error');
+        }
+
+        async function getAllTasks() {
+            const headers = getAuthHeaders();
+            if (!headers) return;
+
+            const classCode = document.getElementById('classCode1').value;
+            if (!classCode) {
+                alert('Please enter a class code!');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${getBaseUrl()}/api/tasks/student?class_code=${classCode}`, {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                const data = await response.json();
+                showResponse('response1', data, response.ok);
+            } catch (error) {
+                showResponse('response1', { error: error.message }, false);
+            }
+        }
+
+        async function getAssignedTasks() {
+            const headers = getAuthHeaders();
+            if (!headers) return;
+
+            const classCode = document.getElementById('classCode2').value;
+            if (!classCode) {
+                alert('Please enter a class code!');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${getBaseUrl()}/api/tasks/student/assigned?class_code=${classCode}`, {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                const data = await response.json();
+                showResponse('response2', data, response.ok);
+            } catch (error) {
+                showResponse('response2', { error: error.message }, false);
+            }
+        }
+
+        async function getTaskDetails() {
+            const headers = getAuthHeaders();
+            if (!headers) return;
+
+            const taskId = document.getElementById('taskId').value;
+            if (!taskId) {
+                alert('Please enter a task ID!');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${getBaseUrl()}/api/tasks/student/${taskId}`, {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                const data = await response.json();
+                showResponse('response3', data, response.ok);
+            } catch (error) {
+                showResponse('response3', { error: error.message }, false);
+            }
+        }
+
+        async function getTaskAttachments() {
+            const headers = getAuthHeaders();
+            if (!headers) return;
+
+            const taskId = document.getElementById('taskId2').value;
+            if (!taskId) {
+                alert('Please enter a task ID!');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${getBaseUrl()}/api/tasks/student/${taskId}/attachments`, {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                const data = await response.json();
+                showResponse('response4', data, response.ok);
+            } catch (error) {
+                showResponse('response4', { error: error.message }, false);
+            }
+        }
+
+        async function downloadFile() {
+            const headers = getAuthHeaders();
+            if (!headers) return;
+
+            const filename = document.getElementById('filename').value;
+            if (!filename) {
+                alert('Please enter a filename!');
+                return;
+            }
+
+            try {
+                // For file download, we'll show the response headers and status
+                const response = await fetch(`${getBaseUrl()}/api/tasks/files/${filename}`, {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                if (response.ok) {
+                    // Create a download link
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    showResponse('response5', { 
+                        message: 'File downloaded successfully!',
+                        filename: filename,
+                        size: blob.size,
+                        type: blob.type
+                    }, true);
+                } else {
+                    const data = await response.json();
+                    showResponse('response5', data, false);
+                }
+            } catch (error) {
+                showResponse('response5', { error: error.message }, false);
+            }
+        }
+
+        // Auto-fill with sample data
+        document.addEventListener('DOMContentLoaded', function() {
+            // You can pre-fill some fields for testing
+            console.log('Student Multiple File Tasks Test Page Loaded');
+            console.log('Make sure you have a valid JWT token and the correct base URL');
+        });
+    </script>
+</body>
+</html>

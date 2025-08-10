@@ -45,6 +45,42 @@ class ClassroomStream_model extends CI_Model {
             });
             $posts = array_values($posts);
         }
+        
+        // Load StreamAttachment model for multiple attachments
+        $this->load->model('StreamAttachment_model');
+        
+        // Process attachments for each post
+        foreach ($posts as &$post) {
+            // Handle multiple attachments
+            if ($post['attachment_type'] === 'multiple') {
+                $attachments = $this->StreamAttachment_model->get_by_stream_id($post['id']);
+                $post['attachments'] = [];
+                foreach ($attachments as $attachment) {
+                    $post['attachments'][] = [
+                        'attachment_id' => $attachment['attachment_id'],
+                        'file_name' => $attachment['file_name'],
+                        'original_name' => $attachment['original_name'],
+                        'file_path' => $attachment['file_path'],
+                        'file_size' => $attachment['file_size'],
+                        'mime_type' => $attachment['mime_type'],
+                        'attachment_type' => $attachment['attachment_type'],
+                        'attachment_url' => $attachment['attachment_url'],
+                        'serving_url' => get_file_url($attachment['file_path']),
+                        'file_type' => get_file_type($attachment['file_path'])
+                    ];
+                }
+                // Keep backward compatibility
+                $post['attachment_serving_url'] = !empty($attachments) ? get_file_url($attachments[0]['file_path']) : null;
+                $post['attachment_file_type'] = !empty($attachments) ? get_file_type($attachments[0]['file_path']) : null;
+            } else {
+                // Single attachment (backward compatibility)
+                if (!empty($post['attachment_url'])) {
+                    $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                    $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                }
+            }
+        }
+        
         return $posts;
     }
 
@@ -66,15 +102,42 @@ class ClassroomStream_model extends CI_Model {
         $this->db->order_by('cs.is_pinned', 'DESC');
         $this->db->order_by('cs.created_at', 'DESC');
         $posts = $this->db->get()->result_array();
+        
+        // Load StreamAttachment model for multiple attachments
+        $this->load->model('StreamAttachment_model');
+        
         foreach ($posts as &$post) {
             $likes = json_decode($post['liked_by_user_ids'], true) ?: [];
             $post['like_count'] = count($likes);
             unset($post['liked_by_user_ids']);
             
-            // Add serving URLs for attachments
-            if (!empty($post['attachment_url'])) {
-                $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
-                $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+            // Handle multiple attachments
+            if ($post['attachment_type'] === 'multiple') {
+                $attachments = $this->StreamAttachment_model->get_by_stream_id($post['id']);
+                $post['attachments'] = [];
+                foreach ($attachments as $attachment) {
+                    $post['attachments'][] = [
+                        'attachment_id' => $attachment['attachment_id'],
+                        'file_name' => $attachment['file_name'],
+                        'original_name' => $attachment['original_name'],
+                        'file_path' => $attachment['file_path'],
+                        'file_size' => $attachment['file_size'],
+                        'mime_type' => $attachment['mime_type'],
+                        'attachment_type' => $attachment['attachment_type'],
+                        'attachment_url' => $attachment['attachment_url'],
+                        'serving_url' => get_file_url($attachment['file_path']),
+                        'file_type' => get_file_type($attachment['file_path'])
+                    ];
+                }
+                // Keep backward compatibility
+                $post['attachment_serving_url'] = !empty($attachments) ? get_file_url($attachments[0]['file_path']) : null;
+                $post['attachment_file_type'] = !empty($attachments) ? get_file_type($attachments[0]['file_path']) : null;
+            } else {
+                // Single attachment (backward compatibility)
+                if (!empty($post['attachment_url'])) {
+                    $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                    $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                }
             }
         }
         return $posts;
@@ -90,15 +153,42 @@ class ClassroomStream_model extends CI_Model {
         $this->db->where('cs.scheduled_at >', date('Y-m-d H:i:s'));
         $this->db->order_by('cs.scheduled_at', 'ASC');
         $posts = $this->db->get()->result_array();
+        
+        // Load StreamAttachment model for multiple attachments
+        $this->load->model('StreamAttachment_model');
+        
         foreach ($posts as &$post) {
             $likes = json_decode($post['liked_by_user_ids'], true) ?: [];
             $post['like_count'] = count($likes);
             unset($post['liked_by_user_ids']);
             
-            // Add serving URLs for attachments
-            if (!empty($post['attachment_url'])) {
-                $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
-                $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+            // Handle multiple attachments
+            if ($post['attachment_type'] === 'multiple') {
+                $attachments = $this->StreamAttachment_model->get_by_stream_id($post['id']);
+                $post['attachments'] = [];
+                foreach ($attachments as $attachment) {
+                    $post['attachments'][] = [
+                        'attachment_id' => $attachment['attachment_id'],
+                        'file_name' => $attachment['file_name'],
+                        'original_name' => $attachment['original_name'],
+                        'file_path' => $attachment['file_path'],
+                        'file_size' => $attachment['file_size'],
+                        'mime_type' => $attachment['mime_type'],
+                        'attachment_type' => $attachment['attachment_type'],
+                        'attachment_url' => $attachment['attachment_url'],
+                        'serving_url' => get_file_url($attachment['file_path']),
+                        'file_type' => get_file_type($attachment['file_path'])
+                    ];
+                }
+                // Keep backward compatibility
+                $post['attachment_serving_url'] = !empty($attachments) ? get_file_url($attachments[0]['file_path']) : null;
+                $post['attachment_file_type'] = !empty($attachments) ? get_file_type($attachments[0]['file_path']) : null;
+            } else {
+                // Single attachment (backward compatibility)
+                if (!empty($post['attachment_url'])) {
+                    $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                    $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                }
             }
         }
         return $posts;
@@ -113,15 +203,42 @@ class ClassroomStream_model extends CI_Model {
         $this->db->where('cs.is_draft', 1);
         $this->db->order_by('cs.created_at', 'DESC');
         $posts = $this->db->get()->result_array();
+        
+        // Load StreamAttachment model for multiple attachments
+        $this->load->model('StreamAttachment_model');
+        
         foreach ($posts as &$post) {
             $likes = json_decode($post['liked_by_user_ids'], true) ?: [];
             $post['like_count'] = count($likes);
             unset($post['liked_by_user_ids']);
             
-            // Add serving URLs for attachments
-            if (!empty($post['attachment_url'])) {
-                $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
-                $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+            // Handle multiple attachments
+            if ($post['attachment_type'] === 'multiple') {
+                $attachments = $this->StreamAttachment_model->get_by_stream_id($post['id']);
+                $post['attachments'] = [];
+                foreach ($attachments as $attachment) {
+                    $post['attachments'][] = [
+                        'attachment_id' => $attachment['attachment_id'],
+                        'file_name' => $attachment['file_name'],
+                        'original_name' => $attachment['original_name'],
+                        'file_path' => $attachment['file_path'],
+                        'file_size' => $attachment['file_size'],
+                        'mime_type' => $attachment['mime_type'],
+                        'attachment_type' => $attachment['attachment_type'],
+                        'attachment_url' => $attachment['attachment_url'],
+                        'serving_url' => get_file_url($attachment['file_path']),
+                        'file_type' => get_file_type($attachment['file_path'])
+                    ];
+                }
+                // Keep backward compatibility
+                $post['attachment_serving_url'] = !empty($attachments) ? get_file_url($attachments[0]['file_path']) : null;
+                $post['attachment_file_type'] = !empty($attachments) ? get_file_type($attachments[0]['file_path']) : null;
+            } else {
+                // Single attachment (backward compatibility)
+                if (!empty($post['attachment_url'])) {
+                    $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                    $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                }
             }
         }
         return $posts;
@@ -168,6 +285,29 @@ class ClassroomStream_model extends CI_Model {
 
     // Get a single post by id
     public function get_by_id($id) {
-        return $this->db->get_where('classroom_stream', ['id' => $id])->row_array();
+        $post = $this->db->get_where('classroom_stream', ['id' => $id])->row_array();
+        
+        if ($post && $post['attachment_type'] === 'multiple') {
+            // Load StreamAttachment model for multiple attachments
+            $this->load->model('StreamAttachment_model');
+            $attachments = $this->StreamAttachment_model->get_by_stream_id($id);
+            $post['attachments'] = [];
+            foreach ($attachments as $attachment) {
+                $post['attachments'][] = [
+                    'attachment_id' => $attachment['attachment_id'],
+                    'file_name' => $attachment['file_name'],
+                    'original_name' => $attachment['original_name'],
+                    'file_path' => $attachment['file_path'],
+                    'file_size' => $attachment['file_size'],
+                    'mime_type' => $attachment['mime_type'],
+                    'attachment_type' => $attachment['attachment_type'],
+                    'attachment_url' => $attachment['attachment_url'],
+                    'serving_url' => get_file_url($attachment['file_path']),
+                    'file_type' => get_file_type($attachment['file_path'])
+                ];
+            }
+        }
+        
+        return $post;
     }
 } 

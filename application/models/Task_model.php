@@ -649,4 +649,119 @@ class Task_model extends CI_Model {
         $query = $this->db->get();
         return $query->num_rows() > 0 ? $query->row_array() : null;
     }
+
+    /**
+     * Insert task with multiple attachments
+     */
+    public function insert_with_attachments($task_data, $attachments = []) {
+        $this->db->trans_start();
+        
+        // Insert the main task
+        $task_id = $this->insert($task_data);
+        
+        // Insert attachments if provided
+        if (!empty($attachments)) {
+            foreach ($attachments as $attachment) {
+                $attachment['task_id'] = $task_id;
+                $attachment['created_at'] = date('Y-m-d H:i:s');
+                $this->db->insert('task_attachments', $attachment);
+            }
+        }
+        
+        $this->db->trans_complete();
+        
+        if ($this->db->trans_status() === FALSE) {
+            return false;
+        }
+        
+        return $task_id;
+    }
+
+    /**
+     * Get attachments for a task
+     */
+    public function get_task_attachments($task_id) {
+        return $this->db->where('task_id', $task_id)
+            ->order_by('created_at', 'ASC')
+            ->get('task_attachments')->result_array();
+    }
+
+    /**
+     * Get task with attachments
+     */
+    public function get_task_with_attachments($task_id) {
+        $task = $this->get_by_id($task_id);
+        
+        if ($task) {
+            $task['attachments'] = $this->get_task_attachments($task_id);
+            $task['attachment_count'] = count($task['attachments']);
+        }
+        
+        return $task;
+    }
+
+    /**
+     * Update task with attachments
+     */
+    public function update_with_attachments($task_id, $task_data, $attachments = []) {
+        $this->db->trans_start();
+        
+        // Update the main task
+        $update_success = $this->update($task_id, $task_data);
+        
+        if ($update_success && !empty($attachments)) {
+            // Delete existing attachments
+            $this->db->where('task_id', $task_id)->delete('task_attachments');
+            
+            // Insert new attachments
+            foreach ($attachments as $attachment) {
+                $attachment['task_id'] = $task_id;
+                $attachment['created_at'] = date('Y-m-d H:i:s');
+                $this->db->insert('task_attachments', $attachment);
+            }
+        }
+        
+        $this->db->trans_complete();
+        
+        return $this->db->trans_status() !== FALSE;
+    }
+
+    /**
+     * Delete task attachment
+     */
+    public function delete_task_attachment($attachment_id, $task_id) {
+        return $this->db->where('attachment_id', $attachment_id)
+            ->where('task_id', $task_id)
+            ->delete('task_attachments');
+    }
+
+    /**
+     * Get attachment count for task
+     */
+    public function get_task_attachment_count($task_id) {
+        return $this->db->where('task_id', $task_id)
+            ->count_all_results('task_attachments');
+    }
+
+    /**
+     * Get all tasks with attachments for a teacher
+     */
+    public function get_all_with_attachments($teacher_id = null, $filters = []) {
+        $tasks = $this->get_all($teacher_id, $filters);
+        
+        foreach ($tasks as &$task) {
+            $task['attachments'] = $this->get_task_attachments($task['task_id']);
+            $task['attachment_count'] = count($task['attachments']);
+        }
+        
+        return $tasks;
+    }
+
+    /**
+     * Get task attachment by filename
+     */
+    public function get_task_attachment_by_filename($filename) {
+        return $this->db->where('file_name', $filename)
+            ->get('task_attachments')->row_array();
+    }
 } 

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Stream Multiple Attachments</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        .file-inputs {
+            border: 2px dashed #ddd;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .file-input {
+            margin-bottom: 10px;
+        }
+        .add-file-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .remove-file-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .submit-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Teacher Stream Multiple Attachments</h1>
+    
+    <form id="streamForm">
+        <div class="form-group">
+            <label for="title">Title:</label>
+            <input type="text" id="title" name="title" value="Test Multiple Attachments" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="content">Content:</label>
+            <textarea id="content" name="content" required>This is a test post with multiple attachments to verify the new functionality.</textarea>
+        </div>
+        
+        <div class="form-group">
+            <label for="allow_comments">Allow Comments:</label>
+            <select id="allow_comments" name="allow_comments">
+                <option value="1">Yes</option>
+                <option value="0">No</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="is_draft">Is Draft:</label>
+            <select id="is_draft" name="is_draft">
+                <option value="0">No (Publish immediately)</option>
+                <option value="1">Yes (Save as draft)</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="is_scheduled">Is Scheduled:</label>
+            <select id="is_scheduled" name="is_scheduled">
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="scheduled_at">Scheduled At (if scheduled):</label>
+            <input type="datetime-local" id="scheduled_at" name="scheduled_at">
+        </div>
+        
+        <div class="form-group">
+            <label for="student_ids">Student IDs (comma-separated or JSON array):</label>
+            <input type="text" id="student_ids" name="student_ids" placeholder="2021302596, 2021305889, 2021305973">
+        </div>
+        
+        <div class="form-group">
+            <label>Attachments:</label>
+            <div class="file-inputs" id="fileInputs">
+                <div class="file-input">
+                    <input type="file" name="attachment[]" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.txt,.zip,.rar,.mp4,.mp3">
+                    <button type="button" class="remove-file-btn" onclick="removeFile(this)">Remove</button>
+                </div>
+            </div>
+            <button type="button" class="add-file-btn" onclick="addFileInput()">Add Another File</button>
+        </div>
+        
+        <button type="submit" class="submit-btn">Post to Stream</button>
+    </form>
+    
+    <div id="response"></div>
+    
+    <script>
+        // Base URL - change this to match your setup
+        const BASE_URL = 'http://localhost/scms_new_backup';
+        const CLASS_CODE = 'A4V9TE'; // Change this to your actual class code
+        
+        function addFileInput() {
+            const fileInputs = document.getElementById('fileInputs');
+            const newInput = document.createElement('div');
+            newInput.className = 'file-input';
+            newInput.innerHTML = `
+                <input type="file" name="attachment[]" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.txt,.zip,.rar,.mp4,.mp3">
+                <button type="button" class="remove-file-btn" onclick="removeFile(this)">Remove</button>
+            `;
+            fileInputs.appendChild(newInput);
+        }
+        
+        function removeFile(button) {
+            const fileInputs = document.getElementById('fileInputs');
+            if (fileInputs.children.length > 1) {
+                button.parentElement.remove();
+            }
+        }
+        
+        document.getElementById('streamForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            
+            // Add form fields
+            formData.append('title', document.getElementById('title').value);
+            formData.append('content', document.getElementById('content').value);
+            formData.append('allow_comments', document.getElementById('allow_comments').value);
+            formData.append('is_draft', document.getElementById('is_draft').value);
+            formData.append('is_scheduled', document.getElementById('is_scheduled').value);
+            formData.append('scheduled_at', document.getElementById('scheduled_at').value);
+            formData.append('student_ids', document.getElementById('student_ids').value);
+            
+            // Add files
+            const fileInputs = document.querySelectorAll('input[type="file"]');
+            fileInputs.forEach((input, index) => {
+                if (input.files[0]) {
+                    formData.append(`attachment_${index}`, input.files[0]);
+                }
+            });
+            
+            try {
+                const response = await fetch(`${BASE_URL}/api/teacher/classroom/${CLASS_CODE}/stream`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                const responseDiv = document.getElementById('response');
+                if (result.success) {
+                    responseDiv.className = 'response success';
+                    responseDiv.textContent = `Success: ${result.message}\n\nResponse: ${JSON.stringify(result.data, null, 2)}`;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.textContent = `Error: ${result.message}\n\nDetails: ${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const responseDiv = document.getElementById('response');
+                responseDiv.className = 'response error';
+                responseDiv.textContent = `Network Error: ${error.message}`;
+            }
+        });
+        
+        // Update scheduled_at field visibility based on is_scheduled selection
+        document.getElementById('is_scheduled').addEventListener('change', function() {
+            const scheduledAtField = document.getElementById('scheduled_at');
+            scheduledAtField.style.display = this.value === '1' ? 'block' : 'none';
+        });
+        
+        // Initialize scheduled_at field visibility
+        document.getElementById('scheduled_at').style.display = 'none';
+    </script>
+</body>
+</html>
