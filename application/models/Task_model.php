@@ -314,7 +314,17 @@ class Task_model extends CI_Model {
                 WHERE task_comments.task_id = ?
                 ORDER BY task_comments.created_at ASC";
         
-        return $this->db->query($sql, [$task_id])->result_array();
+        $comments = $this->db->query($sql, [$task_id])->result_array();
+        
+        // Process avatar URLs for each comment
+        foreach ($comments as &$comment) {
+            if (empty($comment['profile_pic']) || $comment['profile_pic'] === '') {
+                $comment['profile_pic'] = null; // Set to null for users without profile pictures
+            }
+            // Keep the raw path for users with profile pictures (like profile_pic in user API)
+        }
+        
+        return $comments;
     }
     
     public function update_comment($comment_id, $user_id, $comment) {

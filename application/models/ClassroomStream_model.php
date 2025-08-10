@@ -84,7 +84,7 @@ class ClassroomStream_model extends CI_Model {
         return $posts;
     }
 
-    // Get all posts for UI: only needed fields, join users, count likes
+    // Get all stream posts for UI
     public function get_stream_for_classroom_ui($class_code) {
         $this->db->select('cs.id, u.full_name as user_name, u.profile_pic as user_avatar, cs.created_at, cs.is_pinned, cs.title, cs.content, cs.liked_by_user_ids, cs.attachment_url, cs.attachment_type');
         $this->db->from('classroom_stream cs');
@@ -110,6 +110,12 @@ class ClassroomStream_model extends CI_Model {
             $likes = json_decode($post['liked_by_user_ids'], true) ?: [];
             $post['like_count'] = count($likes);
             unset($post['liked_by_user_ids']);
+            
+            // Process avatar URL
+            if (empty($post['user_avatar']) || $post['user_avatar'] === '') {
+                $post['user_avatar'] = null; // Set to null for users without profile pictures
+            }
+            // Keep the raw path for users with profile pictures (like profile_pic in user API)
             
             // Handle multiple attachments
             if ($post['attachment_type'] === 'multiple') {
@@ -162,6 +168,12 @@ class ClassroomStream_model extends CI_Model {
             $post['like_count'] = count($likes);
             unset($post['liked_by_user_ids']);
             
+            // Process avatar URL
+            if (empty($post['user_avatar']) || $post['user_avatar'] === '') {
+                $post['user_avatar'] = null; // Set to null for users without profile pictures
+            }
+            // Keep the raw path for users with profile pictures (like profile_pic in user API)
+            
             // Handle multiple attachments
             if ($post['attachment_type'] === 'multiple') {
                 $attachments = $this->StreamAttachment_model->get_by_stream_id($post['id']);
@@ -211,6 +223,12 @@ class ClassroomStream_model extends CI_Model {
             $likes = json_decode($post['liked_by_user_ids'], true) ?: [];
             $post['like_count'] = count($likes);
             unset($post['liked_by_user_ids']);
+            
+            // Process avatar URL
+            if (empty($post['user_avatar']) || $post['user_avatar'] === '') {
+                $post['user_avatar'] = null; // Set to null for users without profile pictures
+            }
+            // Keep the raw path for users with profile pictures (like profile_pic in user API)
             
             // Handle multiple attachments
             if ($post['attachment_type'] === 'multiple') {
@@ -280,7 +298,17 @@ class ClassroomStream_model extends CI_Model {
         $this->db->join('users u', 'c.user_id = u.user_id', 'left');
         $this->db->where('c.stream_id', $stream_id);
         $this->db->order_by('c.created_at', 'ASC');
-        return $this->db->get()->result_array();
+        $comments = $this->db->get()->result_array();
+        
+        // Process avatar URLs for each comment
+        foreach ($comments as &$comment) {
+            if (empty($comment['user_avatar']) || $comment['user_avatar'] === '') {
+                $comment['user_avatar'] = null; // Set to null for users without profile pictures
+            }
+            // Keep the raw path for users with profile pictures (like profile_pic in user API)
+        }
+        
+        return $comments;
     }
 
     // Get a single post by id

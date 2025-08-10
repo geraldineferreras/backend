@@ -749,4 +749,222 @@ class StudentController extends BaseController {
             return json_response(false, 'Error creating post: ' . $e->getMessage(), null, 500);
         }
     }
+
+    /**
+     * Add a comment to a stream post (Student only)
+     * POST /api/student/classroom/{class_code}/stream/{stream_id}/comment
+     */
+    public function classroom_stream_comment_post($class_code, $stream_id) {
+        // Require student authentication
+        $user_data = require_student($this);
+        if (!$user_data) return;
+        
+        try {
+            // Get classroom by code
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom) {
+                return json_response(false, 'Classroom not found', null, 404);
+            }
+            
+            // Check if student is enrolled in this class
+            $enrollment = $this->db->get_where('classroom_enrollments', [
+                'classroom_id' => $classroom['id'],
+                'student_id' => $user_data['user_id'],
+                'status' => 'active'
+            ])->row_array();
+            
+            if (!$enrollment) {
+                return json_response(false, 'Access denied. You must be enrolled in this class to comment.', null, 403);
+            }
+            
+            // Load the ClassroomStream model
+            $this->load->model('ClassroomStream_model');
+            
+            // Check if the stream post exists and belongs to this class
+            $post = $this->ClassroomStream_model->get_by_id($stream_id);
+            if (!$post || $post['class_code'] !== $class_code) {
+                return json_response(false, 'Stream post not found', null, 404);
+            }
+            
+            // Check if comments are allowed on this post
+            if (!$post['allow_comments']) {
+                return json_response(false, 'Comments are not allowed on this post', null, 403);
+            }
+            
+            // Get JSON input
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (json_last_error() !== JSON_ERROR_NONE || empty($data['comment'])) {
+                return json_response(false, 'Comment is required', null, 400);
+            }
+            
+            // Add the comment
+            $comment_id = $this->ClassroomStream_model->add_comment($stream_id, $user_data['user_id'], $data['comment']);
+            
+            if ($comment_id) {
+                // Get all comments for this post
+                $comments = $this->ClassroomStream_model->get_comments($stream_id);
+                return json_response(true, 'Comment added successfully', $comments);
+            } else {
+                return json_response(false, 'Failed to add comment', null, 500);
+            }
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Error adding comment: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    /**
+     * Get all comments for a stream post (Student only)
+     * GET /api/student/classroom/{class_code}/stream/{stream_id}/comments
+     */
+    public function classroom_stream_comments_get($class_code, $stream_id) {
+        // Require student authentication
+        $user_data = require_student($this);
+        if (!$user_data) return;
+        
+        try {
+            // Get classroom by code
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom) {
+                return json_response(false, 'Classroom not found', null, 404);
+            }
+            
+            // Check if student is enrolled in this class
+            $enrollment = $this->db->get_where('classroom_enrollments', [
+                'classroom_id' => $classroom['id'],
+                'student_id' => $user_data['user_id'],
+                'status' => 'active'
+            ])->row_array();
+            
+            if (!$enrollment) {
+                return json_response(false, 'Access denied. You must be enrolled in this class to view comments.', null, 403);
+            }
+            
+            // Load the ClassroomStream model
+            $this->load->model('ClassroomStream_model');
+            
+            // Check if the stream post exists and belongs to this class
+            $post = $this->ClassroomStream_model->get_by_id($stream_id);
+            if (!$post || $post['class_code'] !== $class_code) {
+                return json_response(false, 'Stream post not found', null, 404);
+            }
+            
+            // Get all comments for this post
+            $comments = $this->ClassroomStream_model->get_comments($stream_id);
+            return json_response(true, 'Comments retrieved successfully', $comments);
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Error retrieving comments: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    /**
+     * Edit a comment (Student only)
+     * PUT /api/student/classroom/{class_code}/stream/{stream_id}/comment/{comment_id}
+     */
+    public function classroom_stream_comment_put($class_code, $stream_id, $comment_id) {
+        // Require student authentication
+        $user_data = require_student($this);
+        if (!$user_data) return;
+        
+        try {
+            // Get classroom by code
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom) {
+                return json_response(false, 'Classroom not found', null, 404);
+            }
+            
+            // Check if student is enrolled in this class
+            $enrollment = $this->db->get_where('classroom_enrollments', [
+                'classroom_id' => $classroom['id'],
+                'student_id' => $user_data['user_id'],
+                'status' => 'active'
+            ])->row_array();
+            
+            if (!$enrollment) {
+                return json_response(false, 'Access denied. You must be enrolled in this class to edit comments.', null, 403);
+            }
+            
+            // Load the ClassroomStream model
+            $this->load->model('ClassroomStream_model');
+            
+            // Check if the stream post exists and belongs to this class
+            $post = $this->ClassroomStream_model->get_by_id($stream_id);
+            if (!$post || $post['class_code'] !== $class_code) {
+                return json_response(false, 'Stream post not found', null, 404);
+            }
+            
+            // Get JSON input
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (json_last_error() !== JSON_ERROR_NONE || empty($data['comment'])) {
+                return json_response(false, 'Comment is required', null, 400);
+            }
+            
+            // Update the comment (only if it belongs to the current user)
+            $success = $this->ClassroomStream_model->update_comment($comment_id, $user_data['user_id'], $data['comment']);
+            
+            if ($success) {
+                // Get all comments for this post
+                $comments = $this->ClassroomStream_model->get_comments($stream_id);
+                return json_response(true, 'Comment updated successfully', $comments);
+            } else {
+                return json_response(false, 'Failed to update comment (maybe not your comment)', null, 403);
+            }
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Error updating comment: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    /**
+     * Delete a comment (Student only)
+     * DELETE /api/student/classroom/{class_code}/stream/{stream_id}/comment/{comment_id}
+     */
+    public function classroom_stream_comment_delete($class_code, $stream_id, $comment_id) {
+        // Require student authentication
+        $user_data = require_student($this);
+        if (!$user_data) return;
+        
+        try {
+            // Get classroom by code
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom) {
+                return json_response(false, 'Classroom not found', null, 404);
+            }
+            
+            // Check if student is enrolled in this class
+            $enrollment = $this->db->get_where('classroom_enrollments', [
+                'classroom_id' => $classroom['id'],
+                'student_id' => $user_data['user_id'],
+                'status' => 'active'
+            ])->row_array();
+            
+            if (!$enrollment) {
+                return json_response(false, 'Access denied. You must be enrolled in this class to delete comments.', null, 403);
+            }
+            
+            // Load the ClassroomStream model
+            $this->load->model('ClassroomStream_model');
+            
+            // Check if the stream post exists and belongs to this class
+            $post = $this->ClassroomStream_model->get_by_id($stream_id);
+            if (!$post || $post['class_code'] !== $class_code) {
+                return json_response(false, 'Stream post not found', null, 404);
+            }
+            
+            // Delete the comment (only if it belongs to the current user)
+            $success = $this->ClassroomStream_model->delete_comment($comment_id, $user_data['user_id']);
+            
+            if ($success) {
+                // Get all comments for this post
+                $comments = $this->ClassroomStream_model->get_comments($stream_id);
+                return json_response(true, 'Comment deleted successfully', $comments);
+            } else {
+                return json_response(false, 'Failed to delete comment (maybe not your comment)', null, 403);
+            }
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Error deleting comment: ' . $e->getMessage(), null, 500);
+        }
+    }
 }

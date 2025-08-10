@@ -142,6 +142,12 @@ $route['api/student/classroom/(:any)/people']['get'] = 'api/StudentController/cl
 $route['api/student/classroom/(:any)/stream']['get'] = 'api/StudentController/classroom_stream_get/$1';
 $route['api/student/classroom/(:any)/stream']['post'] = 'api/StudentController/classroom_stream_post/$1';
 
+// Student Stream Comments
+$route['api/student/classroom/(:any)/stream/(:num)/comment']['post'] = 'api/StudentController/classroom_stream_comment_post/$1/$2';
+$route['api/student/classroom/(:any)/stream/(:num)/comments']['get'] = 'api/StudentController/classroom_stream_comments_get/$1/$2';
+$route['api/student/classroom/(:any)/stream/(:num)/comment/(:num)']['put'] = 'api/StudentController/classroom_stream_comment_put/$1/$2/$3';
+$route['api/student/classroom/(:any)/stream/(:num)/comment/(:num)']['delete'] = 'api/StudentController/classroom_stream_comment_delete/$1/$2/$3';
+
 // Excuse Letter Management
 $route['api/excuse-letters/submit']['post'] = 'api/ExcuseLetterController/submit_post';
 $route['api/excuse-letters/student']['get'] = 'api/ExcuseLetterController/student_get';
