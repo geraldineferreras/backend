@@ -40,54 +40,43 @@ class TaskController extends BaseController
             $data->scheduled_at = $this->input->post('scheduled_at');
             $data->due_date = $this->input->post('due_date');
             
-            // Handle file upload
-            $attachment_url = null;
-            $attachment_type = null;
+            // Handle multiple file uploads
+            $attachments = [];
             
-            if (isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
-                $upload_path = './uploads/tasks/';
+            // Method 1: Multiple files with same field name (attachment[])
+            if (isset($_FILES['attachment']) && is_array($_FILES['attachment']['name'])) {
+                $file_count = count($_FILES['attachment']['name']);
                 
-                // Create upload directory if it doesn't exist
-                if (!is_dir($upload_path)) {
-                    if (!mkdir($upload_path, 0755, true)) {
-                        $this->send_error('Failed to create upload directory', 500);
-                        return;
+                for ($i = 0; $i < $file_count; $i++) {
+                    if ($_FILES['attachment']['error'][$i] === UPLOAD_ERR_OK) {
+                        $uploaded_file = $this->upload_task_file($_FILES['attachment']['tmp_name'][$i], $_FILES['attachment']['name'][$i]);
+                        if ($uploaded_file) {
+                            $attachments[] = $uploaded_file;
+                        }
                     }
                 }
-                
-                // Check directory permissions
-                if (!is_writable($upload_path)) {
-                    $this->send_error('Upload directory is not writable', 500);
-                    return;
-                }
-                
-                $upload_config = [
-                    'upload_path' => $upload_path,
-                    'allowed_types' => 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3',
-                    'max_size' => 10240, // 10MB
-                    'encrypt_name' => true,
-                    'overwrite' => false
-                ];
-
-                $this->load->library('upload', $upload_config);
-
-                if ($this->upload->do_upload('attachment')) {
-                    $upload_data = $this->upload->data();
-                    $attachment_url = $upload_data['file_name']; // Just the filename
-                    $attachment_type = 'file';
-                    $original_filename = $_FILES['attachment']['name']; // Store the original filename
-                    
-                    // Verify file was actually saved
-                    $file_path = $upload_path . $upload_data['file_name'];
-                    if (!file_exists($file_path)) {
-                        $this->send_error('File upload succeeded but file not found on disk', 500);
-                        return;
+            }
+            // Method 2: Multiple files with different field names (attachment1, attachment2, etc.)
+            else {
+                foreach ($_FILES as $field_name => $file_data) {
+                    if (strpos($field_name, 'attachment') === 0 && $file_data['error'] === UPLOAD_ERR_OK) {
+                        $uploaded_file = $this->upload_task_file($file_data['tmp_name'], $file_data['name']);
+                        if ($uploaded_file) {
+                            $attachments[] = $uploaded_file;
+                        }
                     }
-                } else {
-                    $error_msg = $this->upload->display_errors('', '');
-                    $this->send_error('File upload failed: ' . $error_msg, 400);
-                    return;
                 }
+            }
+            
+            // For backward compatibility, set attachment_url and attachment_type if only one file
+            if (count($attachments) === 1) {
+                $attachment_url = $attachments[0]['file_name'];
+                $attachment_type = 'file';
+                $original_filename = $attachments[0]['original_name'];
+            } else {
+                $attachment_url = null;
+                $attachment_type = null;
+                $original_filename = null;
             }
         } else {
             // Handle JSON request
@@ -96,6 +85,8 @@ class TaskController extends BaseController
             
             $attachment_url = $data->attachment_url ?? null;
             $attachment_type = $data->attachment_type ?? null;
+            $original_filename = $data->original_filename ?? null;
+            $attachments = [];
         }
 
         // Validate required fields
@@ -137,7 +128,7 @@ class TaskController extends BaseController
                 'assigned_students' => $data->assigned_students ?? null,
                 'attachment_type' => $attachment_type,
                 'attachment_url' => $attachment_url,
-                'original_filename' => $original_filename ?? null,
+                'original_filename' => $original_filename,
                 'allow_comments' => $data->allow_comments,
                 'is_draft' => $data->is_draft,
                 'is_scheduled' => $data->is_scheduled,
@@ -146,7 +137,12 @@ class TaskController extends BaseController
                 'teacher_id' => $user_data['user_id']
             ];
 
-            $task_id = $this->Task_model->insert($task_data);
+            // Use the new method for multiple attachments
+            if (!empty($attachments)) {
+                $task_id = $this->Task_model->insert_with_attachments($task_data, $attachments);
+            } else {
+                $task_id = $this->Task_model->insert($task_data);
+            }
             
             if ($task_id) {
                 // If individual assignment, assign specific students
@@ -154,7 +150,7 @@ class TaskController extends BaseController
                     $this->Task_model->safe_assign_students_to_task($task_id, $data->assigned_students);
                 }
                 
-                $task = $this->Task_model->get_by_id($task_id);
+                $task = $this->Task_model->get_task_with_attachments($task_id);
                 
                 // Send notifications to students in the affected classes
                 $this->send_task_notifications($task_id, $task, $data->class_codes, $user_data);
@@ -200,7 +196,7 @@ class TaskController extends BaseController
             if ($is_scheduled !== null) $filters['is_scheduled'] = $is_scheduled;
             if ($class_code) $filters['class_code'] = $class_code;
 
-            $tasks = $this->Task_model->get_all($user_data['user_id'], $filters);
+            $tasks = $this->Task_model->get_all_with_attachments($user_data['user_id'], $filters);
             
             // Add submission counts to each task
             foreach ($tasks as &$task) {
@@ -232,12 +228,19 @@ class TaskController extends BaseController
 
             $tasks = $this->Task_model->get_tasks_for_student($user_data['user_id'], $class_code);
             
-            // Add submission status for each task
+            // Add submission status and attachments for each task
             foreach ($tasks as &$task) {
                 $submission = $this->Task_model->get_student_submission($task['task_id'], $user_data['user_id'], $class_code);
                 $task['submission_status'] = $submission ? $submission['status'] : 'not_submitted';
                 $task['submission_id'] = $submission ? $submission['submission_id'] : null;
                 $task['class_codes'] = json_decode($task['class_codes'], true);
+                
+                // Add due date status
+                $task['is_past_due'] = $this->is_task_past_due($task['due_date']);
+                
+                // Get task attachments
+                $task['attachments'] = $this->Task_model->get_task_attachments($task['task_id']);
+                $task['attachment_count'] = count($task['attachments']);
             }
 
             $this->send_success($tasks, 'Tasks retrieved successfully');
@@ -262,14 +265,21 @@ class TaskController extends BaseController
                 return;
             }
 
-            $tasks = $this->Task_model->get_individually_assigned_tasks_for_student($user_data['user_id'], $class_code);
+            $tasks = $this->Task_model->get_tasks_for_student($user_data['user_id'], $class_code);
             
-            // Add submission status for each task
+            // Add submission status and attachments for each task
             foreach ($tasks as &$task) {
                 $submission = $this->Task_model->get_student_submission($task['task_id'], $user_data['user_id'], $class_code);
                 $task['submission_status'] = $submission ? $submission['status'] : 'not_submitted';
                 $task['submission_id'] = $submission ? $submission['submission_id'] : null;
                 $task['class_codes'] = json_decode($task['class_codes'], true);
+                
+                // Add due date status
+                $task['is_past_due'] = $this->is_task_past_due($task['due_date']);
+                
+                // Get task attachments
+                $task['attachments'] = $this->Task_model->get_task_attachments($task['task_id']);
+                $task['attachment_count'] = count($task['attachments']);
             }
 
             $this->send_success($tasks, 'Individually assigned tasks retrieved successfully');
@@ -279,7 +289,7 @@ class TaskController extends BaseController
     }
 
     /**
-     * Get task details with submissions (Teacher only)
+     * Get task details (Teacher only)
      * GET /api/tasks/{task_id}
      */
     public function task_get($task_id)
@@ -288,8 +298,8 @@ class TaskController extends BaseController
         if (!$user_data) return;
 
         try {
-            $task = $this->Task_model->get_task_with_submissions($task_id, $user_data['user_id']);
-            if (!$task) {
+            $task = $this->Task_model->get_task_with_attachments($task_id);
+            if (!$task || $task['teacher_id'] != $user_data['user_id']) {
                 $this->send_error('Task not found or access denied', 404);
                 return;
             }
@@ -699,6 +709,12 @@ class TaskController extends BaseController
                 return;
             }
 
+            // Check if task is past due date
+            if ($this->is_task_past_due($task['due_date'])) {
+                $this->send_error('Cannot submit task after the due date', 400);
+                return;
+            }
+
             $submission_data = [
                 'task_id' => $task_id,
                 'student_id' => $user_data['user_id'],
@@ -726,6 +742,20 @@ class TaskController extends BaseController
         }
     }
     
+    /**
+     * Check if a task is past its due date
+     */
+    private function is_task_past_due($due_date) {
+        if (empty($due_date)) {
+            return false; // No due date means not past due
+        }
+        
+        $due_datetime = new DateTime($due_date);
+        $current_datetime = new DateTime();
+        
+        return $current_datetime > $due_datetime;
+    }
+
     /**
      * Upload a single file and return attachment data
      */
@@ -763,6 +793,50 @@ class TaskController extends BaseController
                 'mime_type' => $upload_data['file_type'],
                 'attachment_type' => 'file',
                 'attachment_url' => 'uploads/submissions/' . $upload_data['file_name']
+            ];
+        } else {
+            $this->send_error('File upload failed: ' . $this->upload->display_errors('', ''), 400);
+            return false;
+        }
+    }
+
+    /**
+     * Upload a single file for task attachments
+     */
+    private function upload_task_file($tmp_name, $original_name) {
+        $upload_config = [
+            'upload_path' => './uploads/tasks/',
+            'allowed_types' => 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3',
+            'max_size' => 10240, // 10MB
+            'encrypt_name' => true,
+            'overwrite' => false
+        ];
+
+        if (!is_dir($upload_config['upload_path'])) {
+            mkdir($upload_config['upload_path'], 0755, true);
+        }
+
+        $this->load->library('upload', $upload_config);
+        
+        // Set the file data for upload
+        $_FILES['temp_file'] = [
+            'name' => $original_name,
+            'type' => $_FILES['attachment']['type'] ?? 'application/octet-stream',
+            'tmp_name' => $tmp_name,
+            'error' => UPLOAD_ERR_OK,
+            'size' => $_FILES['attachment']['size'] ?? 0
+        ];
+
+        if ($this->upload->do_upload('temp_file')) {
+            $upload_data = $this->upload->data();
+            return [
+                'file_name' => $upload_data['file_name'],
+                'original_name' => $original_name,
+                'file_path' => 'uploads/tasks/' . $upload_data['file_name'],
+                'file_size' => $upload_data['file_size'],
+                'mime_type' => $upload_data['file_type'],
+                'attachment_type' => 'file',
+                'attachment_url' => 'uploads/tasks/' . $upload_data['file_name']
             ];
         } else {
             $this->send_error('File upload failed: ' . $this->upload->display_errors('', ''), 400);
@@ -925,7 +999,45 @@ class TaskController extends BaseController
 
     /**
      * Serve task attachment file
-     * GET /api/tasks/files/{filename}
+     * GET /api/tasks/attachment/{filename}
+     */
+    public function serve_task_attachment($filename)
+    {
+        try {
+            // Get task attachment info
+            $attachment = $this->Task_model->get_task_attachment_by_filename($filename);
+            if (!$attachment) {
+                show_404();
+                return;
+            }
+
+            $file_path = FCPATH . $attachment['file_path'];
+            if (!file_exists($file_path)) {
+                show_404();
+                return;
+            }
+
+            // Get file info
+            $file_size = filesize($file_path);
+            $mime_type = $attachment['mime_type'] ?: $this->get_mime_type(pathinfo($filename, PATHINFO_EXTENSION));
+
+            // Set headers
+            header('Content-Type: ' . $mime_type);
+            header('Content-Length: ' . $file_size);
+            header('Content-Disposition: inline; filename="' . $attachment['original_name'] . '"');
+            header('Cache-Control: public, max-age=3600');
+
+            // Output file
+            readfile($file_path);
+        } catch (Exception $e) {
+            log_message('error', 'Error serving task attachment: ' . $e->getMessage());
+            show_404();
+        }
+    }
+
+    /**
+     * Serve file (for backward compatibility)
+     * GET /api/tasks/file/{filename}
      */
     public function serve_file($filename)
     {
@@ -1485,6 +1597,13 @@ class TaskController extends BaseController
                 $task['comments'] = $comments;
             }
 
+            // Get task attachments
+            $task['attachments'] = $this->Task_model->get_task_attachments($task_id);
+            $task['attachment_count'] = count($task['attachments']);
+
+            // Add due date status
+            $task['is_past_due'] = $this->is_task_past_due($task['due_date']);
+
             $task['class_codes'] = $class_codes;
             $task['assigned_students'] = json_decode($task['assigned_students'], true);
 
@@ -1868,6 +1987,114 @@ class TaskController extends BaseController
             return number_format($bytes / 1024, 2) . ' KB';
         } else {
             return $bytes . ' bytes';
+        }
+    }
+
+    /**
+     * Get task attachments (Teacher only)
+     * GET /api/tasks/{task_id}/attachments
+     */
+    public function task_attachments_get($task_id)
+    {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        try {
+            $task = $this->Task_model->get_by_id($task_id);
+            if (!$task || $task['teacher_id'] != $user_data['user_id']) {
+                $this->send_error('Task not found or access denied', 404);
+                return;
+            }
+
+            $attachments = $this->Task_model->get_task_attachments($task_id);
+            $this->send_success($attachments, 'Task attachments retrieved successfully');
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve task attachments: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get task attachments for student (Student only)
+     * GET /api/tasks/student/{task_id}/attachments
+     */
+    public function student_task_attachments_get($task_id)
+    {
+        $user_data = require_student($this);
+        if (!$user_data) return;
+
+        try {
+            // Get the task details
+            $task = $this->Task_model->get_by_id($task_id);
+            if (!$task) {
+                $this->send_error('Task not found', 404);
+                return;
+            }
+
+            // Check if student has access to this task
+            $class_codes = json_decode($task['class_codes'], true);
+            $has_access = false;
+            
+            // Check if student is enrolled in any of the task's classes
+            foreach ($class_codes as $class_code) {
+                $enrollment = $this->db->get_where('classroom_enrollments', [
+                    'classroom_id' => $class_code,
+                    'student_id' => $user_data['user_id'],
+                    'status' => 'active'
+                ])->row_array();
+                
+                if ($enrollment) {
+                    $has_access = true;
+                    break;
+                }
+            }
+
+            // For individual assignments, check if student is specifically assigned
+            if ($task['assignment_type'] === 'individual') {
+                $assigned_students = json_decode($task['assigned_students'], true);
+                foreach ($assigned_students as $assigned_student) {
+                    if ($assigned_student['student_id'] === $user_data['user_id']) {
+                        $has_access = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!$has_access) {
+                $this->send_error('Access denied. You do not have permission to view this task.', 403);
+                return;
+            }
+
+            $attachments = $this->Task_model->get_task_attachments($task_id);
+            $this->send_success($attachments, 'Task attachments retrieved successfully');
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve task attachments: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Delete task attachment (Teacher only)
+     * DELETE /api/tasks/{task_id}/attachments/{attachment_id}
+     */
+    public function delete_task_attachment_delete($task_id, $attachment_id)
+    {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        try {
+            $task = $this->Task_model->get_by_id($task_id);
+            if (!$task || $task['teacher_id'] != $user_data['user_id']) {
+                $this->send_error('Task not found or access denied', 404);
+                return;
+            }
+
+            $success = $this->Task_model->delete_task_attachment($attachment_id, $task_id);
+            if ($success) {
+                $this->send_success(null, 'Task attachment deleted successfully');
+            } else {
+                $this->send_error('Failed to delete task attachment', 500);
+            }
+        } catch (Exception $e) {
+            $this->send_error('Failed to delete task attachment: ' . $e->getMessage(), 500);
         }
     }
 } 
