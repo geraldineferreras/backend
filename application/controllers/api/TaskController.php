@@ -99,7 +99,7 @@ class TaskController extends BaseController
         }
 
         // Validate type
-        $valid_types = ['assignment', 'quiz', 'activity', 'project', 'exam'];
+        $valid_types = ['assignment', 'quiz', 'activity', 'project', 'exam', 'midterm_exam', 'final_exam'];
         if (!in_array($data->type, $valid_types)) {
             $this->send_error('Invalid task type', 400);
             return;
@@ -269,10 +269,30 @@ class TaskController extends BaseController
             
             // Add submission status and attachments for each task
             foreach ($tasks as &$task) {
-                $submission = $this->Task_model->get_student_submission($task['task_id'], $user_data['user_id'], $class_code);
+                // Directly query task_submissions table to find any submission for this student and task
+                // This bypasses the assigned_students field mismatch issue
+                $submission = $this->db->select('*')
+                    ->from('task_submissions')
+                    ->where('task_id', $task['task_id'])
+                    ->where('student_id', $user_data['user_id'])
+                    ->get()->row_array();
+                
                 $task['submission_status'] = $submission ? $submission['status'] : 'not_submitted';
                 $task['submission_id'] = $submission ? $submission['submission_id'] : null;
                 $task['class_codes'] = json_decode($task['class_codes'], true);
+                
+                // Add grade information if submission exists and is graded
+                if ($submission && $submission['grade'] !== null) {
+                    $task['grade'] = $submission['grade'];
+                    $task['feedback'] = $submission['feedback'];
+                    $task['submitted_at'] = $submission['submitted_at'];
+                    $task['percentage'] = $task['points'] > 0 ? round(($submission['grade'] / $task['points']) * 100, 1) : 0;
+                } else {
+                    $task['grade'] = null;
+                    $task['feedback'] = null;
+                    $task['submitted_at'] = null;
+                    $task['percentage'] = null;
+                }
                 
                 // Add due date status
                 $task['is_past_due'] = $this->is_task_past_due($task['due_date']);
@@ -337,7 +357,7 @@ class TaskController extends BaseController
             }
 
             if (isset($data->type)) {
-                $valid_types = ['assignment', 'quiz', 'activity', 'project', 'exam'];
+                $valid_types = ['assignment', 'quiz', 'activity', 'project', 'exam', 'midterm_exam', 'final_exam'];
                 if (!in_array($data->type, $valid_types)) {
                     $this->send_error('Invalid task type', 400);
                     return;

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excuse Letter Attendance Integration Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .form-group {
+            margin: 10px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <h1>Excuse Letter Attendance Integration Test</h1>
+    
+    <div class="section">
+        <h2>1. Check Current Attendance Records</h2>
+        <p>Check the current attendance status for a specific class and date:</p>
+        <div class="form-group">
+            <label for="classId">Classroom ID:</label>
+            <input type="text" id="classId" value="3" placeholder="Enter classroom ID">
+        </div>
+        <div class="form-group">
+            <label for="date">Date:</label>
+            <input type="date" id="date" value="2025-08-12">
+        </div>
+        <button onclick="checkAttendance()">Check Attendance Records</button>
+        <div id="attendanceResult" class="result"></div>
+    </div>
+
+    <div class="section">
+        <h2>2. Sync Excuse Letter Statuses</h2>
+        <p>Sync excuse letter statuses with attendance records:</p>
+        <button onclick="syncExcuseLetters()">Sync Excuse Letters</button>
+        <div id="syncResult" class="result"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. Check Excuse Letter Status</h2>
+        <p>Check excuse letter status for a specific student and date:</p>
+        <div class="form-group">
+            <label for="studentId">Student ID:</label>
+            <input type="text" id="studentId" value="STU689436695D2BD603" placeholder="Enter student ID">
+        </div>
+        <div class="form-group">
+            <label for="excuseDate">Date:</label>
+            <input type="date" id="excuseDate" value="2025-08-12">
+        </div>
+        <button onclick="checkExcuseLetterStatus()">Check Excuse Letter Status</button>
+        <div id="excuseResult" class="result"></div>
+    </div>
+
+    <script>
+        const baseUrl = 'http://localhost/scms_new_backup';
+
+        async function makeRequest(endpoint, method = 'GET', data = null) {
+            try {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + localStorage.getItem('token')
+                    }
+                };
+
+                if (data && method !== 'GET') {
+                    options.body = JSON.stringify(data);
+                }
+
+                const response = await fetch(`${baseUrl}${endpoint}`, options);
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${result.message || 'Request failed'}`);
+                }
+
+                return result;
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        async function checkAttendance() {
+            const classId = document.getElementById('classId').value;
+            const date = document.getElementById('date').value;
+            const resultDiv = document.getElementById('attendanceResult');
+
+            try {
+                resultDiv.className = 'result info';
+                resultDiv.textContent = 'Checking attendance records...';
+
+                const result = await makeRequest(`/api/attendance/records/${classId}/${date}`);
+                
+                resultDiv.className = 'result success';
+                resultDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        async function syncExcuseLetters() {
+            const classId = document.getElementById('classId').value;
+            const date = document.getElementById('date').value;
+            const resultDiv = document.getElementById('syncResult');
+
+            try {
+                resultDiv.className = 'result info';
+                resultDiv.textContent = 'Syncing excuse letter statuses...';
+
+                const result = await makeRequest('/api/attendance/sync-excuse-letters', 'POST', {
+                    class_id: classId,
+                    date: date
+                });
+                
+                resultDiv.className = 'result success';
+                resultDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        async function checkExcuseLetterStatus() {
+            const studentId = document.getElementById('studentId').value;
+            const date = document.getElementById('excuseDate').value;
+            const resultDiv = document.getElementById('excuseResult');
+
+            try {
+                resultDiv.className = 'result info';
+                resultDiv.textContent = 'Checking excuse letter status...';
+
+                const result = await makeRequest(`/api/attendance/excuse-letter-status/${studentId}/${date}`);
+                
+                resultDiv.className = 'result success';
+                resultDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        // Check if user is logged in
+        if (!localStorage.getItem('token')) {
+            document.body.innerHTML = `
+                <div style="text-align: center; padding: 50px;">
+                    <h2>Please Log In First</h2>
+                    <p>You need to be logged in to test the excuse letter functionality.</p>
+                    <p>Please log in through the main application first.</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

@@ -674,17 +674,44 @@ class AttendanceController extends BaseController
                 $recorded_students[$record['student_id']] = $record;
             }
 
-            // Add missing students with null attendance
+            // Add missing students with null attendance and check excuse letters
             foreach ($enrolled_students as $student) {
                 if (!isset($recorded_students[$student['user_id']])) {
+                    // Check if student has an excuse letter for this date
+                    $excuse_letter = $this->db->select('excuse_letters.*')
+                        ->from('excuse_letters')
+                        ->where('excuse_letters.student_id', $student['user_id'])
+                        ->where('excuse_letters.class_id', $class['class_id'])
+                        ->where('excuse_letters.date_absent', $date)
+                        ->get()->row_array();
+                    
+                    $student_status = null;
+                    $student_notes = null;
+                    
+                    if ($excuse_letter) {
+                        if ($excuse_letter['status'] === 'approved') {
+                            $student_status = 'excused';
+                            $student_notes = 'Excuse letter approved: ' . $excuse_letter['reason'];
+                        } elseif ($excuse_letter['status'] === 'rejected') {
+                            $student_status = 'absent';
+                            $student_notes = 'Excuse letter rejected: ' . $excuse_letter['reason'];
+                        } else {
+                            // pending status
+                            $student_status = 'absent';
+                            $student_notes = 'Excuse letter pending review';
+                        }
+                    }
+                    
                     $records[] = [
                         'student_id' => $student['user_id'],
                         'student_name' => $student['full_name'],
                         'student_num' => $student['student_num'],
                         'student_email' => $student['email'],
-                        'status' => null,
+                        'status' => $student_status,
                         'time_in' => null,
-                        'notes' => null
+                        'notes' => $student_notes,
+                        'excuse_letter_status' => $excuse_letter ? $excuse_letter['status'] : null,
+                        'excuse_letter_id' => $excuse_letter ? $excuse_letter['letter_id'] : null
                     ];
                 }
             }
@@ -1246,12 +1273,11 @@ class AttendanceController extends BaseController
                 attendance.*,
                 subjects.subject_name,
                 subjects.subject_code,
-                sections.section_name,
+                attendance.section_name,
                 users.full_name as teacher_name
             ')
             ->from('attendance')
             ->join('subjects', 'attendance.subject_id = subjects.id', 'left')
-            ->join('sections', 'attendance.section_name = sections.section_name', 'left')
             ->join('users', 'attendance.teacher_id = users.user_id', 'left')
             ->where('attendance.student_id', $user_data['user_id']);
 
@@ -1274,12 +1300,11 @@ class AttendanceController extends BaseController
                 attendance.*,
                 subjects.subject_name,
                 subjects.subject_code,
-                sections.section_name,
+                attendance.section_name,
                 users.full_name as teacher_name
             ')
             ->from('attendance')
             ->join('subjects', 'attendance.subject_id = subjects.id', 'left')
-            ->join('sections', 'attendance.section_name = sections.section_name', 'left')
             ->join('users', 'attendance.teacher_id = users.user_id', 'left')
             ->where('attendance.student_id', $user_data['user_id']);
 
@@ -1301,7 +1326,7 @@ class AttendanceController extends BaseController
 
             $attendance_records = $this->db->get()->result_array();
 
-            // Calculate summary statistics
+            // Calculate summary statistics from attendance records
             $summary = [
                 'present' => 0,
                 'late' => 0,
@@ -1325,6 +1350,41 @@ class AttendanceController extends BaseController
                     case 'excused':
                         $summary['excused']++;
                         break;
+                }
+            }
+
+            // Check for missing students who should be marked as absent based on excuse letters
+            // Get all classes where the student is enrolled
+            $enrolled_classes = $this->db->select('ce.classroom_id, c.class_code, c.subject_id')
+                ->from('classroom_enrollments ce')
+                ->join('classrooms c', 'ce.classroom_id = c.id')
+                ->where('ce.student_id', $user_data['user_id'])
+                ->where('ce.status', 'active')
+                ->get()->result_array();
+
+            foreach ($enrolled_classes as $class) {
+                // Check if there are any excuse letters for this class that would affect attendance
+                $excuse_letters = $this->db->select('excuse_letters.*')
+                    ->from('excuse_letters')
+                    ->where('excuse_letters.student_id', $user_data['user_id'])
+                    ->where('excuse_letters.class_id', $class['classroom_id'])
+                    ->where_in('excuse_letters.status', ['rejected', 'pending'])
+                    ->get()->result_array();
+
+                foreach ($excuse_letters as $excuse) {
+                    // Check if we already have an attendance record for this date
+                    $existing_attendance = $this->db->select('attendance_id')
+                        ->from('attendance')
+                        ->where('student_id', $user_data['user_id'])
+                        ->where('class_id', $class['classroom_id'])
+                        ->where('date', $excuse['date_absent'])
+                        ->get()->row_array();
+
+                    if (!$existing_attendance) {
+                        // This student should be marked as absent for this date
+                        $summary['absent']++;
+                        $summary['total']++;
+                    }
                 }
             }
 
@@ -1359,6 +1419,158 @@ class AttendanceController extends BaseController
             $this->send_success($response, 'Student attendance records retrieved successfully');
         } catch (Exception $e) {
             $this->send_error('Failed to retrieve student attendance records: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Sync excuse letter statuses with attendance records
+     * This method should be called when excuse letter statuses change
+     * Endpoint: POST /api/attendance/sync-excuse-letters
+     */
+    public function sync_excuse_letters_post()
+    {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        $data = $this->get_json_input();
+        if (!$data) return;
+
+        if (!isset($data->class_id) || !isset($data->date)) {
+            $this->send_error('Class ID and date are required', 400);
+            return;
+        }
+
+        try {
+            // Verify teacher has access to this classroom
+            $classroom = $this->db->select('classrooms.*')
+                ->from('classrooms')
+                ->where('classrooms.id', $data->class_id)
+                ->where('classrooms.teacher_id', $user_data['user_id'])
+                ->where('classrooms.is_active', 1)
+                ->get()->row_array();
+
+            if (!$classroom) {
+                $this->send_error('Classroom not found or access denied', 404);
+                return;
+            }
+
+            // Find the corresponding class_id from classes table
+            $class = $this->db->select('classes.class_id')
+                ->from('classes')
+                ->where('classes.subject_id', $classroom['subject_id'])
+                ->where('classes.section_id', $classroom['section_id'])
+                ->where('classes.teacher_id', $classroom['teacher_id'])
+                ->where('classes.status', 'active')
+                ->get()->row_array();
+
+            if (!$class) {
+                $this->send_error('No active class found for this classroom', 404);
+                return;
+            }
+
+            // Get all excuse letters for this class and date
+            $excuse_letters = $this->db->select('excuse_letters.*')
+                ->from('excuse_letters')
+                ->where('excuse_letters.class_id', $class['class_id'])
+                ->where('excuse_letters.date_absent', $data->date)
+                ->get()->result_array();
+
+            $updated_count = 0;
+            $created_count = 0;
+
+            foreach ($excuse_letters as $excuse_letter) {
+                // Check if attendance record exists
+                $existing_attendance = $this->db->where('student_id', $excuse_letter['student_id'])
+                    ->where('class_id', $class['class_id'])
+                    ->where('date', $data->date)
+                    ->get('attendance')->row_array();
+
+                $status = null;
+                $notes = null;
+
+                if ($excuse_letter['status'] === 'approved') {
+                    $status = 'excused';
+                    $notes = 'Excuse letter approved: ' . $excuse_letter['reason'];
+                } elseif ($excuse_letter['status'] === 'rejected') {
+                    $status = 'absent';
+                    $notes = 'Excuse letter rejected: ' . $excuse_letter['reason'];
+                } else {
+                    // pending status
+                    $status = 'absent';
+                    $notes = 'Excuse letter pending review';
+                }
+
+                if ($existing_attendance) {
+                    // Update existing record
+                    $this->db->where('attendance_id', $existing_attendance['attendance_id']);
+                    $this->db->update('attendance', [
+                        'status' => $status,
+                        'notes' => $notes,
+                        'updated_at' => date('Y-m-d H:i:s')
+                    ]);
+                    $updated_count++;
+                } else {
+                    // Create new record
+                    $this->db->insert('attendance', [
+                        'student_id' => $excuse_letter['student_id'],
+                        'class_id' => $class['class_id'],
+                        'subject_id' => $classroom['subject_id'],
+                        'section_name' => $classroom['section_name'],
+                        'date' => $data->date,
+                        'time_in' => null,
+                        'status' => $status,
+                        'notes' => $notes,
+                        'teacher_id' => $user_data['user_id'],
+                        'created_at' => date('Y-m-d H:i:s'),
+                        'updated_at' => date('Y-m-d H:i:s')
+                    ]);
+                    $created_count++;
+                }
+            }
+
+            $this->send_success([
+                'updated_records' => $updated_count,
+                'created_records' => $created_count,
+                'total_processed' => count($excuse_letters)
+            ], 'Excuse letter statuses synced with attendance records successfully');
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to sync excuse letter statuses: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get excuse letter status for a specific student and date
+     * Endpoint: GET /api/attendance/excuse-letter-status/{student_id}/{date}
+     */
+    public function excuse_letter_status_get($student_id = null, $date = null)
+    {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        if (!$student_id || !$date) {
+            $this->send_error('Student ID and date are required', 400);
+            return;
+        }
+
+        try {
+            // Get excuse letter status
+            $excuse_letter = $this->db->select('excuse_letters.*')
+                ->from('excuse_letters')
+                ->where('excuse_letters.student_id', $student_id)
+                ->where('excuse_letters.date_absent', $date)
+                ->where('excuse_letters.teacher_id', $user_data['user_id'])
+                ->get()->row_array();
+
+            if (!$excuse_letter) {
+                $this->send_success(['status' => 'none'], 'No excuse letter found');
+                return;
+            }
+
+            $this->send_success($excuse_letter, 'Excuse letter status retrieved successfully');
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve excuse letter status: ' . $e->getMessage(), 500);
         }
     }
 } 

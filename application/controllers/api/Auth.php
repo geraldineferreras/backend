@@ -177,13 +177,13 @@ class Auth extends BaseController {
             }
 
             // Handle profile image upload
-            $profile_pic_path = '';
+            $profile_pic_path = null;
             if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] == 0) {
                 $profile_pic_path = $this->upload_image($_FILES['profile_pic'], 'profile');
             }
 
             // Handle cover image upload
-            $cover_pic_path = '';
+            $cover_pic_path = null;
             if (isset($_FILES['cover_pic']) && $_FILES['cover_pic']['error'] == 0) {
                 $cover_pic_path = $this->upload_image($_FILES['cover_pic'], 'cover');
             }

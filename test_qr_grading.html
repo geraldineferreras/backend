@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Grading Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button.secondary {
+            background: #6c757d;
+        }
+        button.secondary:hover {
+            background: #545b62;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .qr-scanner {
+            width: 100%;
+            max-width: 400px;
+            margin: 20px 0;
+        }
+        .qr-scanner video {
+            width: 100%;
+            border: 2px solid #007bff;
+            border-radius: 8px;
+        }
+        .qr-controls {
+            margin: 15px 0;
+        }
+        .qr-status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .qr-status.scanning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .qr-status.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .qr-status.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .instructions {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .instructions h4 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        .instructions ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>QR Grading API Test</h1>
+        
+        <div class="instructions">
+            <h4>🚀 How to Use This Test Page</h4>
+            <ul>
+                <li><strong>Step 1:</strong> Enter your teacher JWT token below</li>
+                <li><strong>Step 2:</strong> Generate QR codes for your class</li>
+                <li><strong>Step 3:</strong> Test the QR scanner or manually enter QR data</li>
+                <li><strong>Step 4:</strong> Grade students quickly!</li>
+            </ul>
+        </div>
+
+        <!-- Authentication Section -->
+        <div class="section">
+            <h3>🔐 Authentication</h3>
+            <div class="form-group">
+                <label for="teacherToken">Teacher JWT Token:</label>
+                <input type="text" id="teacherToken" placeholder="Enter your JWT token here" style="font-family: monospace;">
+            </div>
+            <button onclick="testAuth()">Test Authentication</button>
+            <div id="authResult"></div>
+        </div>
+
+        <!-- QR Code Generation Section -->
+        <div class="section">
+            <h3>📱 Generate QR Codes</h3>
+            <div class="form-group">
+                <label for="classCode">Class Code:</label>
+                <input type="text" id="classCode" placeholder="e.g., S4X86T">
+            </div>
+            <button onclick="generateClassQR()">Generate All Class QR Codes</button>
+            <button onclick="generateStudentQR()" class="secondary">Generate Single Student QR</button>
+            <div class="form-group" id="studentQRForm" style="display: none;">
+                <label for="studentId">Student ID:</label>
+                <input type="text" id="studentId" placeholder="e.g., 123">
+            </div>
+            <div id="qrResult"></div>
+        </div>
+
+        <!-- QR Scanner Section -->
+        <div class="section">
+            <h3>📷 QR Scanner</h3>
+            <div class="qr-controls">
+                <button onclick="startScanner()">Start QR Scanner</button>
+                <button onclick="stopScanner()" class="secondary">Stop Scanner</button>
+            </div>
+            <div class="qr-status" id="qrStatus">Scanner not started</div>
+            <div class="qr-scanner" id="qrScanner" style="display: none;">
+                <video id="qrVideo"></video>
+            </div>
+            <div id="scanResult"></div>
+        </div>
+
+        <!-- Quick Grading Section -->
+        <div class="section">
+            <h3>⭐ Quick Grade Student</h3>
+            <div class="form-group">
+                <label for="qrData">QR Data (from scanner or manual entry):</label>
+                <textarea id="qrData" rows="4" placeholder="IDNo: 2021305973&#10;Full Name: ANJELA SOFIA G. SARMIENTO&#10;Program: Bachelor of Science in Information Technology"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="taskId">Task ID:</label>
+                <input type="number" id="taskId" placeholder="e.g., 24">
+            </div>
+            <div class="form-group">
+                <label for="grade">Grade (out of 100):</label>
+                <input type="number" id="grade" min="0" max="100" placeholder="e.g., 85">
+            </div>
+            <div class="form-group">
+                <label for="feedback">Feedback (optional):</label>
+                <textarea id="feedback" rows="3" placeholder="Enter feedback here..."></textarea>
+            </div>
+            <button onclick="quickGrade()">Grade Student</button>
+            <div id="gradeResult"></div>
+        </div>
+
+        <!-- Bulk Grading Section -->
+        <div class="section">
+            <h3>📊 Bulk Quick Grade</h3>
+            <div class="form-group">
+                <label for="bulkGrades">Bulk Grades (JSON format):</label>
+                <textarea id="bulkGrades" rows="10" placeholder='[
+  {
+    "qr_data": "IDNo: 2021305973\nFull Name: ANJELA SOFIA G. SARMIENTO\nProgram: Bachelor of Science in Information Technology",
+    "grade": 85,
+    "task_id": 24,
+    "feedback": "Great work!"
+  },
+  {
+    "qr_data": "IDNo: 2022001234\nFull Name: JOHN DOE\nProgram: Bachelor of Science in Computer Science",
+    "grade": 92,
+    "task_id": 24,
+    "feedback": "Excellent!"
+  }
+]'></textarea>
+            </div>
+            <button onclick="bulkGrade()">Bulk Grade Students</button>
+            <div id="bulkGradeResult"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
+    <script>
+        let qrScanner = null;
+        let currentToken = '';
+
+        // Test authentication
+        async function testAuth() {
+            const token = document.getElementById('teacherToken').value;
+            if (!token) {
+                showResult('authResult', 'Please enter a JWT token', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/teacher/assigned-subjects', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    showResult('authResult', '✅ Authentication successful! Token is valid.', 'success');
+                    currentToken = token;
+                } else {
+                    showResult('authResult', '❌ Authentication failed. Please check your token.', 'error');
+                }
+            } catch (error) {
+                showResult('authResult', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Generate QR codes for entire class
+        async function generateClassQR() {
+            const classCode = document.getElementById('classCode').value;
+            if (!classCode) {
+                showResult('qrResult', 'Please enter a class code', 'error');
+                return;
+            }
+
+            if (!currentToken) {
+                showResult('qrResult', 'Please authenticate first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/qr-grading/class-qr/${classCode}`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    let qrData = `✅ Generated ${result.data.student_count} QR codes for class: ${result.data.class_title}\n\n`;
+                    result.data.qr_codes.forEach(qr => {
+                        qrData += `Student: ${qr.student_name} (ID: ${qr.student_id})\n`;
+                        qrData += `Student Number: ${qr.student_num}\n`;
+                        qrData += `Program: ${qr.program}\n`;
+                        qrData += `QR Data: ${qr.qr_data}\n`;
+                        qrData += '─'.repeat(50) + '\n';
+                    });
+                    showResult('qrResult', qrData, 'success');
+                } else {
+                    showResult('qrResult', `❌ Failed: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showResult('qrResult', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Generate QR code for single student
+        async function generateStudentQR() {
+            const classCode = document.getElementById('classCode').value;
+            const studentId = document.getElementById('studentId').value;
+            
+            if (!classCode || !studentId) {
+                showResult('qrResult', 'Please enter both class code and student ID', 'error');
+                return;
+            }
+
+            if (!currentToken) {
+                showResult('qrResult', 'Please authenticate first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/qr-grading/student-qr/${studentId}?class_code=${classCode}`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    const qr = result.data;
+                    let qrData = `✅ Generated QR code for student:\n\n`;
+                    qrData += `Student: ${qr.student_name}\n`;
+                    qrData += `ID: ${qr.student_id}\n`;
+                    qrData += `Student Number: ${qr.student_number}\n`;
+                    qrData += `Program: ${qr.program}\n`;
+                    qrData += `Class: ${qr.class_code}\n`;
+                    qrData += `QR Data: ${qr.qr_data}\n`;
+                    showResult('qrResult', qrData, 'success');
+                } else {
+                    showResult('qrResult', `❌ Failed: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showResult('qrResult', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Toggle student QR form
+        document.getElementById('generateStudentQR').addEventListener('click', function() {
+            const form = document.getElementById('studentQRForm');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        });
+
+        // Start QR scanner
+        async function startScanner() {
+            if (!currentToken) {
+                showResult('scanResult', 'Please authenticate first', 'error');
+                return;
+            }
+
+            try {
+                const video = document.getElementById('qrVideo');
+                qrScanner = new QrScanner(video, result => {
+                    handleQRScan(result.data);
+                });
+
+                await qrScanner.start();
+                document.getElementById('qrScanner').style.display = 'block';
+                document.getElementById('qrStatus').textContent = '🔍 Scanning...';
+                document.getElementById('qrStatus').className = 'qr-status scanning';
+                showResult('scanResult', '✅ QR Scanner started successfully!', 'success');
+            } catch (error) {
+                showResult('scanResult', `❌ Failed to start scanner: ${error.message}`, 'error');
+            }
+        }
+
+        // Stop QR scanner
+        function stopScanner() {
+            if (qrScanner) {
+                qrScanner.stop();
+                qrScanner = null;
+                document.getElementById('qrScanner').style.display = 'none';
+                document.getElementById('qrStatus').textContent = 'Scanner stopped';
+                document.getElementById('qrStatus').className = 'qr-status';
+                showResult('scanResult', '⏹️ QR Scanner stopped', 'info');
+            }
+        }
+
+        // Handle QR scan result
+        function handleQRScan(qrData) {
+            document.getElementById('qrData').value = qrData;
+            document.getElementById('qrStatus').textContent = '✅ QR Code scanned successfully!';
+            document.getElementById('qrStatus').className = 'qr-status success';
+            showResult('scanResult', `🎯 Scanned QR Code: ${qrData}`, 'success');
+            
+            // Auto-focus on grade input for quick grading
+            document.getElementById('grade').focus();
+        }
+
+        // Quick grade single student
+        async function quickGrade() {
+            const qrData = document.getElementById('qrData').value;
+            const taskId = document.getElementById('taskId').value;
+            const grade = document.getElementById('grade').value;
+            const feedback = document.getElementById('feedback').value;
+
+            if (!qrData || !taskId || !grade) {
+                showResult('gradeResult', 'Please fill in all required fields', 'error');
+                return;
+            }
+
+            if (!currentToken) {
+                showResult('gradeResult', 'Please authenticate first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/qr-grading/quick-grade', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({
+                        qr_data: qrData,
+                        grade: parseInt(grade),
+                        task_id: parseInt(taskId),
+                        feedback: feedback || null
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    const data = result.data;
+                    let successMsg = `✅ Student graded successfully!\n\n`;
+                    successMsg += `Student: ${data.student_name}\n`;
+                    successMsg += `ID: ${data.student_id}\n`;
+                    successMsg += `Student Number: ${data.student_number}\n`;
+                    successMsg += `Program: ${data.program}\n`;
+                    successMsg += `Grade: ${data.grade}/100\n`;
+                    if (data.feedback) {
+                        successMsg += `Feedback: ${data.feedback}\n`;
+                    }
+                    successMsg += `Graded at: ${data.graded_at}\n`;
+                    successMsg += `Submission ID: ${data.submission_id}`;
+                    
+                    showResult('gradeResult', successMsg, 'success');
+                    
+                    // Clear form for next student
+                    document.getElementById('qrData').value = '';
+                    document.getElementById('grade').value = '';
+                    document.getElementById('feedback').value = '';
+                } else {
+                    showResult('gradeResult', `❌ Failed to grade: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showResult('gradeResult', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Bulk grade multiple students
+        async function bulkGrade() {
+            const bulkGradesText = document.getElementById('bulkGrades').value;
+            
+            if (!bulkGradesText) {
+                showResult('bulkGradeResult', 'Please enter bulk grades data', 'error');
+                return;
+            }
+
+            if (!currentToken) {
+                showResult('bulkGradeResult', 'Please authenticate first', 'error');
+                return;
+            }
+
+            try {
+                const grades = JSON.parse(bulkGradesText);
+                if (!Array.isArray(grades)) {
+                    showResult('bulkGradeResult', 'Bulk grades must be an array', 'error');
+                    return;
+                }
+
+                const response = await fetch('/api/qr-grading/bulk-quick-grade', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({ grades })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    let successMsg = `✅ Bulk grading completed!\n\n`;
+                    successMsg += `Successfully graded: ${result.data.graded_count} students\n\n`;
+                    
+                    result.data.results.forEach((grade, index) => {
+                        successMsg += `${index + 1}. ${grade.student_name} (ID: ${grade.student_id})\n`;
+                        successMsg += `   Student Number: ${grade.student_number}\n`;
+                        successMsg += `   Program: ${grade.program}\n`;
+                        successMsg += `   Grade: ${grade.grade}/100\n`;
+                        if (grade.feedback) {
+                            successMsg += `   Feedback: ${grade.feedback}\n`;
+                        }
+                        successMsg += '\n';
+                    });
+
+                    if (result.data.errors.length > 0) {
+                        successMsg += `Errors encountered:\n`;
+                        result.data.errors.forEach(error => {
+                            successMsg += `- ${error}\n`;
+                        });
+                    }
+                    
+                    showResult('bulkGradeResult', successMsg, 'success');
+                } else {
+                    showResult('bulkGradeResult', `❌ Failed to bulk grade: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                if (error instanceof SyntaxError) {
+                    showResult('bulkGradeResult', '❌ Invalid JSON format. Please check your bulk grades data.', 'error');
+                } else {
+                    showResult('bulkGradeResult', `❌ Error: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        // Helper function to show results
+        function showResult(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `result ${type}`;
+        }
+
+        // Auto-focus on token input when page loads
+        window.onload = function() {
+            document.getElementById('teacherToken').focus();
+        };
+    </script>
+</body>
+</html>

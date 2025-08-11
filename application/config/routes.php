@@ -135,6 +135,8 @@ $route['api/attendance/delete/(:num)']['delete'] = 'api/AttendanceController/del
 $route['api/attendance/all']['get'] = 'api/AttendanceController/all_get';
 $route['api/attendance/teacher-assignments']['get'] = 'api/AttendanceController/teacher_assignments_get';
 $route['api/attendance/student']['get'] = 'api/AttendanceController/student_get';
+$route['api/attendance/sync-excuse-letters']['post'] = 'api/AttendanceController/sync_excuse_letters_post';
+$route['api/attendance/excuse-letter-status/(:any)/(:any)']['get'] = 'api/AttendanceController/excuse_letter_status_get/$1/$2';
 
 // Student APIs
 $route['api/student/grades']['get'] = 'api/StudentController/grades_get';
@@ -311,3 +313,9 @@ $route['api/notifications/stream']['get'] = 'api/NotificationStreamController/st
 $route['api/notifications/status']['get'] = 'api/NotificationStreamController/status';
 // Token as URI segment, routed to simple Notifications controller per request
 $route['api/notifications/stream/(:any)']['get'] = 'api/Notifications/stream/$1';
+
+// QR Grading API - Perfect for face-to-face classroom activities
+$route['api/qr-grading/quick-grade']['post'] = 'api/QRGradingController/quick_grade_post';
+$route['api/qr-grading/bulk-quick-grade']['post'] = 'api/QRGradingController/bulk_quick_grade_post';
+$route['api/qr-grading/student-qr/(:num)']['get'] = 'api/QRGradingController/student_qr_get/$1';
+$route['api/qr-grading/class-qr/(:any)']['get'] = 'api/QRGradingController/class_qr_get/$1';

@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS `class_tasks` (
   `task_id` int(11) NOT NULL AUTO_INCREMENT,
   `title` varchar(255) NOT NULL,
-  `type` enum('assignment','quiz','activity','project','exam') NOT NULL DEFAULT 'assignment',
+  `type` enum('assignment','quiz','activity','project','exam','midterm_exam','final_exam') NOT NULL DEFAULT 'assignment',
   `points` int(11) NOT NULL DEFAULT 0,
   `instructions` text,
   `attachment_type` enum('file','link','youtube','google_drive') DEFAULT NULL,

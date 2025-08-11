@@ -444,6 +444,8 @@ const CreateTaskForm = () => {
                     <option value="activity">Activity</option>
                     <option value="project">Project</option>
                     <option value="exam">Exam</option>
+                    <option value="midterm_exam">Midterm Exam</option>
+                    <option value="final_exam">Final Exam</option>
                 </select>
             </div>
             

@@ -155,7 +155,7 @@ From the response, copy the `token` value for use in subsequent requests.
 
 ### Required Fields
 - **title**: Task title (string)
-- **type**: Task type - `assignment`, `quiz`, `activity`, `project`, `exam` (string)
+- **type**: Task type - `assignment`, `quiz`, `activity`, `project`, `exam`, `midterm_exam`, `final_exam` (string)
 - **points**: Maximum points for the task (integer)
 - **instructions**: Task instructions (text)
 - **class_codes**: Array of class codes where task is posted (array)
@@ -452,7 +452,7 @@ Body (form-data):
 
 ### Common Issues
 
-1. **"Invalid task type"**: Ensure type is one of: `assignment`, `quiz`, `activity`, `project`, `exam`
+1. **"Invalid task type"**: Ensure type is one of: `assignment`, `quiz`, `activity`, `project`, `exam`, `midterm_exam`, `final_exam`
 2. **"Points must be a positive number"**: Ensure points is a positive integer
 3. **"At least one class must be selected"**: Ensure class_codes is a non-empty array
 4. **"Assigned students are required for individual assignments"**: Provide assigned_students when assignment_type is "individual"
