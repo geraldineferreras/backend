@@ -1,7 +1,9 @@
 <?php
+require_once(APPPATH . 'controllers/api/BaseController.php');
+
 defined('BASEPATH') OR exit('No direct script access allowed');
 
-class NotificationController extends CI_Controller {
+class NotificationController extends BaseController {
     
     public function __construct() {
         parent::__construct();
@@ -257,23 +259,18 @@ class NotificationController extends CI_Controller {
      * Verify JWT token and return user_id
      */
     private function verify_token() {
-        $headers = getallheaders();
-        $token = null;
+        // Load Token_lib library
+        $this->load->library('Token_lib');
         
-        if (isset($headers['Authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['Authorization']);
-        }
+        $token = $this->token_lib->get_token_from_header();
         
         if (!$token) {
             return false;
         }
         
-        // Load JWT library
-        $this->load->library('jwt');
-        
         try {
-            $decoded = $this->jwt->decode($token, $this->config->item('jwt_key'));
-            return $decoded->user_id;
+            $payload = $this->token_lib->validate_token($token);
+            return $payload ? $payload['user_id'] : false;
         } catch (Exception $e) {
             return false;
         }

@@ -102,15 +102,86 @@ class Token_lib {
      * @return string|false
      */
     public function get_token_from_header() {
-        $headers = getallheaders();
+        // Try getallheaders() first (Apache)
+        if (function_exists('getallheaders')) {
+            $headers = getallheaders();
+            if (isset($headers['Authorization'])) {
+                $auth_header = $headers['Authorization'];
+                if (preg_match('/Bearer\s+(.*)$/i', $auth_header, $matches)) {
+                    return $matches[1];
+                }
+            }
+        }
         
-        if (isset($headers['Authorization'])) {
-            $auth_header = $headers['Authorization'];
+        // Fallback for servers where getallheaders() is not available
+        if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+            $auth_header = $_SERVER['HTTP_AUTHORIZATION'];
             if (preg_match('/Bearer\s+(.*)$/i', $auth_header, $matches)) {
                 return $matches[1];
             }
         }
         
+        // Additional fallback for some servers
+        if (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+            $auth_header = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+            if (preg_match('/Bearer\s+(.*)$/i', $auth_header, $matches)) {
+                return $matches[1];
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Get token from the request (Authorization header, query param, or cookie)
+     * This is useful for transports that cannot send custom headers (e.g., EventSource/SSE)
+     * @return string|false
+     */
+    public function get_token_from_request() {
+        // 1) Try standard Authorization header first
+        $token = $this->get_token_from_header();
+        if ($token) {
+            return $token;
+        }
+
+        // 2) Try query string parameters
+        // Common parameter names: token, access_token
+        if (isset($_GET['token']) && is_string($_GET['token']) && $_GET['token'] !== '') {
+            return $_GET['token'];
+        }
+        if (isset($_GET['access_token']) && is_string($_GET['access_token']) && $_GET['access_token'] !== '') {
+            return $_GET['access_token'];
+        }
+
+        // 3) Try custom headers some proxies/frameworks might forward
+        if (isset($_SERVER['HTTP_X_AUTH_TOKEN']) && is_string($_SERVER['HTTP_X_AUTH_TOKEN']) && $_SERVER['HTTP_X_AUTH_TOKEN'] !== '') {
+            return $_SERVER['HTTP_X_AUTH_TOKEN'];
+        }
+        if (function_exists('getallheaders')) {
+            $headers = getallheaders();
+            // Handle different casings of X-Auth-Token
+            if (isset($headers['X-Auth-Token']) && is_string($headers['X-Auth-Token']) && $headers['X-Auth-Token'] !== '') {
+                return $headers['X-Auth-Token'];
+            }
+            if (isset($headers['x-auth-token']) && is_string($headers['x-auth-token']) && $headers['x-auth-token'] !== '') {
+                return $headers['x-auth-token'];
+            }
+        }
+
+        // 4) Try cookies
+        if (isset($_COOKIE['Authorization'])) {
+            $authCookie = $_COOKIE['Authorization'];
+            if (preg_match('/Bearer\s+(.*)$/i', $authCookie, $matches)) {
+                return $matches[1];
+            }
+            if (is_string($authCookie) && $authCookie !== '') {
+                return $authCookie;
+            }
+        }
+        if (isset($_COOKIE['token']) && is_string($_COOKIE['token']) && $_COOKIE['token'] !== '') {
+            return $_COOKIE['token'];
+        }
+
         return false;
     }
     

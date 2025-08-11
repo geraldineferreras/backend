@@ -61,6 +61,10 @@ $route['api/refresh-token']['post'] = 'api/auth/refresh_token';
 $route['api/validate-token']['get'] = 'api/auth/validate_token';
 $route['api/logout']['post'] = 'api/auth/logout';
 
+// Test endpoints
+$route['api/test']['get'] = 'api/testcontroller/test';
+$route['api/test/headers']['get'] = 'api/testcontroller/headers';
+
 // User Management
 $route['api/users']['get'] = 'api/auth/get_users';
 $route['api/users']['options'] = 'api/auth/options';
@@ -301,3 +305,9 @@ $route['api/notifications/settings']['put'] = 'api/NotificationController/update
 $route['api/notifications/unread-count']['get'] = 'api/NotificationController/get_unread_count';
 $route['api/notifications/recent']['get'] = 'api/NotificationController/get_recent';
 $route['api/notifications/urgent']['get'] = 'api/NotificationController/get_urgent';
+
+// Real-time Notification Stream (SSE)
+$route['api/notifications/stream']['get'] = 'api/NotificationStreamController/stream';
+$route['api/notifications/status']['get'] = 'api/NotificationStreamController/status';
+// Token as URI segment, routed to simple Notifications controller per request
+$route['api/notifications/stream/(:any)']['get'] = 'api/Notifications/stream/$1';

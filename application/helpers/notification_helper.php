@@ -31,6 +31,25 @@ function create_notification($user_id, $type, $title, $message, $related_id = nu
         send_email_notification($user_id, $type, $title, $message, $related_id, $related_type, $class_code);
     }
     
+    // Broadcast real-time notification if helper is available
+    if (function_exists('broadcast_notification')) {
+        $CI->load->helper('notification_broadcast');
+        
+        $broadcast_data = array(
+            'id' => $notification_id,
+            'type' => $type,
+            'title' => $title,
+            'message' => $message,
+            'related_id' => $related_id,
+            'related_type' => $related_type,
+            'class_code' => $class_code,
+            'is_urgent' => $is_urgent,
+            'created_at' => date('c')
+        );
+        
+        broadcast_notification($broadcast_data, $user_id, 'notification');
+    }
+    
     return $notification_id;
 }
 
@@ -62,6 +81,25 @@ function create_notifications_for_users($user_ids, $type, $title, $message, $rel
         if ($CI->Notification_model->is_email_enabled($user_id, $type)) {
             send_email_notification($user_id, $type, $title, $message, $related_id, $related_type, $class_code);
         }
+    }
+    
+    // Broadcast real-time notification to all users if helper is available
+    if (function_exists('broadcast_notification') && !empty($notification_ids)) {
+        $CI->load->helper('notification_broadcast');
+        
+        $broadcast_data = array(
+            'type' => $type,
+            'title' => $title,
+            'message' => $message,
+            'related_id' => $related_id,
+            'related_type' => $related_type,
+            'class_code' => $class_code,
+            'is_urgent' => $is_urgent,
+            'created_at' => date('c'),
+            'affected_users' => count($user_ids)
+        );
+        
+        broadcast_notification($broadcast_data, $user_ids, 'bulk_notification');
     }
     
     return $notification_ids;

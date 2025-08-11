@@ -6,7 +6,7 @@ class BaseController extends CI_Controller {
         parent::__construct();
         
         // Handle CORS preflight requests immediately
-        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
             $this->handle_cors_preflight();
             exit();
         }

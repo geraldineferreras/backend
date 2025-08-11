@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSE Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .messages {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .message {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .message.connected { border-left: 4px solid #28a745; }
+        .message.test_message { border-left: 4px solid #007bff; }
+        .message.notification { border-left: 4px solid #ffc107; }
+        .message.error { border-left: 4px solid #dc3545; }
+        .message.complete { border-left: 4px solid #6f42c1; }
+        .timestamp {
+            color: #6c757d;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 SSE Notification Stream Test</h1>
+        
+        <div class="input-group">
+            <label for="baseUrl">Base URL:</label>
+            <input type="text" id="baseUrl" value="http://localhost/scms_new_backup/index.php" placeholder="Enter your base URL">
+        </div>
+        
+        <div class="input-group">
+            <label for="jwtToken">JWT Token:</label>
+            <input type="text" id="jwtToken" placeholder="Enter your JWT token here">
+        </div>
+        
+        <div class="input-group">
+            <button id="connectBtn" onclick="connectSSE()">🔌 Connect to SSE</button>
+            <button id="disconnectBtn" onclick="disconnectSSE()" disabled>❌ Disconnect</button>
+            <button onclick="clearMessages()">🗑️ Clear Messages</button>
+        </div>
+        
+        <div id="status" class="status disconnected">❌ Disconnected</div>
+        
+        <div class="messages" id="messages">
+            <div class="message">Ready to connect to SSE stream...</div>
+        </div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let messageCount = 0;
+
+        function connectSSE() {
+            const baseUrl = document.getElementById('baseUrl').value.trim();
+            const jwtToken = document.getElementById('jwtToken').value.trim();
+            
+            if (!baseUrl || !jwtToken) {
+                alert('Please enter both Base URL and JWT Token');
+                return;
+            }
+            
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            updateStatus('connecting', '🔄 Connecting...');
+            updateButtons(true, false);
+            
+            try {
+                // Create EventSource with custom headers using fetch
+                const url = `${baseUrl}/api/notifications/stream`;
+                
+                // Use fetch for SSE with custom headers
+                fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'text/event-stream',
+                        'Authorization': `Bearer ${jwtToken}`,
+                        'Cache-Control': 'no-cache'
+                    }
+                }).then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    
+                    updateStatus('connected', '✅ Connected to SSE Stream');
+                    addMessage('connected', 'Connected to SSE stream successfully');
+                    
+                    function readStream() {
+                        reader.read().then(({ done, value }) => {
+                            if (done) {
+                                updateStatus('disconnected', '❌ Connection closed');
+                                updateButtons(false, true);
+                                return;
+                            }
+                            
+                            const chunk = decoder.decode(value);
+                            const lines = chunk.split('\n');
+                            
+                            lines.forEach(line => {
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        const data = JSON.parse(line.substring(6));
+                                        addMessage(data.type || 'message', data);
+                                    } catch (e) {
+                                        addMessage('message', { raw: line.substring(6) });
+                                    }
+                                }
+                            });
+                            
+                            readStream();
+                        }).catch(error => {
+                            addMessage('error', { message: 'Stream error: ' + error.message });
+                            updateStatus('disconnected', '❌ Connection error');
+                            updateButtons(false, true);
+                        });
+                    }
+                    
+                    readStream();
+                    
+                }).catch(error => {
+                    addMessage('error', { message: 'Connection failed: ' + error.message });
+                    updateStatus('disconnected', '❌ Connection failed');
+                    updateButtons(false, true);
+                });
+                
+            } catch (error) {
+                addMessage('error', { message: 'Error: ' + error.message });
+                updateStatus('disconnected', '❌ Error occurred');
+                updateButtons(false, true);
+            }
+        }
+        
+        function disconnectSSE() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            updateStatus('disconnected', '❌ Disconnected');
+            updateButtons(false, true);
+            addMessage('message', { message: 'Manually disconnected' });
+        }
+        
+        function updateStatus(type, text) {
+            const status = document.getElementById('status');
+            status.className = `status ${type}`;
+            status.textContent = text;
+        }
+        
+        function updateButtons(connecting, disconnected) {
+            document.getElementById('connectBtn').disabled = connecting;
+            document.getElementById('disconnectBtn').disabled = disconnected;
+        }
+        
+        function addMessage(type, data) {
+            messageCount++;
+            const messages = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            let content = '';
+            
+            if (typeof data === 'object') {
+                content = JSON.stringify(data, null, 2);
+            } else {
+                content = data;
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="timestamp">#${messageCount} - ${timestamp}</div>
+                <div>${content}</div>
+            `;
+            
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '<div class="message">Ready to connect to SSE stream...</div>';
+            messageCount = 0;
+        }
+        
+        // Auto-connect if URL and token are provided
+        window.addEventListener('load', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('token')) {
+                document.getElementById('jwtToken').value = urlParams.get('token');
+            }
+            if (urlParams.get('baseUrl')) {
+                document.getElementById('baseUrl').value = urlParams.get('baseUrl');
+            }
+        });
+    </script>
+</body>
+</html>

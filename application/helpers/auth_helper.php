@@ -12,7 +12,8 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 function check_auth($controller) {
     $controller->load->library('Token_lib');
-    $token = $controller->token_lib->get_token_from_header();
+    // Accept token from header first; fall back to query/cookie if needed (e.g., SSE/EventSource)
+    $token = $controller->token_lib->get_token_from_request();
     
     if (!$token) {
         return false;

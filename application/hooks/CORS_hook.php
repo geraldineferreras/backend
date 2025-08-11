@@ -39,7 +39,7 @@ class CORS_hook {
         header('Access-Control-Allow-Credentials: true');
         
         // Handle preflight requests
-        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
             header('Access-Control-Max-Age: 86400'); // 24 hours cache
             http_response_code(200);
             exit();
