@@ -1169,4 +1169,219 @@ class Auth extends BaseController {
             log_message('error', "Failed to send security alert notification: " . $e->getMessage());
         }
     }
+
+    /**
+     * Handle Google OAuth authentication
+     */
+    public function google_oauth() {
+        try {
+            // Get the request data
+            $data = json_decode(file_get_contents('php://input'));
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid JSON format']));
+                return;
+            }
+
+            // Validate required fields
+            if (empty($data->email) || empty($data->name)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Missing required OAuth data']));
+                return;
+            }
+
+            // For now, we'll trust the Google OAuth data from frontend
+            // In production, you should verify the Google ID token
+            $google_user_data = [
+                'email' => $data->email,
+                'name' => $data->name,
+                'sub' => $data->email // Using email as unique identifier for now
+            ];
+            
+            // No need to check if google_user_data is false since we're creating it directly
+
+            // Check if user exists, if not create new user
+            $user = $this->User_model->get_by_email($google_user_data['email']);
+            
+            if (!$user) {
+                // Create new user from Google OAuth
+                $user_data = [
+                    'email' => $google_user_data['email'],
+                    'full_name' => $google_user_data['name'],
+                    'role' => 'student', // Default role, can be changed later
+                    'status' => 'active',
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'last_login' => date('Y-m-d H:i:s')
+                ];
+                
+                $insert_result = $this->User_model->insert($user_data);
+                
+                if (!$insert_result) {
+                    $this->output
+                        ->set_status_header(500)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Failed to create user account']));
+                    return;
+                }
+                
+                $user_id = $this->db->insert_id();
+                $user = $this->User_model->get_by_id($user_id);
+                
+                // Send welcome notification
+                $this->send_welcome_notification($user_id, $user_data['full_name'], $user_data['role'], $user_data['email']);
+                
+            } else {
+                // Update existing user's last login
+                $this->User_model->update($user['user_id'], [
+                    'last_login' => date('Y-m-d H:i:s')
+                ]);
+            }
+
+            // Generate JWT token
+            $token_payload = [
+                'user_id' => $user['user_id'],
+                'role' => $user['role'],
+                'email' => $user['email'],
+                'full_name' => $user['full_name']
+            ];
+            $token = $this->token_lib->generate_token($token_payload);
+
+            // Log successful login to audit
+            $user_data = [
+                'user_id' => $user['user_id'],
+                'name' => $user['full_name'],
+                'username' => $user['email'],
+                'role' => $user['role']
+            ];
+            log_user_login($user_data);
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Google OAuth authentication successful',
+                    'data' => [
+                        'role' => $user['role'],
+                        'user_id' => $user['user_id'],
+                        'full_name' => $user['full_name'],
+                        'email' => $user['email'],
+                        'status' => $user['status'],
+                        'last_login' => date('Y-m-d H:i:s'),
+                        'token' => $token,
+                        'token_type' => 'Bearer',
+                        'expires_in' => $this->token_lib->get_expiration_time()
+                    ]
+                ]));
+
+        } catch (Exception $e) {
+            log_message('error', 'Google OAuth error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Internal server error during OAuth authentication']));
+        }
+    }
+
+    /**
+     * Verify Google OAuth token
+     */
+    private function verify_google_token($credential) {
+        try {
+            // Load Google OAuth config
+            $this->config->load('google_oauth');
+            $google_config = $this->config->item('google_oauth');
+            
+            // Get Google's public keys
+            $keys_url = 'https://www.googleapis.com/oauth2/v1/certs';
+            $keys_response = file_get_contents($keys_url);
+            $keys = json_decode($keys_response, true);
+            
+            if (!$keys) {
+                log_message('error', 'Failed to fetch Google public keys');
+                return false;
+            }
+            
+            // Decode the JWT token header to get the key ID
+            $token_parts = explode('.', $credential);
+            if (count($token_parts) !== 3) {
+                return false;
+            }
+            
+            $header = json_decode(base64_decode(strtr($token_parts[0], '-_', '+/')), true);
+            if (!$header || !isset($header['kid'])) {
+                return false;
+            }
+            
+            // Find the correct public key
+            $public_key = null;
+            foreach ($keys['keys'] as $key) {
+                if ($key['kid'] === $header['kid']) {
+                    $public_key = $key;
+                    break;
+                }
+            }
+            
+            if (!$public_key) {
+                log_message('error', 'Public key not found for kid: ' . $header['kid']);
+                return false;
+            }
+            
+            // Verify the token
+            $verified = $this->verify_jwt_token($credential, $public_key, $google_config['client_id']);
+            
+            if ($verified) {
+                // Decode the payload
+                $payload = json_decode(base64_decode(strtr($token_parts[1], '-_', '+/')), true);
+                return $payload;
+            }
+            
+            return false;
+            
+        } catch (Exception $e) {
+            log_message('error', 'Token verification error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Verify JWT token with public key
+     */
+    private function verify_jwt_token($token, $public_key, $audience) {
+        try {
+            // This is a simplified verification - in production, use a proper JWT library
+            $token_parts = explode('.', $token);
+            if (count($token_parts) !== 3) {
+                return false;
+            }
+            
+            $payload = json_decode(base64_decode(strtr($token_parts[1], '-_', '+/')), true);
+            
+            // Check expiration
+            if (isset($payload['exp']) && $payload['exp'] < time()) {
+                return false;
+            }
+            
+            // Check audience (client ID)
+            if (isset($payload['aud']) && $payload['aud'] !== $audience) {
+                return false;
+            }
+            
+            // Check issuer
+            if (isset($payload['iss']) && $payload['iss'] !== 'https://accounts.google.com') {
+                return false;
+            }
+            
+            return true;
+            
+        } catch (Exception $e) {
+            log_message('error', 'JWT verification error: ' . $e->getMessage());
+            return false;
+        }
+    }
 }

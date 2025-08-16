@@ -60,6 +60,7 @@ $route['api/test']['post'] = 'api/auth/test_password';
 $route['api/refresh-token']['post'] = 'api/auth/refresh_token';
 $route['api/validate-token']['get'] = 'api/auth/validate_token';
 $route['api/logout']['post'] = 'api/auth/logout';
+$route['api/auth/google']['post'] = 'api/auth/google_oauth';
 
 // Test endpoints
 $route['api/test']['get'] = 'api/testcontroller/test';
