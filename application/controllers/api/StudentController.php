@@ -801,6 +801,47 @@ class StudentController extends BaseController {
             $comment_id = $this->ClassroomStream_model->add_comment($stream_id, $user_data['user_id'], $data['comment']);
             
             if ($comment_id) {
+                // Create notifications for post author and teacher
+                $this->load->helper('notification');
+
+                // Gather recipients: post author (if not the commenter) and class teacher (if not the commenter or post author)
+                $notification_user_ids = [];
+
+                // Post author
+                if (!empty($post['user_id']) && $post['user_id'] !== $user_data['user_id']) {
+                    $notification_user_ids[] = $post['user_id'];
+                }
+
+                // Class teacher
+                if (!empty($classroom['teacher_id'])
+                    && $classroom['teacher_id'] !== $user_data['user_id']
+                    && (!isset($post['user_id']) || $classroom['teacher_id'] !== $post['user_id'])) {
+                    $notification_user_ids[] = $classroom['teacher_id'];
+                }
+
+                if (!empty($notification_user_ids)) {
+                    // Compose title and message
+                    $commenter = $this->User_model->get_by_id($user_data['user_id']);
+                    $commenter_name = $commenter && !empty($commenter['full_name']) ? $commenter['full_name'] : $user_data['user_id'];
+                    $title = 'New comment from ' . $commenter_name;
+                    $snippet = mb_substr(trim($data['comment']), 0, 120);
+                    if (mb_strlen(trim($data['comment'])) > 120) {
+                        $snippet .= '…';
+                    }
+                    $message = $snippet;
+
+                    // Use existing 'announcement' type for stream activity notifications
+                    create_notifications_for_users(
+                        $notification_user_ids,
+                        'announcement',
+                        $title,
+                        $message,
+                        $stream_id,
+                        'announcement',
+                        $class_code,
+                        false
+                    );
+                }
                 // Get all comments for this post
                 $comments = $this->ClassroomStream_model->get_comments($stream_id);
                 return json_response(true, 'Comment added successfully', $comments);

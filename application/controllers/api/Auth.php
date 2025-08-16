@@ -445,6 +445,15 @@ class Auth extends BaseController {
         $role = strtolower($role);
         $users = $this->User_model->get_all($role);
 
+        // Add formatted year information for students
+        if ($role === 'student' && is_array($users)) {
+            foreach ($users as &$user) {
+                if (isset($user['year_level'])) {
+                    $user['year'] = $this->format_year_level($user['year_level']);
+                }
+            }
+        }
+
         $this->output
             ->set_status_header(200)
             ->set_content_type('application/json')
@@ -484,6 +493,11 @@ class Auth extends BaseController {
             return;
         }
 
+        // Add formatted year information for students
+        if ($user && $user['role'] === 'student' && isset($user['year_level'])) {
+            $user['year'] = $this->format_year_level($user['year_level']);
+        }
+
         $this->output
             ->set_status_header(200)
             ->set_content_type('application/json')
@@ -510,6 +524,66 @@ class Auth extends BaseController {
         
         // Handle JSON request
         $this->update_user_json();
+    }
+    
+    /**
+     * Format year level to readable format
+     * @param string $year_level
+     * @return string
+     */
+    private function format_year_level($year_level) {
+        if (empty($year_level)) {
+            return null;
+        }
+        
+        // Handle different year level formats
+        $year_level = trim($year_level);
+        
+        // If it's already in ordinal format, return as is
+        if (preg_match('/^\d+(st|nd|rd|th)\s+year$/i', $year_level)) {
+            return $year_level;
+        }
+        
+        // If it's just a number, convert to ordinal
+        if (is_numeric($year_level)) {
+            $number = (int)$year_level;
+            switch ($number) {
+                case 1:
+                    return '1st year';
+                case 2:
+                    return '2nd year';
+                case 3:
+                    return '3rd year';
+                case 4:
+                    return '4th year';
+                case 5:
+                    return '5th year';
+                default:
+                    return $number . 'th year';
+            }
+        }
+        
+        // If it contains a number, extract and format it
+        if (preg_match('/(\d+)/', $year_level, $matches)) {
+            $number = (int)$matches[1];
+            switch ($number) {
+                case 1:
+                    return '1st year';
+                case 2:
+                    return '2nd year';
+                case 3:
+                    return '3rd year';
+                case 4:
+                    return '4th year';
+                case 5:
+                    return '5th year';
+                default:
+                    return $number . 'th year';
+            }
+        }
+        
+        // Return original if no pattern matches
+        return $year_level;
     }
     
     private function update_user_with_images() {
@@ -745,19 +819,74 @@ class Auth extends BaseController {
                 ->set_output(json_encode(['status' => false, 'message' => 'User not found']));
             return;
         }
+        
+        // Optional force flag: delete dependent audit logs before deleting user
+        $force_param = $this->input->get('force');
+        $force_body = isset($data->force) ? $data->force : null;
+        $force = ($force_param === 'true' || $force_param === '1' || $force_body === true || $force_body === 1);
 
-        $success = $this->User_model->delete($user_id);
-        if ($success) {
+        // Temporarily disable CI DB debug to prevent HTML error page on FK violation
+        $original_db_debug = $this->db->db_debug;
+        $this->db->db_debug = FALSE;
+
+        // Use a transaction for safety
+        $this->db->trans_begin();
+
+        // When forcing, remove audit log references first to satisfy FK constraints
+        if ($force) {
+            $this->db->where('user_id', $user_id)->delete('audit_logs');
+        }
+
+        // Attempt deletion
+        $this->User_model->delete($user_id);
+        $db_error = $this->db->error();
+
+        if ((int)$db_error['code'] === 0 && $this->db->trans_status() !== FALSE) {
+            $this->db->trans_commit();
+            // Restore original db_debug setting
+            $this->db->db_debug = $original_db_debug;
             $this->output
                 ->set_status_header(200)
                 ->set_content_type('application/json')
-                ->set_output(json_encode(['status' => true, 'message' => 'User deleted successfully']));
-        } else {
+                ->set_output(json_encode(['status' => true, 'message' => 'User deleted successfully']))
+                ;
+            return;
+        }
+
+        // Deletion failed: rollback so we can decide next step
+        $this->db->trans_rollback();
+        // Restore original db_debug setting before further operations
+        $this->db->db_debug = $original_db_debug;
+
+        if (!empty($db_error) && isset($db_error['code']) && (int)$db_error['code'] !== 0) {
+            // Handle foreign key constraint - fall back to soft delete to preserve logs
+            if ((int)$db_error['code'] === 1451) {
+                // Soft delete: deactivate account instead of removing the row
+                $this->User_model->update($user_id, ['status' => 'inactive']);
+                $this->output
+                    ->set_status_header(200)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => true,
+                        'message' => 'User has linked records. Account deactivated instead of deleted.',
+                        'data' => [ 'soft_deleted' => true ]
+                    ]));
+                return;
+            }
+            
+            // Unknown DB error
             $this->output
                 ->set_status_header(500)
                 ->set_content_type('application/json')
-                ->set_output(json_encode(['status' => false, 'message' => 'Failed to delete user']));
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to delete user: ' . $db_error['message']]));
+            return;
         }
+        
+        // If we reach here, treat as generic failure
+        $this->output
+            ->set_status_header(500)
+            ->set_content_type('application/json')
+            ->set_output(json_encode(['status' => false, 'message' => 'Failed to delete user']));
     }
 
     // Admin method to change user status

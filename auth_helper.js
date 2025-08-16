@@ -153,8 +153,9 @@ class AuthHelper {
         });
     }
 
-    async deleteSection(sectionId) {
-        return this.makeRequest(`/admin/sections/${sectionId}`, {
+    async deleteSection(sectionId, { force = false } = {}) {
+        const query = force ? '?force=true' : '';
+        return this.makeRequest(`/admin/sections/${sectionId}${query}`, {
             method: 'DELETE'
         });
     }

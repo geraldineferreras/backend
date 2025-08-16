@@ -205,9 +205,22 @@ class AdminController extends BaseController {
             return json_response(false, 'Section not found', null, 404);
         }
         
-        // Prevent delete if students are linked
+        // Support force delete via query param (?force=true|1)
+        $force = $this->input->get('force');
+        $force_delete = ($force === 'true' || $force === '1');
+
+        // Prevent delete if students are linked, unless forced
         if ($this->Section_model->is_section_linked($section_id)) {
-            return json_response(false, 'Cannot delete section: students are still assigned', null, 400);
+            if (!$force_delete) {
+                return json_response(false, 'Cannot delete section: students are still assigned', null, 400);
+            }
+
+            // Force path: unassign all students from this section before delete
+            $current_students = $this->Section_model->get_students($section_id);
+            $current_student_ids = array_column($current_students, 'user_id');
+            if (!empty($current_student_ids)) {
+                $this->Section_model->remove_students_from_section($section_id, $current_student_ids);
+            }
         }
         $success = $this->Section_model->delete($section_id);
         if ($success) {

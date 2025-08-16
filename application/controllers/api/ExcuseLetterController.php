@@ -632,6 +632,36 @@ class ExcuseLetterController extends BaseController
                 return;
             }
 
+            // Ensure section_name is not null - get it from sections table if needed
+            $section_name = $class['section_name'];
+            if (empty($section_name)) {
+                // Try to get section name directly from sections table
+                $section = $this->db->select('sections.section_name')
+                    ->from('sections')
+                    ->where('sections.section_id', $class['section_id'])
+                    ->get()->row_array();
+                
+                if ($section) {
+                    $section_name = $section['section_name'];
+                } else {
+                    // Fallback: get section name from classroom if available
+                    $classroom = $this->db->select('sections.section_name')
+                        ->from('classrooms')
+                        ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
+                        ->where('classrooms.subject_id', $class['subject_id'])
+                        ->where('classrooms.section_id', $class['section_id'])
+                        ->get()->row_array();
+                    
+                    if ($classroom && !empty($classroom['section_name'])) {
+                        $section_name = $classroom['section_name'];
+                    } else {
+                        // Last resort: use a default section name
+                        $section_name = 'Unknown Section';
+                        log_message('warning', 'Using default section name for student ' . $student_id . ' in class ' . $class_id);
+                    }
+                }
+            }
+
             // Check if attendance record already exists for this student, class, and date
             $existing_attendance = $this->db->where('student_id', $student_id)
                 ->where('class_id', $class['class_id'])
@@ -643,7 +673,8 @@ class ExcuseLetterController extends BaseController
                 // Update existing attendance record
                 $this->db->where('attendance_id', $existing_attendance['attendance_id']);
                 $this->db->update('attendance', [
-                    'status' => 'Excused',
+                    'status' => 'excused',
+                    'section_name' => $section_name, // Ensure section_name is updated
                     'notes' => 'Automatically marked as excused due to approved excuse letter',
                     'updated_at' => date('Y-m-d H:i:s')
                 ]);
@@ -653,9 +684,10 @@ class ExcuseLetterController extends BaseController
                     'student_id' => $student_id,
                     'subject_id' => $class['subject_id'],
                     'class_id' => $class['class_id'],
+                    'section_name' => $section_name, // Ensure section_name is populated
                     'date' => $date_absent,
                     'time_in' => date('H:i:s'),
-                    'status' => 'Excused',
+                    'status' => 'excused',
                     'notes' => 'Automatically marked as excused due to approved excuse letter',
                     'teacher_id' => $teacher_id,
                     'created_at' => date('Y-m-d H:i:s'),
@@ -663,7 +695,7 @@ class ExcuseLetterController extends BaseController
                 ]);
             }
 
-            log_message('info', 'Attendance marked as excused for student ' . $student_id . ' on ' . $date_absent);
+            log_message('info', 'Attendance marked as excused for student ' . $student_id . ' on ' . $date_absent . ' with section: ' . $section_name);
         } catch (Exception $e) {
             log_message('error', 'Failed to mark attendance as excused: ' . $e->getMessage());
         }
@@ -715,6 +747,36 @@ class ExcuseLetterController extends BaseController
                 return;
             }
 
+            // Ensure section_name is not null - get it from sections table if needed
+            $section_name = $class['section_name'];
+            if (empty($section_name)) {
+                // Try to get section name directly from sections table
+                $section = $this->db->select('sections.section_name')
+                    ->from('sections')
+                    ->where('sections.section_id', $class['section_id'])
+                    ->get()->row_array();
+                
+                if ($section) {
+                    $section_name = $section['section_name'];
+                } else {
+                    // Fallback: get section name from classroom if available
+                    $classroom = $this->db->select('sections.section_name')
+                        ->from('classrooms')
+                        ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
+                        ->where('classrooms.subject_id', $class['subject_id'])
+                        ->where('classrooms.section_id', $class['section_id'])
+                        ->get()->row_array();
+                    
+                    if ($classroom && !empty($classroom['section_name'])) {
+                        $section_name = $classroom['section_name'];
+                    } else {
+                        // Last resort: use a default section name
+                        $section_name = 'Unknown Section';
+                        log_message('warning', 'Using default section name for student ' . $student_id . ' in class ' . $class_id);
+                    }
+                }
+            }
+
             // Check if attendance record already exists for this student, class, and date
             $existing_attendance = $this->db->where('student_id', $student_id)
                 ->where('class_id', $class['class_id'])
@@ -726,7 +788,8 @@ class ExcuseLetterController extends BaseController
                 // Update existing attendance record
                 $this->db->where('attendance_id', $existing_attendance['attendance_id']);
                 $this->db->update('attendance', [
-                    'status' => 'Absent',
+                    'status' => 'absent',
+                    'section_name' => $section_name, // Ensure section_name is updated
                     'notes' => 'Automatically marked as absent due to rejected excuse letter',
                     'updated_at' => date('Y-m-d H:i:s')
                 ]);
@@ -736,9 +799,10 @@ class ExcuseLetterController extends BaseController
                     'student_id' => $student_id,
                     'subject_id' => $class['subject_id'],
                     'class_id' => $class['class_id'],
+                    'section_name' => $section_name, // Ensure section_name is populated
                     'date' => $date_absent,
                     'time_in' => date('H:i:s'),
-                    'status' => 'Absent',
+                    'status' => 'absent',
                     'notes' => 'Automatically marked as absent due to rejected excuse letter',
                     'teacher_id' => $teacher_id,
                     'created_at' => date('Y-m-d H:i:s'),
@@ -746,7 +810,7 @@ class ExcuseLetterController extends BaseController
                 ]);
             }
 
-            log_message('info', 'Attendance marked as absent for student ' . $student_id . ' on ' . $date_absent);
+            log_message('info', 'Attendance marked as absent for student ' . $student_id . ' on ' . $date_absent . ' with section: ' . $section_name);
         } catch (Exception $e) {
             log_message('error', 'Failed to mark attendance as absent: ' . $e->getMessage());
         }

@@ -115,8 +115,9 @@ class SectionXHR {
     }
 
     // Delete section
-    deleteSection(sectionId, callback) {
-        this.makeRequest('DELETE', `/admin/sections/${sectionId}`, null, callback);
+    deleteSection(sectionId, callback, options = {}) {
+        const force = options.force ? '?force=true' : '';
+        this.makeRequest('DELETE', `/admin/sections/${sectionId}${force}`, null, callback);
     }
 
     // Get sections by year level
