@@ -1,0 +1,5 @@
+[33m103bf88[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m Secure configuration: Add template files and exclude sensitive configs from git tracking
+[33ma72f818[m Add new upload files: cover images, profile pictures, excuse letters, submissions, and task media files
+[33m632267e[m[33m ([m[1;31morigin/master[m[33m)[m Update excuse management system and controller improvements
+[33m269f905[m Fix Array to string conversion error in AttendanceController - Replace where() with where_in() for IN clause
+[33m2f7c503[m Add notification system with SSE support, update controllers and helpers, add test files

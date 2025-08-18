@@ -315,12 +315,13 @@ class TeacherController extends BaseController
 
             // Handle one or many file uploads
             $uploaded_files = [];
+            $link_attachments = [];
             $upload_path = FCPATH . 'uploads/announcement/';
             if (!is_dir($upload_path)) {
                 mkdir($upload_path, 0755, true);
             }
             
-            // Normalize to support both single field 'attachment' and many fields
+            // Process file uploads
             foreach ($_FILES as $field_name => $file_data) {
                 if ($file_data['error'] === UPLOAD_ERR_OK) {
                     $config['upload_path'] = $upload_path;
@@ -378,15 +379,21 @@ class TeacherController extends BaseController
                     }
                 }
             }
+
+            // Handle link attachments from form data
+            $this->_process_link_attachments_from_form($link_attachments);
             
-            // Store file information in data. For compatibility, use a single string when only one file is uploaded
-            if (!empty($uploaded_files)) {
-                if (count($uploaded_files) === 1) {
-                    $data['attachment_type'] = 'file';
-                    $data['attachment_url'] = $uploaded_files[0]['file_path'];
+            // Combine all attachments
+            $all_attachments = array_merge($uploaded_files, $link_attachments);
+            
+            // Store attachment information in data
+            if (!empty($all_attachments)) {
+                if (count($all_attachments) === 1) {
+                    $data['attachment_type'] = $all_attachments[0]['attachment_type'];
+                    $data['attachment_url'] = $all_attachments[0]['attachment_url'];
                 } else {
                     $data['attachment_type'] = 'multiple';
-                    $data['attachment_url'] = json_encode($uploaded_files);
+                    $data['attachment_url'] = null;
                 }
             }
         } else {
@@ -394,6 +401,24 @@ class TeacherController extends BaseController
             $data = json_decode(file_get_contents('php://input'), true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 return json_response(false, 'Invalid JSON format', null, 400);
+            }
+            
+            // Handle link attachments from JSON
+            $link_attachments = [];
+            $this->_process_link_attachments_from_json($data, $link_attachments);
+            
+            // Combine with any file attachments (if any were provided in JSON)
+            $all_attachments = array_merge($uploaded_files ?? [], $link_attachments);
+            
+            // Update attachment type if we have attachments
+            if (!empty($all_attachments)) {
+                if (count($all_attachments) === 1) {
+                    $data['attachment_type'] = $all_attachments[0]['attachment_type'];
+                    $data['attachment_url'] = $all_attachments[0]['attachment_url'];
+                } else {
+                    $data['attachment_type'] = 'multiple';
+                    $data['attachment_url'] = null;
+                }
             }
         }
         
@@ -423,9 +448,9 @@ class TeacherController extends BaseController
         
         $id = $this->ClassroomStream_model->insert($insert_data);
         if ($id) {
-            // Handle multiple attachments if files were uploaded
-            if (!empty($uploaded_files) && count($uploaded_files) > 1) {
-                $this->StreamAttachment_model->insert_multiple($id, $uploaded_files);
+            // Handle multiple attachments if we have more than one
+            if (!empty($all_attachments) && count($all_attachments) > 1) {
+                $this->StreamAttachment_model->insert_multiple($id, $all_attachments);
             }
             
             $post = $this->ClassroomStream_model->get_by_id($id);
@@ -2198,5 +2223,139 @@ class TeacherController extends BaseController
             header('Content-Disposition: attachment; filename="error.txt"');
             echo "Error generating grades export: " . $e->getMessage();
         }
+    }
+
+    /**
+     * Process link attachments from form data
+     */
+    private function _process_link_attachments_from_form(&$link_attachments) {
+        // Check for link attachments in form data
+        $link_fields = ['link_0', 'link_1', 'link_2', 'link_3', 'link_4'];
+        $youtube_fields = ['youtube_0', 'youtube_1', 'youtube_2', 'youtube_3', 'youtube_4'];
+        $gdrive_fields = ['gdrive_0', 'gdrive_1', 'gdrive_2', 'gdrive_3', 'gdrive_4'];
+        
+        // Process regular links
+        foreach ($link_fields as $field) {
+            $url = $this->input->post($field);
+            if (!empty($url) && filter_var($url, FILTER_VALIDATE_URL)) {
+                $link_attachments[] = [
+                    'file_path' => $url,
+                    'file_name' => 'link_' . count($link_attachments),
+                    'original_name' => 'External Link',
+                    'file_size' => null,
+                    'mime_type' => 'text/plain',
+                    'attachment_type' => 'link',
+                    'attachment_url' => $url
+                ];
+            }
+        }
+        
+        // Process YouTube links
+        foreach ($youtube_fields as $field) {
+            $url = $this->input->post($field);
+            if (!empty($url) && $this->_is_valid_youtube_url($url)) {
+                $link_attachments[] = [
+                    'file_path' => $url,
+                    'file_name' => 'youtube_' . count($link_attachments),
+                    'original_name' => 'YouTube Video',
+                    'file_size' => null,
+                    'mime_type' => 'video/youtube',
+                    'attachment_type' => 'youtube',
+                    'attachment_url' => $url
+                ];
+            }
+        }
+        
+        // Process Google Drive links
+        foreach ($gdrive_fields as $field) {
+            $url = $this->input->post($field);
+            if (!empty($url) && $this->_is_valid_google_drive_url($url)) {
+                $link_attachments[] = [
+                    'file_path' => $url,
+                    'file_name' => 'gdrive_' . count($link_attachments),
+                    'original_name' => 'Google Drive File',
+                    'file_size' => null,
+                    'mime_type' => 'application/gdrive',
+                    'attachment_type' => 'google_drive',
+                    'attachment_url' => $url
+                ];
+            }
+        }
+    }
+
+    /**
+     * Process link attachments from JSON data
+     */
+    private function _process_link_attachments_from_json($data, &$link_attachments) {
+        // Check for attachments array in JSON
+        if (isset($data['attachments']) && is_array($data['attachments'])) {
+            foreach ($data['attachments'] as $attachment) {
+                if (isset($attachment['type']) && isset($attachment['url'])) {
+                    $type = $attachment['type'];
+                    $url = $attachment['url'];
+                    
+                    if (filter_var($url, FILTER_VALIDATE_URL)) {
+                        $link_attachments[] = [
+                            'file_path' => $url,
+                            'file_name' => $type . '_' . count($link_attachments),
+                            'original_name' => $attachment['title'] ?? ucfirst($type),
+                            'file_size' => null,
+                            'mime_type' => $this->_get_mime_type_for_attachment_type($type),
+                            'attachment_type' => $type,
+                            'attachment_url' => $url
+                        ];
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Validate YouTube URL
+     */
+    private function _is_valid_youtube_url($url) {
+        $patterns = [
+            '/^https?:\/\/(www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]+/',
+            '/^https?:\/\/youtu\.be\/[a-zA-Z0-9_-]+/',
+            '/^https?:\/\/(www\.)?youtube\.com\/embed\/[a-zA-Z0-9_-]+/'
+        ];
+        
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $url)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Validate Google Drive URL
+     */
+    private function _is_valid_google_drive_url($url) {
+        $patterns = [
+            '/^https?:\/\/drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+\/view/',
+            '/^https?:\/\/drive\.google\.com\/open\?id=[a-zA-Z0-9_-]+/',
+            '/^https?:\/\/docs\.google\.com\/[a-zA-Z]+\/d\/[a-zA-Z0-9_-]+/'
+        ];
+        
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $url)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get MIME type for attachment type
+     */
+    private function _get_mime_type_for_attachment_type($type) {
+        $mime_types = [
+            'link' => 'text/plain',
+            'youtube' => 'video/youtube',
+            'google_drive' => 'application/gdrive'
+        ];
+        
+        return $mime_types[$type] ?? 'text/plain';
     }
 }

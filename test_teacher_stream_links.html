@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Teacher Stream Multiple Link Attachments</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        .link-section {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #007bff;
+        }
+        .link-section h3 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        .link-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .link-input {
+            display: flex;
+            flex-direction: column;
+        }
+        .link-input label {
+            font-size: 12px;
+            color: #666;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-secondary {
+            background: #6c757d;
+        }
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .response.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .response.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            color: #666;
+        }
+        .tab.active {
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Teacher Stream Multiple Link Attachments</h1>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('form')">Form Data</button>
+            <button class="tab" onclick="showTab('json')">JSON Data</button>
+        </div>
+
+        <!-- Form Data Tab -->
+        <div id="form-tab" class="tab-content active">
+            <form id="streamForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="title">Title:</label>
+                    <input type="text" id="title" name="title" placeholder="Enter announcement title" value="Test Multiple Link Attachments">
+                </div>
+
+                <div class="form-group">
+                    <label for="content">Content:</label>
+                    <textarea id="content" name="content" placeholder="Enter announcement content">This is a test announcement with multiple link attachments including regular links, YouTube videos, and Google Drive files.</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="class_code">Class Code:</label>
+                    <input type="text" id="class_code" name="class_code" placeholder="Enter class code" value="TEST123">
+                </div>
+
+                <div class="form-group">
+                    <label for="is_draft">Is Draft:</label>
+                    <select id="is_draft" name="is_draft">
+                        <option value="0">No (Publish immediately)</option>
+                        <option value="1">Yes (Save as draft)</option>
+                    </select>
+                </div>
+
+                <!-- Regular Links Section -->
+                <div class="link-section">
+                    <h3>🔗 Regular Links</h3>
+                    <div class="link-inputs">
+                        <div class="link-input">
+                            <label for="link_0">Link 1:</label>
+                            <input type="text" id="link_0" name="link_0" placeholder="https://example.com" value="https://www.example.com">
+                        </div>
+                        <div class="link-input">
+                            <label for="link_1">Link 2:</label>
+                            <input type="text" id="link_1" name="link_1" placeholder="https://example.org" value="https://www.example.org">
+                        </div>
+                        <div class="link-input">
+                            <label for="link_2">Link 3:</label>
+                            <input type="text" id="link_2" name="link_2" placeholder="https://example.net">
+                        </div>
+                        <div class="link-input">
+                            <label for="link_3">Link 4:</label>
+                            <input type="text" id="link_3" name="link_3" placeholder="https://example.edu">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- YouTube Links Section -->
+                <div class="link-section">
+                    <h3>📺 YouTube Videos</h3>
+                    <div class="link-inputs">
+                        <div class="link-input">
+                            <label for="youtube_0">YouTube 1:</label>
+                            <input type="text" id="youtube_0" name="youtube_0" placeholder="https://youtube.com/watch?v=..." value="https://www.youtube.com/watch?v=dQw4w9WgXcQ">
+                        </div>
+                        <div class="link-input">
+                            <label for="youtube_1">YouTube 2:</label>
+                            <input type="text" id="youtube_1" name="youtube_1" placeholder="https://youtu.be/..." value="https://youtu.be/jNQXAC9IVRw">
+                        </div>
+                        <div class="link-input">
+                            <label for="youtube_2">YouTube 3:</label>
+                            <input type="text" id="youtube_2" name="youtube_2" placeholder="https://youtube.com/embed/...">
+                        </div>
+                        <div class="link-input">
+                            <label for="youtube_3">YouTube 4:</label>
+                            <input type="text" id="youtube_3" name="youtube_3" placeholder="https://youtube.com/watch?v=...">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Google Drive Links Section -->
+                <div class="link-section">
+                    <h3>☁️ Google Drive Files</h3>
+                    <div class="link-inputs">
+                        <div class="link-input">
+                            <label for="gdrive_0">Google Drive 1:</label>
+                            <input type="text" id="gdrive_0" name="gdrive_0" placeholder="https://drive.google.com/file/d/..." value="https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view">
+                        </div>
+                        <div class="link-input">
+                            <label for="gdrive_1">Google Drive 2:</label>
+                            <input type="text" id="gdrive_1" name="gdrive_1" placeholder="https://drive.google.com/open?id=..." value="https://drive.google.com/open?id=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms">
+                        </div>
+                        <div class="link-input">
+                            <label for="gdrive_2">Google Drive 3:</label>
+                            <input type="text" id="gdrive_2" name="gdrive_2" placeholder="https://docs.google.com/...">
+                        </div>
+                        <div class="link-input">
+                            <label for="gdrive_3">Google Drive 4:</label>
+                            <input type="text" id="gdrive_3" name="gdrive_3" placeholder="https://drive.google.com/...">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <button type="submit" class="btn">Create Stream Post</button>
+                    <button type="button" class="btn btn-secondary" onclick="clearForm()">Clear Form</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- JSON Data Tab -->
+        <div id="json-tab" class="tab-content">
+            <div class="form-group">
+                <label for="jsonData">JSON Data:</label>
+                <textarea id="jsonData" placeholder="Enter JSON data for testing">{
+  "title": "Test JSON Multiple Link Attachments",
+  "content": "This is a test announcement with multiple link attachments using JSON format.",
+  "class_code": "TEST123",
+  "is_draft": 0,
+  "attachments": [
+    {
+      "type": "link",
+      "url": "https://www.example.com",
+      "title": "Example Website"
+    },
+    {
+      "type": "youtube",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "title": "Rick Roll Video"
+    },
+    {
+      "type": "google_drive",
+      "url": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view",
+      "title": "Sample Document"
+    }
+  ]
+}</textarea>
+            </div>
+            <div class="form-group">
+                <button type="button" class="btn" onclick="testJsonSubmission()">Test JSON Submission</button>
+                <button type="button" class="btn btn-secondary" onclick="clearJson()">Clear JSON</button>
+            </div>
+        </div>
+
+        <div id="response" class="response" style="display: none;"></div>
+    </div>
+
+    <script>
+        // Tab functionality
+        function showTab(tabName) {
+            // Hide all tab contents
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => content.classList.remove('active'));
+            
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Show selected tab content
+            document.getElementById(tabName + '-tab').classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+
+        // Form submission
+        document.getElementById('streamForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            
+            // Add form fields
+            formData.append('title', document.getElementById('title').value);
+            formData.append('content', document.getElementById('content').value);
+            formData.append('class_code', document.getElementById('class_code').value);
+            formData.append('is_draft', document.getElementById('is_draft').value);
+            
+            // Add link attachments
+            const linkFields = ['link_0', 'link_1', 'link_2', 'link_3'];
+            const youtubeFields = ['youtube_0', 'youtube_1', 'youtube_2', 'youtube_3'];
+            const gdriveFields = ['gdrive_0', 'gdrive_1', 'gdrive_2', 'gdrive_3'];
+            
+            [...linkFields, ...youtubeFields, ...gdriveFields].forEach(field => {
+                const value = document.getElementById(field).value;
+                if (value.trim()) {
+                    formData.append(field, value);
+                }
+            });
+            
+            await submitStreamPost(formData, 'Form Data');
+        });
+
+        // JSON submission
+        async function testJsonSubmission() {
+            const jsonData = document.getElementById('jsonData').value;
+            let data;
+            
+            try {
+                data = JSON.parse(jsonData);
+            } catch (e) {
+                showResponse('Error: Invalid JSON format', 'error');
+                return;
+            }
+            
+            await submitStreamPost(JSON.stringify(data), 'JSON Data');
+        }
+
+        // Submit stream post
+        async function submitStreamPost(data, method) {
+            const classCode = method === 'Form Data' ? document.getElementById('class_code').value : JSON.parse(data).class_code;
+            const url = `/api/teacher/classroom/${classCode}/stream`;
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: method === 'JSON Data' ? {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + getAuthToken()
+                    } : {
+                        'Authorization': 'Bearer ' + getAuthToken()
+                    },
+                    body: method === 'JSON Data' ? data : data
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResponse(`✅ Success!\n\nMethod: ${method}\nResponse: ${JSON.stringify(result, null, 2)}`, 'success');
+                } else {
+                    showResponse(`❌ Error!\n\nMethod: ${method}\nResponse: ${JSON.stringify(result, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResponse(`❌ Network Error!\n\nMethod: ${method}\nError: ${error.message}`, 'error');
+            }
+        }
+
+        // Show response
+        function showResponse(message, type) {
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = message;
+            responseDiv.className = `response ${type}`;
+            responseDiv.style.display = 'block';
+            responseDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Clear form
+        function clearForm() {
+            document.getElementById('streamForm').reset();
+            document.getElementById('title').value = 'Test Multiple Link Attachments';
+            document.getElementById('content').value = 'This is a test announcement with multiple link attachments including regular links, YouTube videos, and Google Drive files.';
+            document.getElementById('class_code').value = 'TEST123';
+        }
+
+        // Clear JSON
+        function clearJson() {
+            document.getElementById('jsonData').value = '';
+        }
+
+        // Get auth token (you'll need to implement this based on your auth system)
+        function getAuthToken() {
+            // This should return the actual JWT token from your authentication system
+            // For testing, you might want to store it in localStorage or get it from a login form
+            const token = localStorage.getItem('auth_token') || prompt('Please enter your JWT token:');
+            if (token) {
+                localStorage.setItem('auth_token', token);
+            }
+            return token;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if we have a stored token
+            if (!localStorage.getItem('auth_token')) {
+                alert('Please enter your JWT token when prompted to test the API.');
+            }
+        });
+    </script>
+</body>
+</html>
