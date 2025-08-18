@@ -2,14 +2,15 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 /**
- * Google OAuth Configuration for SCMS
- * This file is automatically loaded by CodeIgniter
+ * Configuration Template for SCMS
+ * Copy this file and fill in your actual values
  */
 
+// Google OAuth Configuration
 $config['google_oauth'] = array(
-    'client_id' => getenv('GOOGLE_CLIENT_ID') ?: '915997325303-6h2v8ctgegd6d6ft51vdmf4o1ir1lmah.apps.googleusercontent.com',
-    'client_secret' => getenv('GOOGLE_CLIENT_SECRET') ?: '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',
-    'project_id' => getenv('GOOGLE_PROJECT_ID') ?: 'scms-469206',
+    'client_id' => getenv('GOOGLE_CLIENT_ID') ?: 'your_google_client_id_here',
+    'client_secret' => getenv('GOOGLE_CLIENT_SECRET') ?: 'your_google_client_secret_here',
+    'project_id' => getenv('GOOGLE_PROJECT_ID') ?: 'your_google_project_id_here',
     'auth_uri' => 'https://accounts.google.com/o/oauth2/auth',
     'token_uri' => 'https://oauth2.googleapis.com/token',
     'auth_provider_x509_cert_url' => 'https://www.googleapis.com/oauth2/v1/certs',
@@ -25,8 +26,8 @@ $config['google_oauth'] = array(
 
 // JWT Configuration
 $config['jwt'] = array(
-    'secret_key' => getenv('JWT_SECRET_KEY') ?: 'scms-jwt-secret-key-2024-change-in-production',
-    'expiration_time' => getenv('JWT_EXPIRATION_TIME') ?: 86400, // 24 hours
+    'secret_key' => getenv('JWT_SECRET_KEY') ?: 'your_jwt_secret_key_here',
+    'expiration_time' => getenv('JWT_EXPIRATION_TIME') ?: 86400,
     'algorithm' => 'HS256'
 );
 
