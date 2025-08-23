@@ -555,10 +555,63 @@ class StudentController extends BaseController {
             // Load the ClassroomStream model
             $this->load->model('ClassroomStream_model');
             
+            // Auto-dispatch notifications for due scheduled posts if not yet dispatched
+            // This complements the cron-based dispatcher to ensure reliability
+            try {
+                $now = date('Y-m-d H:i:s');
+                $due_posts = $this->db->select('*')
+                    ->from('classroom_stream')
+                    ->where('class_code', $class_code)
+                    ->where('is_draft', 0)
+                    ->where('is_scheduled', 1)
+                    ->where('scheduled_at <=', $now)
+                    ->group_start()
+                        ->where('notification_dispatched_at IS NULL', null, false)
+                        ->or_where('notification_dispatched_at =', null)
+                    ->group_end()
+                    ->get()->result_array();
+                if (!empty($due_posts)) {
+                    $this->load->helper('notification');
+                    foreach ($due_posts as $post) {
+                        $recipient_ids = [];
+                        if (!empty($post['visible_to_student_ids'])) {
+                            $recipient_ids = json_decode($post['visible_to_student_ids'], true) ?: [];
+                        } else {
+                            $students = get_class_students($class_code);
+                            if ($students) {
+                                $recipient_ids = array_column($students, 'user_id');
+                            }
+                        }
+                        if (!empty($recipient_ids)) {
+                            $title = $post['title'] ?: 'New Announcement';
+                            $message = $post['content'] ?? 'A new announcement has been posted.';
+                            create_notifications_for_users(
+                                $recipient_ids,
+                                'announcement',
+                                $title,
+                                $message,
+                                $post['id'],
+                                'announcement',
+                                $class_code,
+                                false
+                            );
+                        }
+                        // Mark as dispatched to avoid duplicates
+                        $this->db->where('id', $post['id'])->update('classroom_stream', [
+                            'notification_dispatched_at' => $now
+                        ]);
+                    }
+                }
+            } catch (Exception $e) {
+                // Silently ignore dispatch errors to not break stream loading
+            }
+            
             // Get stream posts filtered for this student
+            // Visible posts:
+            // - Non-draft and not scheduled
+            // - OR scheduled posts that are due (scheduled_at <= now)
             $posts = $this->ClassroomStream_model->get_by_class_code($class_code, [
-                'is_draft' => 0, // Exclude drafts
-                'is_scheduled' => 0 // Only show published posts
+                'published_only' => true
             ], $user_data['user_id']);
             
             // Format posts for UI (similar to teacher endpoint)
@@ -1006,6 +1059,293 @@ class StudentController extends BaseController {
             
         } catch (Exception $e) {
             return json_response(false, 'Error deleting comment: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    /**
+     * Get student's draft posts (Student only)
+     * GET /api/student/classroom/{class_code}/stream/drafts
+     */
+    public function classroom_stream_drafts_get($class_code) {
+        // Require student authentication
+        $user_data = require_student($this);
+        if (!$user_data) return;
+        
+        try {
+            // Get classroom by code
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom) {
+                return json_response(false, 'Classroom not found', null, 404);
+            }
+            
+            // Check if student is enrolled in this class
+            $enrollment = $this->db->get_where('classroom_enrollments', [
+                'classroom_id' => $classroom['id'],
+                'student_id' => $user_data['user_id'],
+                'status' => 'active'
+            ])->row_array();
+            
+            if (!$enrollment) {
+                return json_response(false, 'Access denied. You must be enrolled in this class to view drafts.', null, 403);
+            }
+            
+            // Load the ClassroomStream model
+            $this->load->model('ClassroomStream_model');
+            
+            // Get draft posts for this student in this class
+            $drafts = $this->db->select('cs.*, u.full_name as user_name, u.profile_pic as user_avatar')
+                ->from('classroom_stream cs')
+                ->join('users u', 'cs.user_id = u.user_id', 'left')
+                ->where('cs.class_code', $class_code)
+                ->where('cs.user_id', $user_data['user_id']) // Only show student's own drafts
+                ->where('cs.is_draft', 1)
+                ->order_by('cs.created_at', 'DESC')
+                ->get()
+                ->result_array();
+            
+            // Process attachments for each draft
+            $this->load->model('StreamAttachment_model');
+            foreach ($drafts as &$draft) {
+                if ($draft['attachment_type'] === 'multiple') {
+                    $attachments = $this->StreamAttachment_model->get_by_stream_id($draft['id']);
+                    $draft['attachments'] = [];
+                    foreach ($attachments as $attachment) {
+                        $draft['attachments'][] = [
+                            'attachment_id' => $attachment['attachment_id'],
+                            'file_name' => $attachment['file_name'],
+                            'original_name' => $attachment['original_name'],
+                            'file_path' => $attachment['file_path'],
+                            'file_size' => $attachment['file_size'],
+                            'mime_type' => $attachment['mime_type'],
+                            'attachment_type' => $attachment['attachment_type'],
+                            'attachment_url' => $attachment['attachment_url'],
+                            'serving_url' => get_file_url($attachment['file_path']),
+                            'file_type' => get_file_type($attachment['file_path'])
+                        ];
+                    }
+                }
+            }
+            
+            return json_response(true, 'Draft posts retrieved successfully', $drafts);
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Error retrieving draft posts: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    /**
+     * Get student's scheduled posts (Student only)
+     * GET /api/student/classroom/{class_code}/stream/scheduled
+     */
+    public function classroom_stream_scheduled_get($class_code) {
+        // Require student authentication
+        $user_data = require_student($this);
+        if (!$user_data) return;
+        
+        try {
+            // Get classroom by code
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom) {
+                return json_response(false, 'Classroom not found', null, 404);
+            }
+            
+            // Check if student is enrolled in this class
+            $enrollment = $this->db->get_where('classroom_enrollments', [
+                'classroom_id' => $classroom['id'],
+                'student_id' => $user_data['user_id'],
+                'status' => 'active'
+            ])->row_array();
+            
+            if (!$enrollment) {
+                return json_response(false, 'Access denied. You must be enrolled in this class to view scheduled posts.', null, 403);
+            }
+            
+            // Load the ClassroomStream model
+            $this->load->model('ClassroomStream_model');
+            
+            // Get scheduled posts for this student in this class
+            $scheduled = $this->db->select('cs.*, u.full_name as user_name, u.profile_pic as user_avatar')
+                ->from('classroom_stream cs')
+                ->join('users u', 'cs.user_id = u.user_id', 'left')
+                ->where('cs.class_code', $class_code)
+                ->where('cs.user_id', $user_data['user_id']) // Only show student's own scheduled posts
+                ->where('cs.is_scheduled', 1)
+                ->where('cs.scheduled_at >', date('Y-m-d H:i:s')) // Only future scheduled posts
+                ->order_by('cs.scheduled_at', 'ASC')
+                ->get()
+                ->result_array();
+            
+            // Process attachments for each scheduled post
+            $this->load->model('StreamAttachment_model');
+            foreach ($scheduled as &$post) {
+                if ($post['attachment_type'] === 'multiple') {
+                    $attachments = $this->StreamAttachment_model->get_by_stream_id($post['id']);
+                    $post['attachments'] = [];
+                    foreach ($attachments as $attachment) {
+                        $post['attachments'][] = [
+                            'attachment_id' => $attachment['attachment_id'],
+                            'file_name' => $attachment['file_name'],
+                            'original_name' => $attachment['original_name'],
+                            'file_path' => $attachment['file_path'],
+                            'file_size' => $attachment['file_size'],
+                            'mime_type' => $attachment['mime_type'],
+                            'attachment_type' => $attachment['attachment_type'],
+                            'attachment_url' => $attachment['attachment_url'],
+                            'serving_url' => get_file_url($attachment['file_path']),
+                            'file_type' => get_file_type($attachment['file_path'])
+                        ];
+                    }
+                }
+            }
+            
+            return json_response(true, 'Scheduled posts retrieved successfully', $scheduled);
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Error retrieving scheduled posts: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    /**
+     * Update a draft post (Student only)
+     * PUT /api/student/classroom/{class_code}/stream/draft/{draft_id}
+     */
+    public function classroom_stream_draft_put($class_code, $draft_id) {
+        // Require student authentication
+        $user_data = require_student($this);
+        if (!$user_data) return;
+        
+        try {
+            // Get classroom by code
+            $classroom = $this->Classroom_model->get_by_code($class_code);
+            if (!$classroom) {
+                return json_response(false, 'Classroom not found', null, 404);
+            }
+            
+            // Check if student is enrolled in this class
+            $enrollment = $this->db->get_where('classroom_enrollments', [
+                'classroom_id' => $classroom['id'],
+                'student_id' => $user_data['user_id'],
+                'status' => 'active'
+            ])->row_array();
+            
+            if (!$enrollment) {
+                return json_response(false, 'Access denied. You must be enrolled in this class to update drafts.', null, 403);
+            }
+            
+            // Load the ClassroomStream model
+            $this->load->model('ClassroomStream_model');
+            
+            // Check if the draft exists, belongs to this class, and belongs to this student
+            $draft = $this->ClassroomStream_model->get_by_id($draft_id);
+            if (!$draft || $draft['class_code'] !== $class_code) {
+                return json_response(false, 'Draft post not found', null, 404);
+            }
+            
+            if ($draft['user_id'] !== $user_data['user_id']) {
+                return json_response(false, 'Access denied. You can only update your own drafts.', null, 403);
+            }
+            
+            if (!$draft['is_draft']) {
+                return json_response(false, 'This post is not a draft.', null, 400);
+            }
+            
+            // Get JSON input
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return json_response(false, 'Invalid JSON format', null, 400);
+            }
+            
+            // Validate required fields
+            if (empty($data['content'])) {
+                return json_response(false, 'Content is required', null, 400);
+            }
+            
+            // Prepare update data
+            $update_data = [
+                'title' => $data['title'] ?? $draft['title'],
+                'content' => $data['content'],
+                'is_draft' => $data['is_draft'] ?? $draft['is_draft'],
+                'is_scheduled' => $data['is_scheduled'] ?? $draft['is_scheduled'],
+                'scheduled_at' => $data['scheduled_at'] ?? $draft['scheduled_at'],
+                'allow_comments' => $data['allow_comments'] ?? $draft['allow_comments'],
+                'updated_at' => date('Y-m-d H:i:s')
+            ];
+            
+            // Handle student_ids if provided
+            if (isset($data['student_ids'])) {
+                if (!empty($data['student_ids'])) {
+                    $update_data['visible_to_student_ids'] = json_encode($data['student_ids']);
+                } else {
+                    $update_data['visible_to_student_ids'] = null;
+                }
+            }
+            
+            // Update the draft
+            $success = $this->ClassroomStream_model->update($draft_id, $update_data);
+            
+            if ($success) {
+                // Get the updated draft
+                $updated_draft = $this->ClassroomStream_model->get_by_id($draft_id);
+                
+                // If publishing the draft (is_draft = 0), create notifications
+                if (isset($data['is_draft']) && !$data['is_draft']) {
+                    $this->load->helper('notification');
+                    
+                    // Always notify the teacher
+                    $teacher_id = $classroom['teacher_id'];
+                    $notification_user_ids = [$teacher_id];
+                    
+                    // If student_ids are provided, notify only those students
+                    if (!empty($data['student_ids'])) {
+                        // Validate that the provided student_ids are actually enrolled in this class
+                        $valid_student_ids = $this->db->select('student_id')
+                            ->from('classroom_enrollments')
+                            ->where('classroom_id', $classroom['id'])
+                            ->where_in('student_id', $data['student_ids'])
+                            ->where('status', 'active')
+                            ->get()->result_array();
+                        
+                        $valid_ids = array_column($valid_student_ids, 'student_id');
+                        $notification_user_ids = array_merge($notification_user_ids, $valid_ids);
+                    } else {
+                        // If no student_ids provided, notify all other students in the class
+                        $other_students = $this->db->select('student_id')
+                            ->from('classroom_enrollments')
+                            ->where('classroom_id', $classroom['id'])
+                            ->where('student_id !=', $user_data['user_id'])
+                            ->where('status', 'active')
+                            ->get()->result_array();
+                        
+                        foreach ($other_students as $student) {
+                            $notification_user_ids[] = $student['student_id'];
+                        }
+                    }
+                    
+                    if (!empty($notification_user_ids)) {
+                        $title = $update_data['title'] ?: 'New Student Post';
+                        $message = $update_data['content'] ?? 'A student has posted to the class stream.';
+                        
+                        // Create notifications for teacher and targeted students
+                        create_notifications_for_users(
+                            $notification_user_ids,
+                            'announcement',
+                            $title,
+                            $message,
+                            $draft_id,
+                            'announcement',
+                            $class_code,
+                            false
+                        );
+                    }
+                }
+                
+                return json_response(true, 'Draft updated successfully', $updated_draft);
+            } else {
+                return json_response(false, 'Failed to update draft', null, 500);
+            }
+            
+        } catch (Exception $e) {
+            return json_response(false, 'Error updating draft: ' . $e->getMessage(), null, 500);
         }
     }
 }

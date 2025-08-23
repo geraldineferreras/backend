@@ -455,15 +455,25 @@ class TeacherController extends BaseController
             
             $post = $this->ClassroomStream_model->get_by_id($id);
             
-            // Create notifications for students if post is published (not draft)
-            if (!$data['is_draft']) {
+            // Create notifications when:
+            // - Not a draft and not scheduled (immediate publish)
+            // Scheduled posts will be dispatched by a cron endpoint when due
+            if (!$data['is_draft'] && (empty($data['is_scheduled']) || empty($data['scheduled_at']) || strtotime($data['scheduled_at']) <= time())) {
                 $this->load->helper('notification');
                 
-                // Get all students in this class
-                $students = get_class_students($class_code);
+                // Determine recipients: targeted students if visible_to_student_ids set, otherwise all students in class
+                $user_ids = [];
+                if (!empty($post['visible_to_student_ids'])) {
+                    $target_ids = json_decode($post['visible_to_student_ids'], true) ?: [];
+                    $user_ids = array_values($target_ids);
+                } else {
+                    $students = get_class_students($class_code);
+                    if ($students) {
+                        $user_ids = array_column($students, 'user_id');
+                    }
+                }
                 
-                if ($students) {
-                    $user_ids = array_column($students, 'user_id');
+                if (!empty($user_ids)) {
                     $title = $data['title'] ?: 'New Announcement';
                     $message = $data['content'] ?? 'A new announcement has been posted.';
                     
@@ -561,12 +571,85 @@ class TeacherController extends BaseController
         return json_response(true, 'Post unpinned successfully');
     }
 
+    // Delete a stream post (and cascade delete comments/attachments)
+    public function classroom_stream_delete($class_code, $stream_id) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+        $this->load->model('ClassroomStream_model');
+        $post = $this->ClassroomStream_model->get_by_id($stream_id);
+        if (!$post || $post['class_code'] !== $class_code) {
+            return json_response(false, 'Stream post not found', null, 404);
+        }
+        $this->db->where('id', $stream_id)->delete('classroom_stream');
+        return json_response(true, 'Stream post deleted successfully');
+    }
+
     public function classroom_stream_scheduled_get($class_code) {
         $user_data = require_teacher($this);
         if (!$user_data) return;
         $this->load->model('ClassroomStream_model');
         $posts = $this->ClassroomStream_model->get_scheduled_for_classroom_ui($class_code);
         return json_response(true, 'Scheduled posts retrieved successfully', $posts);
+    }
+
+    // Dispatch notifications for due scheduled posts (to be run via cron)
+    public function classroom_stream_dispatch_scheduled_notifications_post($class_code) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+        $now = date('Y-m-d H:i:s');
+        // Find scheduled posts that are due and have not been dispatched
+        $due_posts = $this->db->select('*')
+            ->from('classroom_stream')
+            ->where('class_code', $class_code)
+            ->where('is_draft', 0)
+            ->where('is_scheduled', 1)
+            ->where('scheduled_at <=', $now)
+            ->group_start()
+                ->where('notification_dispatched_at IS NULL', null, false)
+                ->or_where('notification_dispatched_at =', null)
+            ->group_end()
+            ->get()->result_array();
+
+        if (empty($due_posts)) {
+            return json_response(true, 'No due scheduled posts to dispatch');
+        }
+
+        $this->load->helper('notification');
+        $dispatched = 0;
+        foreach ($due_posts as $post) {
+            $user_ids = [];
+            if (!empty($post['visible_to_student_ids'])) {
+                $user_ids = json_decode($post['visible_to_student_ids'], true) ?: [];
+            } else {
+                $students = get_class_students($class_code);
+                if ($students) {
+                    $user_ids = array_column($students, 'user_id');
+                }
+            }
+            if (!empty($user_ids)) {
+                $title = $post['title'] ?: 'New Announcement';
+                $message = $post['content'] ?? 'A new announcement has been posted.';
+                create_notifications_for_users(
+                    $user_ids,
+                    'announcement',
+                    $title,
+                    $message,
+                    $post['id'],
+                    'announcement',
+                    $class_code,
+                    false
+                );
+                $dispatched++;
+            }
+            // Mark as dispatched to avoid duplicates
+            $this->db->where('id', $post['id'])->update('classroom_stream', [
+                'notification_dispatched_at' => $now
+            ]);
+        }
+
+        return json_response(true, 'Dispatched scheduled post notifications', [
+            'count' => $dispatched
+        ]);
     }
 
     public function classroom_stream_drafts_get($class_code) {
@@ -592,6 +675,34 @@ class TeacherController extends BaseController
         }
         $success = $this->ClassroomStream_model->update($draft_id, $data);
         if ($success) {
+            // If publishing now and either not scheduled or scheduled time already reached, send notifications now
+            if (isset($data['is_draft']) && !$data['is_draft'] && (empty($data['is_scheduled']) || empty($data['scheduled_at']) || strtotime($data['scheduled_at']) <= time())) {
+                $this->load->helper('notification');
+                $updated = $this->ClassroomStream_model->get_by_id($draft_id);
+                $user_ids = [];
+                if (!empty($updated['visible_to_student_ids'])) {
+                    $user_ids = json_decode($updated['visible_to_student_ids'], true) ?: [];
+                } else {
+                    $students = get_class_students($class_code);
+                    if ($students) {
+                        $user_ids = array_column($students, 'user_id');
+                    }
+                }
+                if (!empty($user_ids)) {
+                    $title = $updated['title'] ?: 'New Announcement';
+                    $message = $updated['content'] ?? 'A new announcement has been posted.';
+                    create_notifications_for_users(
+                        $user_ids,
+                        'announcement',
+                        $title,
+                        $message,
+                        $draft_id,
+                        'announcement',
+                        $class_code,
+                        false
+                    );
+                }
+            }
             return json_response(true, 'Draft updated successfully');
         } else {
             return json_response(false, 'Failed to update draft', null, 500);

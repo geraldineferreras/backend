@@ -155,6 +155,11 @@ $route['api/student/classroom/(:any)/stream/(:num)/comments']['get'] = 'api/Stud
 $route['api/student/classroom/(:any)/stream/(:num)/comment/(:num)']['put'] = 'api/StudentController/classroom_stream_comment_put/$1/$2/$3';
 $route['api/student/classroom/(:any)/stream/(:num)/comment/(:num)']['delete'] = 'api/StudentController/classroom_stream_comment_delete/$1/$2/$3';
 
+// Student Stream Draft and Schedule Management
+$route['api/student/classroom/(:any)/stream/drafts']['get'] = 'api/StudentController/classroom_stream_drafts_get/$1';
+$route['api/student/classroom/(:any)/stream/scheduled']['get'] = 'api/StudentController/classroom_stream_scheduled_get/$1';
+$route['api/student/classroom/(:any)/stream/draft/(:num)']['put'] = 'api/StudentController/classroom_stream_draft_put/$1/$2';
+
 // Excuse Letter Management
 $route['api/excuse-letters/submit']['post'] = 'api/ExcuseLetterController/submit_post';
 $route['api/excuse-letters/student']['get'] = 'api/ExcuseLetterController/student_get';
@@ -224,10 +229,12 @@ $route['api/teacher/classroom/(:any)/stream/(:num)/unpin']['post'] = 'api/Teache
 $route['api/teacher/classroom/(:any)/stream/scheduled']['get'] = 'api/TeacherController/classroom_stream_scheduled_get/$1';
 $route['api/teacher/classroom/(:any)/stream/drafts']['get'] = 'api/TeacherController/classroom_stream_drafts_get/$1';
 $route['api/teacher/classroom/(:any)/stream/draft/(:num)']['put'] = 'api/TeacherController/classroom_stream_draft_put/$1/$2';
+$route['api/teacher/classroom/(:any)/stream/dispatch-scheduled']['post'] = 'api/TeacherController/classroom_stream_dispatch_scheduled_notifications_post/$1';
 $route['api/teacher/classroom/(:any)/stream/(:num)/comment']['post'] = 'api/TeacherController/classroom_stream_comment_post/$1/$2';
 $route['api/teacher/classroom/(:any)/stream/(:num)/comments']['get'] = 'api/TeacherController/classroom_stream_comments_get/$1/$2';
 $route['api/teacher/classroom/(:any)/stream/(:num)/comment/(:num)']['put'] = 'api/TeacherController/classroom_stream_comment_put/$1/$2/$3';
 $route['api/teacher/classroom/(:any)/stream/(:num)/comment/(:num)']['delete'] = 'api/TeacherController/classroom_stream_comment_delete/$1/$2/$3';
+$route['api/teacher/classroom/(:any)/stream/(:num)']['delete'] = 'api/TeacherController/classroom_stream_delete/$1/$2';
 
 // Teacher Classroom Student Management
 $route['api/teacher/classroom/(:any)/students']['get'] = 'api/TeacherController/classroom_students_get/$1';

@@ -30,6 +30,18 @@ class ClassroomStream_model extends CI_Model {
         if (isset($filters['is_scheduled'])) {
             $this->db->where('is_scheduled', $filters['is_scheduled']);
         }
+        // When requesting published-only for student UI: exclude drafts and only include
+        // scheduled posts that are due (scheduled_at <= now)
+        if (isset($filters['published_only']) && $filters['published_only']) {
+            $this->db->where('is_draft', 0);
+            $this->db->group_start();
+            $this->db->where('is_scheduled', 0);
+            $this->db->or_group_start();
+            $this->db->where('is_scheduled', 1);
+            $this->db->where('scheduled_at <=', date('Y-m-d H:i:s'));
+            $this->db->group_end();
+            $this->db->group_end();
+        }
         if (isset($filters['scheduled_only']) && $filters['scheduled_only']) {
             $this->db->where('is_scheduled', 1);
             $this->db->where('scheduled_at >', date('Y-m-d H:i:s'));
