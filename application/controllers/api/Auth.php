@@ -1187,25 +1187,22 @@ class Auth extends BaseController {
             }
 
             // Validate required fields
-            if (empty($data->email) || empty($data->name)) {
+            if (empty($data->email) || empty($data->full_name) || empty($data->google_id)) {
                 $this->output
                     ->set_status_header(400)
                     ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Missing required OAuth data']));
+                    ->set_output(json_encode(['status' => false, 'message' => 'Missing required OAuth data (email, full_name, google_id)']));
                 return;
             }
 
-            // For now, we'll trust the Google OAuth data from frontend
-            // In production, you should verify the Google ID token
+            // Google OAuth data
             $google_user_data = [
                 'email' => $data->email,
-                'name' => $data->name,
-                'sub' => $data->email // Using email as unique identifier for now
+                'name' => $data->full_name,
+                'google_id' => $data->google_id
             ];
             
-            // No need to check if google_user_data is false since we're creating it directly
-
-            // Check if user exists, if not create new user
+            // Check if user exists by email
             $user = $this->User_model->get_by_email($google_user_data['email']);
             
             if (!$user) {
@@ -1215,6 +1212,11 @@ class Auth extends BaseController {
                     'full_name' => $google_user_data['name'],
                     'role' => 'student', // Default role, can be changed later
                     'status' => 'active',
+                    'google_id' => $google_user_data['google_id'],
+                    'account_type' => 'google',
+                    'google_email_verified' => true,
+                    'last_oauth_login' => date('Y-m-d H:i:s'),
+                    'oauth_provider' => 'google',
                     'created_at' => date('Y-m-d H:i:s'),
                     'last_login' => date('Y-m-d H:i:s')
                 ];
@@ -1236,7 +1238,33 @@ class Auth extends BaseController {
                 $this->send_welcome_notification($user_id, $user_data['full_name'], $user_data['role'], $user_data['email']);
                 
             } else {
-                // Update existing user's last login
+                // User exists - check if they have a local account
+                if ($user['account_type'] === 'local') {
+                    // Link Google account to existing local account
+                    $update_data = [
+                        'google_id' => $google_user_data['google_id'],
+                        'account_type' => 'unified',
+                        'google_email_verified' => true,
+                        'last_oauth_login' => date('Y-m-d H:i:s'),
+                        'oauth_provider' => 'google'
+                    ];
+                    
+                    $this->User_model->update($user['user_id'], $update_data);
+                    $user = array_merge($user, $update_data);
+                    
+                } elseif ($user['account_type'] === 'google' || $user['account_type'] === 'unified') {
+                    // Update Google OAuth info
+                    $update_data = [
+                        'google_id' => $google_user_data['google_id'],
+                        'last_oauth_login' => date('Y-m-d H:i:s'),
+                        'oauth_provider' => 'google'
+                    ];
+                    
+                    $this->User_model->update($user['user_id'], $update_data);
+                    $user = array_merge($user, $update_data);
+                }
+                
+                // Update last login
                 $this->User_model->update($user['user_id'], [
                     'last_login' => date('Y-m-d H:i:s')
                 ]);
@@ -1272,6 +1300,11 @@ class Auth extends BaseController {
                         'full_name' => $user['full_name'],
                         'email' => $user['email'],
                         'status' => $user['status'],
+                        'account_type' => $user['account_type'],
+                        'google_id' => $user['google_id'],
+                        'google_email_verified' => $user['google_email_verified'],
+                        'last_oauth_login' => $user['last_oauth_login'],
+                        'oauth_provider' => $user['oauth_provider'],
                         'last_login' => date('Y-m-d H:i:s'),
                         'token' => $token,
                         'token_type' => 'Bearer',
@@ -1285,6 +1318,221 @@ class Auth extends BaseController {
                 ->set_status_header(500)
                 ->set_content_type('application/json')
                 ->set_output(json_encode(['status' => false, 'message' => 'Internal server error during OAuth authentication']));
+        }
+    }
+
+    /**
+     * Link or unlink Google account
+     */
+    public function link_google_account() {
+        try {
+            $data = json_decode(file_get_contents('php://input'));
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid JSON format']));
+                return;
+            }
+
+            // Validate required fields
+            if (empty($data->email) || empty($data->google_id)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Email and Google ID are required']));
+                return;
+            }
+
+            // Check if user exists
+            $user = $this->User_model->get_by_email($data->email);
+            if (!$user) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'User not found']));
+                return;
+            }
+
+            // Check if Google account is already linked to another user
+            $existing_google_user = $this->User_model->get_by_google_id($data->google_id);
+            if ($existing_google_user && $existing_google_user['user_id'] !== $user['user_id']) {
+                $this->output
+                    ->set_status_header(409)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Google account is already linked to another user']));
+                return;
+            }
+
+            // Link Google account
+            $update_data = [
+                'google_id' => $data->google_id,
+                'account_type' => 'unified',
+                'google_email_verified' => true,
+                'last_oauth_login' => date('Y-m-d H:i:s'),
+                'oauth_provider' => 'google'
+            ];
+
+            $this->User_model->update($user['user_id'], $update_data);
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Google account linked successfully',
+                    'data' => [
+                        'user_id' => $user['user_id'],
+                        'email' => $user['email'],
+                        'account_type' => 'unified',
+                        'google_id' => $data->google_id
+                    ]
+                ]));
+
+        } catch (Exception $e) {
+            log_message('error', 'Link Google account error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Internal server error']));
+        }
+    }
+
+    /**
+     * Unlink Google account
+     */
+    public function unlink_google_account() {
+        try {
+            $data = json_decode(file_get_contents('php://input'));
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid JSON format']));
+                return;
+            }
+
+            // Validate required fields
+            if (empty($data->email)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Email is required']));
+                return;
+            }
+
+            // Check if user exists
+            $user = $this->User_model->get_by_email($data->email);
+            if (!$user) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'User not found']));
+                return;
+            }
+
+            // Check if user has a local password
+            if (empty($user['password'])) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Cannot unlink Google account. Please set a local password first.']));
+                return;
+            }
+
+            // Unlink Google account
+            $update_data = [
+                'google_id' => null,
+                'account_type' => 'local',
+                'google_email_verified' => false,
+                'last_oauth_login' => null,
+                'oauth_provider' => null
+            ];
+
+            $this->User_model->update($user['user_id'], $update_data);
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Google account unlinked successfully',
+                    'data' => [
+                        'user_id' => $user['user_id'],
+                        'email' => $user['email'],
+                        'account_type' => 'local'
+                    ]
+                ]));
+
+        } catch (Exception $e) {
+            log_message('error', 'Unlink Google account error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Internal server error']));
+        }
+    }
+
+    /**
+     * Get account status and linked providers
+     */
+    public function get_account_status() {
+        try {
+            $data = json_decode(file_get_contents('php://input'));
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid JSON format']));
+                return;
+            }
+
+            // Validate required fields
+            if (empty($data->email)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Email is required']));
+                return;
+            }
+
+            // Check if user exists
+            $user = $this->User_model->get_by_email($data->email);
+            if (!$user) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'User not found']));
+                return;
+            }
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Account status retrieved successfully',
+                    'data' => [
+                        'user_id' => $user['user_id'],
+                        'email' => $user['email'],
+                        'account_type' => $user['account_type'],
+                        'has_local_password' => !empty($user['password']),
+                        'has_google_account' => !empty($user['google_id']),
+                        'google_email_verified' => $user['google_email_verified'],
+                        'last_oauth_login' => $user['last_oauth_login'],
+                        'oauth_provider' => $user['oauth_provider']
+                    ]
+                ]));
+
+        } catch (Exception $e) {
+            log_message('error', 'Get account status error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Internal server error']));
         }
     }
 
@@ -1381,6 +1629,265 @@ class Auth extends BaseController {
             
         } catch (Exception $e) {
             log_message('error', 'JWT verification error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Forgot Password - Send reset email
+     */
+    public function forgot_password() {
+        try {
+            $data = json_decode(file_get_contents('php://input'));
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid JSON format']));
+                return;
+            }
+
+            $email = isset($data->email) ? trim($data->email) : null;
+
+            if (empty($email)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Email is required']));
+                return;
+            }
+
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid email format']));
+                return;
+            }
+
+            // Check if user exists
+            $user = $this->User_model->get_by_email($email);
+            if (!$user) {
+                // Don't reveal if user exists or not for security
+                $this->output
+                    ->set_status_header(200)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => true, 'message' => 'If the email exists, a password reset link has been sent']));
+                return;
+            }
+
+            // Generate reset token
+            $token = bin2hex(random_bytes(32));
+            $expires_at = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
+            // Store token in database
+            $this->db->trans_start();
+            
+            // Delete any existing tokens for this email
+            $this->db->where('email', $email)->delete('password_reset_tokens');
+            
+            // Insert new token
+            $token_data = [
+                'email' => $email,
+                'token' => $token,
+                'expires_at' => $expires_at,
+                'used' => 0
+            ];
+            $this->db->insert('password_reset_tokens', $token_data);
+            
+            $this->db->trans_complete();
+
+            if ($this->db->trans_status() === FALSE) {
+                log_message('error', 'Failed to store password reset token for email: ' . $email);
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to process request. Please try again.']));
+                return;
+            }
+
+            // Send email
+            $frontend_url = $this->config->item('frontend_url') ?: 'http://localhost:3000';
+            $reset_link = $frontend_url . "/auth/reset-password?token=" . $token;
+            $email_sent = $this->send_password_reset_email($email, $user['full_name'], $reset_link);
+
+            if ($email_sent) {
+                // Log the request
+                log_audit_event(
+                    'PASSWORD_RESET_REQUESTED',
+                    'AUTHENTICATION',
+                    "Password reset requested for email: {$email}",
+                    [
+                        'ip_address' => $this->input->ip_address(),
+                        'user_agent' => $this->input->user_agent()
+                    ]
+                );
+
+                $this->output
+                    ->set_status_header(200)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => true, 'message' => 'Password reset link has been sent to your email']));
+            } else {
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to send email. Please try again.']));
+            }
+
+        } catch (Exception $e) {
+            log_message('error', 'Forgot password error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Internal server error']));
+        }
+    }
+
+    /**
+     * Reset Password - Change password using token
+     */
+    public function reset_password() {
+        try {
+            $data = json_decode(file_get_contents('php://input'));
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid JSON format']));
+                return;
+            }
+
+            $token = isset($data->token) ? trim($data->token) : null;
+            $new_password = isset($data->new_password) ? $data->new_password : null;
+
+            if (empty($token) || empty($new_password)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Token and new password are required']));
+                return;
+            }
+
+            if (strlen($new_password) < 6) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Password must be at least 6 characters long']));
+                return;
+            }
+
+            // Find valid token
+            $token_record = $this->db->where('token', $token)
+                                   ->where('expires_at >', date('Y-m-d H:i:s'))
+                                   ->where('used', 0)
+                                   ->get('password_reset_tokens')
+                                   ->row_array();
+
+            if (!$token_record) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid or expired token']));
+                return;
+            }
+
+            // Get user
+            $user = $this->User_model->get_by_email($token_record['email']);
+            if (!$user) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'User not found']));
+                return;
+            }
+
+            // Update password
+            $hashed_password = password_hash($new_password, PASSWORD_BCRYPT);
+            $update_success = $this->User_model->update($user['user_id'], ['password' => $hashed_password]);
+
+            if (!$update_success) {
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to update password. Please try again.']));
+                return;
+            }
+
+            // Mark token as used
+            $this->db->where('id', $token_record['id'])->update('password_reset_tokens', ['used' => 1]);
+
+            // Log the password reset
+            log_audit_event(
+                'PASSWORD_RESET_COMPLETED',
+                'AUTHENTICATION',
+                "Password reset completed for user: {$user['user_id']}",
+                [
+                    'ip_address' => $this->input->ip_address(),
+                    'user_agent' => $this->input->user_agent()
+                ]
+            );
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'message' => 'Password has been reset successfully']));
+
+        } catch (Exception $e) {
+            log_message('error', 'Reset password error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Internal server error']));
+        }
+    }
+
+    /**
+     * Send password reset email
+     */
+    private function send_password_reset_email($email, $full_name, $reset_link) {
+        try {
+            $this->load->library('email');
+
+            // Email configuration
+            $this->email->from('noreply@scms.com', 'SCMS System');
+            $this->email->to($email);
+            $this->email->subject('Password Reset Request - SCMS');
+
+            // Email template
+            $message = "
+            <html>
+            <body>
+                <h2>Password Reset Request</h2>
+                <p>Hello {$full_name},</p>
+                <p>You have requested to reset your password for your SCMS account.</p>
+                <p>Click the link below to reset your password:</p>
+                <p><a href='{$reset_link}' style='background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>Reset Password</a></p>
+                <p>Or copy and paste this link in your browser:</p>
+                <p>{$reset_link}</p>
+                <p><strong>This link will expire in 1 hour.</strong></p>
+                <p>If you didn't request this password reset, please ignore this email.</p>
+                <br>
+                <p>Best regards,<br>SCMS Team</p>
+            </body>
+            </html>";
+
+            $this->email->message($message);
+            $this->email->set_alt_message("Password Reset Request\n\nHello {$full_name},\n\nYou have requested to reset your password for your SCMS account.\n\nClick this link to reset your password: {$reset_link}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this password reset, please ignore this email.\n\nBest regards,\nSCMS Team");
+
+            $result = $this->email->send();
+
+            if ($result) {
+                log_message('info', "Password reset email sent successfully to: {$email}");
+                return true;
+            } else {
+                log_message('error', "Failed to send password reset email to: {$email}");
+                return false;
+            }
+
+        } catch (Exception $e) {
+            log_message('error', 'Email sending error: ' . $e->getMessage());
             return false;
         }
     }

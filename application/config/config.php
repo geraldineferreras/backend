@@ -31,6 +31,20 @@ $config['base_url'] = 'http://localhost/scms_new/';
 
 /*
 |--------------------------------------------------------------------------
+| Frontend URL Configuration
+|--------------------------------------------------------------------------
+|
+| URL to your React frontend application. This is used for generating
+| password reset links and other frontend redirects.
+|
+| Development: http://localhost:3000
+| Production: https://yourdomain.com
+|
+*/
+$config['frontend_url'] = 'http://localhost:3000';
+
+/*
+|--------------------------------------------------------------------------
 | Index File
 |--------------------------------------------------------------------------
 |

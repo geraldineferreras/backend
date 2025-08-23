@@ -61,6 +61,22 @@ $route['api/refresh-token']['post'] = 'api/auth/refresh_token';
 $route['api/validate-token']['get'] = 'api/auth/validate_token';
 $route['api/logout']['post'] = 'api/auth/logout';
 $route['api/auth/google']['post'] = 'api/auth/google_oauth';
+$route['api/auth/forgot-password']['post'] = 'api/auth/forgot_password';
+$route['api/auth/reset-password']['post'] = 'api/auth/reset_password';
+
+// Unified Account System Routes
+$route['api/auth/link-google']['post'] = 'api/auth/link_google_account';
+$route['api/auth/unlink-google']['post'] = 'api/auth/unlink_google_account';
+$route['api/auth/account-status']['post'] = 'api/auth/get_account_status';
+
+// Two-Factor Authentication Routes
+$route['api/2fa/setup']['post'] = 'api/twofactor/setup';
+$route['api/2fa/verify']['post'] = 'api/twofactor/verify';
+$route['api/2fa/disable']['post'] = 'api/twofactor/disable';
+$route['api/2fa/status']['get'] = 'api/twofactor/status';
+$route['api/2fa/login-verify']['post'] = 'api/twofactor/login_verify';
+$route['api/2fa/backup-code']['post'] = 'api/twofactor/backup_code';
+$route['api/2fa/(.*)']['options'] = 'api/twofactor/options';
 
 // Test endpoints
 $route['api/test']['get'] = 'api/testcontroller/test';
