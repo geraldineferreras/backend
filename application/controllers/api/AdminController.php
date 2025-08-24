@@ -1065,4 +1065,275 @@ class AdminController extends BaseController {
             log_message('error', "Failed to send system maintenance notification: " . $e->getMessage());
         }
     }
+
+    /**
+     * Get dashboard statistics for admin
+     * Endpoint: GET /api/admin/dashboard/stats
+     */
+    public function dashboard_stats_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+
+        try {
+            // Get user counts by role
+            $user_counts = $this->db->select('role, COUNT(*) as count')
+                ->from('users')
+                ->where('status', 'active')
+                ->group_by('role')
+                ->get()
+                ->result_array();
+
+            $user_stats = [
+                'total_users' => 0,
+                'students' => 0,
+                'teachers' => 0,
+                'admins' => 0
+            ];
+
+            foreach ($user_counts as $count) {
+                $user_stats['total_users'] += $count['count'];
+                switch ($count['role']) {
+                    case 'student':
+                        $user_stats['students'] = $count['count'];
+                        break;
+                    case 'teacher':
+                        $user_stats['teachers'] = $count['count'];
+                        break;
+                    case 'admin':
+                        $user_stats['admins'] = $count['count'];
+                        break;
+                }
+            }
+
+            // Get section counts
+            $section_stats = $this->db->select('
+                COUNT(*) as total_sections,
+                COUNT(CASE WHEN adviser_id IS NOT NULL THEN 1 END) as sections_with_advisers,
+                COUNT(CASE WHEN adviser_id IS NULL THEN 1 END) as sections_without_advisers
+            ')
+            ->from('sections')
+            ->get()
+            ->row_array();
+
+            // Get program counts
+            $program_stats = $this->db->select('program, COUNT(*) as count')
+                ->from('sections')
+                ->group_by('program')
+                ->get()
+                ->result_array();
+
+            // Get year level counts
+            $year_stats = $this->db->select('year_level, COUNT(*) as count')
+                ->from('sections')
+                ->group_by('year_level')
+                ->get()
+                ->result_array();
+
+            // Get semester counts
+            $semester_stats = $this->db->select('semester, COUNT(*) as count')
+                ->from('sections')
+                ->group_by('semester')
+                ->get()
+                ->result_array();
+
+            // Get academic year counts
+            $academic_year_stats = $this->db->select('academic_year, COUNT(*) as count')
+                ->from('sections')
+                ->group_by('academic_year')
+                ->get()
+                ->result_array();
+
+            // Get total enrolled students across all sections by counting students in sections
+            $total_enrolled = $this->db->select('COUNT(*) as total_enrolled')
+                ->from('users')
+                ->where('role', 'student')
+                ->where('status', 'active')
+                ->where('section_id IS NOT NULL')
+                ->get()
+                ->row_array();
+
+            $dashboard_stats = [
+                'user_statistics' => $user_stats,
+                'section_statistics' => [
+                    'total_sections' => (int)$section_stats['total_sections'],
+                    'sections_with_advisers' => (int)$section_stats['sections_with_advisers'],
+                    'sections_without_advisers' => (int)$section_stats['sections_without_advisers'],
+                    'total_enrolled_students' => (int)$total_enrolled['total_enrolled']
+                ],
+                'program_distribution' => $program_stats,
+                'year_level_distribution' => $year_stats,
+                'semester_distribution' => $semester_stats,
+                'academic_year_distribution' => $academic_year_stats
+            ];
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Dashboard statistics retrieved successfully',
+                    'data' => $dashboard_stats
+                ]));
+
+        } catch (Exception $e) {
+            log_message('error', 'Dashboard stats error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Failed to retrieve dashboard statistics: ' . $e->getMessage()
+                ]));
+        }
+    }
+
+    /**
+     * Get user count summary for admin
+     * Endpoint: GET /api/admin/users/count
+     */
+    public function users_count_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+
+        try {
+            // Get total user count
+            $total_users = $this->db->where('status', 'active')->count_all_results('users');
+
+            // Get user counts by role
+            $user_counts = $this->db->select('role, COUNT(*) as count')
+                ->from('users')
+                ->where('status', 'active')
+                ->group_by('role')
+                ->get()
+                ->result_array();
+
+            // Get recent user registrations (last 30 days)
+            $recent_users = $this->db->select('role, COUNT(*) as count')
+                ->from('users')
+                ->where('status', 'active')
+                ->where('created_at >=', date('Y-m-d', strtotime('-30 days')))
+                ->group_by('role')
+                ->get()
+                ->result_array();
+
+            $user_summary = [
+                'total_users' => $total_users,
+                'by_role' => $user_counts,
+                'recent_registrations' => $recent_users,
+                'last_updated' => date('Y-m-d H:i:s')
+            ];
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'User count summary retrieved successfully',
+                    'data' => $user_summary
+                ]));
+
+        } catch (Exception $e) {
+            log_message('error', 'User count error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Failed to retrieve user count summary: ' . $e->getMessage()
+                ]));
+        }
+    }
+
+    /**
+     * Get section count summary for admin
+     * Endpoint: GET /api/admin/sections/count
+     */
+    public function sections_count_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+
+        try {
+            // Get total section count
+            $total_sections = $this->db->count_all_results('sections');
+
+            // Get sections by program
+            $sections_by_program = $this->db->select('program, COUNT(*) as count')
+                ->from('sections')
+                ->group_by('program')
+                ->get()
+                ->result_array();
+
+            // Get sections by year level
+            $sections_by_year = $this->db->select('year_level, COUNT(*) as count')
+                ->from('sections')
+                ->group_by('year_level')
+                ->get()
+                ->result_array();
+
+            // Get sections by semester
+            $sections_by_semester = $this->db->select('semester, COUNT(*) as count')
+                ->from('sections')
+                ->group_by('semester')
+                ->get()
+                ->result_array();
+
+            // Get sections by academic year
+            $sections_by_academic_year = $this->db->select('academic_year, COUNT(*) as count')
+                ->from('sections')
+                ->group_by('academic_year')
+                ->get()
+                ->result_array();
+
+            // Get total enrolled students by counting students in sections
+            $total_enrolled = $this->db->select('COUNT(*) as total_enrolled')
+                ->from('users')
+                ->where('role', 'student')
+                ->where('status', 'active')
+                ->where('section_id IS NOT NULL')
+                ->get()
+                ->row_array();
+
+            // Get sections with/without advisers
+            $adviser_stats = $this->db->select('
+                COUNT(CASE WHEN adviser_id IS NOT NULL THEN 1 END) as with_advisers,
+                COUNT(CASE WHEN adviser_id IS NULL THEN 1 END) as without_advisers
+            ')
+            ->from('sections')
+            ->get()
+            ->row_array();
+
+            $section_summary = [
+                'total_sections' => $total_sections,
+                'total_enrolled_students' => (int)$total_enrolled['total_enrolled'],
+                'by_program' => $sections_by_program,
+                'by_year_level' => $sections_by_year,
+                'by_semester' => $sections_by_semester,
+                'by_academic_year' => $sections_by_academic_year,
+                'adviser_coverage' => [
+                    'with_advisers' => (int)$adviser_stats['with_advisers'],
+                    'without_advisers' => (int)$adviser_stats['without_advisers']
+                ],
+                'last_updated' => date('Y-m-d H:i:s')
+            ];
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Section count summary retrieved successfully',
+                    'data' => $section_summary
+                ]));
+
+        } catch (Exception $e) {
+            log_message('error', 'Section count error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Failed to retrieve section count summary: ' . $e->getMessage()
+                ]));
+        }
+    }
 }

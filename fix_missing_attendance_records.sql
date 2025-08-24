@@ -10,6 +10,7 @@ FROM excuse_letters el
 LEFT JOIN attendance a ON 
     el.student_id = a.student_id 
     AND el.class_id = a.class_id 
+    
     AND el.date_absent = a.date
 WHERE a.attendance_id IS NULL;
 

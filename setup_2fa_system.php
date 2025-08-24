@@ -105,7 +105,9 @@ try {
     echo "   POST /api/2fa/disable        - Disable 2FA\n";
     echo "   GET  /api/2fa/status         - Check 2FA status\n";
     echo "   POST /api/2fa/login-verify   - Verify 2FA during login\n";
-    echo "   POST /api/2fa/backup-code    - Use backup code\n\n";
+    echo "   POST /api/2fa/backup-code    - Use backup code\n";
+    echo "   GET  /api/2fa/backup-codes   - Get backup codes\n";
+    echo "   GET  /api/2fa/backup-codes/count - Count backup codes\n\n";
     
     echo "🚀 Next Steps:\n";
     echo "1. Test the 2FA setup endpoint with Postman\n";

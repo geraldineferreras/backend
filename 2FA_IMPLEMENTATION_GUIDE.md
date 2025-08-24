@@ -122,7 +122,44 @@ Content-Type: application/json
 }
 ```
 
-### 6. Disable 2FA
+### 6. Get Backup Codes
+```http
+GET /api/2fa/backup-codes
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Backup codes retrieved successfully",
+  "data": {
+    "backup_codes": ["A1B2C3D4", "E5F6G7H8", "I9J0K1L2"],
+    "count": 3,
+    "warning": "Save these codes in a secure location. Each code can only be used once."
+  }
+}
+```
+
+### 7. Count Backup Codes
+```http
+GET /api/2fa/backup-codes/count
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response:**
+```json
+{
+  "status": true,
+  "data": {
+    "backup_codes_count": 5,
+    "message": "Backup codes count retrieved successfully",
+    "warning": "Generate new codes if count is low"
+  }
+}
+```
+
+### 8. Disable 2FA
 ```http
 POST /api/2fa/disable
 Authorization: Bearer <your_jwt_token>

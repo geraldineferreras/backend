@@ -63,6 +63,8 @@ $route['api/logout']['post'] = 'api/auth/logout';
 $route['api/auth/google']['post'] = 'api/auth/google_oauth';
 $route['api/auth/forgot-password']['post'] = 'api/auth/forgot_password';
 $route['api/auth/reset-password']['post'] = 'api/auth/reset_password';
+$route['api/auth/change-password']['post'] = 'api/auth/change_password';
+$route['api/auth/change-password']['options'] = 'api/auth/options';
 
 // Unified Account System Routes
 $route['api/auth/link-google']['post'] = 'api/auth/link_google_account';
@@ -76,6 +78,8 @@ $route['api/2fa/disable']['post'] = 'api/twofactor/disable';
 $route['api/2fa/status']['get'] = 'api/twofactor/status';
 $route['api/2fa/login-verify']['post'] = 'api/twofactor/login_verify';
 $route['api/2fa/backup-code']['post'] = 'api/twofactor/backup_code';
+$route['api/2fa/backup-codes']['get'] = 'api/twofactor/get_backup_codes';
+$route['api/2fa/backup-codes/count']['get'] = 'api/twofactor/count_backup_codes';
 $route['api/2fa/(.*)']['options'] = 'api/twofactor/options';
 
 // Test endpoints
@@ -113,6 +117,8 @@ $route['api/student/delete']['options'] = 'api/auth/options';
 
 // Admin APIs
 $route['api/admin/users/create']['post'] = 'admincontroller/create_user';
+$route['api/admin/users/count']['get'] = 'api/AdminController/users_count_get';
+$route['api/admin/dashboard/stats']['get'] = 'api/AdminController/dashboard_stats_get';
 $route['api/admin/sections']['get'] = 'api/AdminController/sections_get';
 $route['api/admin/sections']['post'] = 'api/AdminController/sections_post';
 $route['api/admin/sections/(:num)']['get'] = 'api/AdminController/section_get/$1';
@@ -121,6 +127,7 @@ $route['api/admin/sections/(:num)']['delete'] = 'api/AdminController/sections_de
 $route['api/admin/sections/(:num)/students']['get'] = 'api/AdminController/section_students_get/$1';
 $route['api/admin/sections/(:num)/assign-students']['post'] = 'api/AdminController/assign_students_post/$1';
 $route['api/admin/sections/(:num)/remove-students']['post'] = 'api/AdminController/remove_students_post/$1';
+$route['api/admin/sections/count']['get'] = 'api/AdminController/sections_count_get';
 $route['api/admin/sections/year/(:any)']['get'] = 'api/AdminController/sections_by_year_get/$1';
 $route['api/admin/sections/year']['get'] = 'api/AdminController/sections_by_year_get';
 $route['api/admin/sections/semester/(:any)/year/(:any)']['get'] = 'api/AdminController/sections_by_semester_year_get/$1/$2';

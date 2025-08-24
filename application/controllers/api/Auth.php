@@ -10,7 +10,7 @@ class Auth extends BaseController {
         error_reporting(0);
         $this->load->model('User_model');
         $this->load->helper(['response', 'auth', 'audit', 'notification']);
-        $this->load->library('Token_lib');
+        $this->load->library(['Token_lib', 'session']);
     }
 
     public function login() {
@@ -1889,6 +1889,173 @@ class Auth extends BaseController {
         } catch (Exception $e) {
             log_message('error', 'Email sending error: ' . $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Change Password - Change password for authenticated users
+     * Supports teachers, students, and admins
+     */
+    public function change_password() {
+        try {
+            // Check if user is authenticated via token
+            $headers = getallheaders();
+            $token = null;
+            
+            // Check Authorization header for Bearer token
+            if (isset($headers['Authorization'])) {
+                $auth_header = $headers['Authorization'];
+                if (strpos($auth_header, 'Bearer ') === 0) {
+                    $token = substr($auth_header, 7);
+                }
+            }
+            
+            // If no Authorization header, check for token in request body or query
+            if (!$token) {
+                $data = json_decode(file_get_contents('php://input'));
+                if (isset($data->token)) {
+                    $token = $data->token;
+                }
+            }
+            
+            if (!$token) {
+                $this->output
+                    ->set_status_header(401)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Authentication token required']));
+                return;
+            }
+            
+            // Verify token and get user data
+            $token_data = $this->token_lib->validate_token($token);
+            if (!$token_data) {
+                $this->output
+                    ->set_status_header(401)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid or expired token']));
+                return;
+            }
+            $user_id = $token_data['user_id'];
+
+            $data = json_decode(file_get_contents('php://input'));
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid JSON format']));
+                return;
+            }
+
+            $current_password = isset($data->current_password) ? trim($data->current_password) : null;
+            $new_password = isset($data->new_password) ? trim($data->new_password) : null;
+            $confirm_password = isset($data->confirm_password) ? trim($data->confirm_password) : null;
+
+            // Validate required fields
+            if (empty($current_password) || empty($new_password) || empty($confirm_password)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Current password, new password, and confirm password are required']));
+                return;
+            }
+
+            // Validate password confirmation
+            if ($new_password !== $confirm_password) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'New password and confirm password do not match']));
+                return;
+            }
+
+            // Validate new password length
+            if (strlen($new_password) < 8) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Password must be at least 8 characters long']));
+                return;
+            }
+
+            // Validate password complexity
+            if (!preg_match('/^(?=.*[A-Za-z])(?=.*\d)/', $new_password)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Password must contain both letters and numbers']));
+                return;
+            }
+
+            // Get current user data
+            $user = $this->User_model->get_by_id($user_id);
+            if (!$user) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'User not found']));
+                return;
+            }
+
+            // Verify current password
+            if (!password_verify($current_password, $user['password'])) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Current password is incorrect']));
+                return;
+            }
+
+            // Check if new password is different from current
+            if (password_verify($new_password, $user['password'])) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'New password must be different from current password']));
+                return;
+            }
+
+            // Hash new password
+            $hashed_password = password_hash($new_password, PASSWORD_BCRYPT);
+            
+            // Update password
+            $update_success = $this->User_model->update($user_id, ['password' => $hashed_password]);
+
+            if (!$update_success) {
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to update password. Please try again.']));
+                return;
+            }
+
+            // Log the password change
+            log_audit_event(
+                'PASSWORD_CHANGED',
+                'AUTHENTICATION',
+                "Password changed for user: {$user_id} ({$user['role']})",
+                [
+                    'ip_address' => $this->input->ip_address(),
+                    'user_agent' => $this->input->user_agent(),
+                    'user_role' => $user['role']
+                ]
+            );
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true, 
+                    'message' => 'Password changed successfully',
+                    'user_role' => $user['role']
+                ]));
+
+        } catch (Exception $e) {
+            log_message('error', 'Change password error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Internal server error']));
         }
     }
 }

@@ -527,6 +527,190 @@ class TwoFactor extends BaseController {
     }
     
     /**
+     * Count remaining backup codes for authenticated user
+     * GET /api/2fa/backup-codes/count
+     */
+    public function count_backup_codes() {
+        try {
+            // Require authentication
+            $user_data = require_auth($this);
+            if (!$user_data) {
+                return; // Error response already sent
+            }
+            
+            $user_id = $user_data['user_id'];
+            
+            // Check if 2FA is enabled
+            if (!$this->twofactorauth->is_2fa_enabled($user_id)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => false,
+                        'message' => '2FA is not enabled for this account'
+                    ]));
+                return;
+            }
+            
+            // Get backup codes from database
+            $backup_codes_data = $this->db->where('user_id', $user_id)
+                ->get('backup_codes')
+                ->row_array();
+            
+            if (!$backup_codes_data) {
+                $this->output
+                    ->set_status_header(200)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => true,
+                        'data' => [
+                            'backup_codes_count' => 0,
+                            'message' => 'No backup codes found'
+                        ]
+                    ]));
+                return;
+            }
+            
+            // Decode the stored codes
+            $stored_codes = json_decode($backup_codes_data['codes'], true);
+            
+            if (!$stored_codes || empty($stored_codes)) {
+                $this->output
+                    ->set_status_header(200)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => true,
+                        'data' => [
+                            'backup_codes_count' => 0,
+                            'message' => 'No backup codes available'
+                        ]
+                    ]));
+                return;
+            }
+            
+            // Return the count of remaining backup codes
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'data' => [
+                        'backup_codes_count' => count($stored_codes),
+                        'message' => 'Backup codes count retrieved successfully',
+                        'warning' => 'Generate new codes if count is low'
+                    ]
+                ]));
+                
+        } catch (Exception $e) {
+            log_message('error', 'Count backup codes error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Internal server error while counting backup codes'
+                ]));
+        }
+    }
+    
+    /**
+     * Get backup codes for authenticated user
+     * GET /api/2fa/backup-codes
+     */
+    public function get_backup_codes() {
+        try {
+            // Require authentication
+            $user_data = require_auth($this);
+            if (!$user_data) {
+                return; // Error response already sent
+            }
+            
+            $user_id = $user_data['user_id'];
+            
+            // Check if 2FA is enabled
+            if (!$this->twofactorauth->is_2fa_enabled($user_id)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => false,
+                        'message' => '2FA is not enabled for this account'
+                    ]));
+                return;
+            }
+            
+            // Get backup codes from database
+            $backup_codes_data = $this->db->where('user_id', $user_id)
+                ->get('backup_codes')
+                ->row_array();
+            
+            if (!$backup_codes_data) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => false,
+                        'message' => 'No backup codes found for this account'
+                    ]));
+                return;
+            }
+            
+            // Decode the stored codes
+            $stored_codes = json_decode($backup_codes_data['codes'], true);
+            
+            if (!$stored_codes || empty($stored_codes)) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => false,
+                        'message' => 'No backup codes available'
+                    ]));
+                return;
+            }
+            
+            // Generate new readable backup codes since we can't decrypt the hashed ones
+            $new_codes = [];
+            for ($i = 0; $i < count($stored_codes); $i++) {
+                $new_codes[] = strtoupper(substr(md5(uniqid() . random_bytes(16)), 0, 8));
+            }
+            
+            // Update the stored codes with new hashed versions
+            $new_hashed_codes = array_map('password_hash', $new_codes, array_fill(0, count($new_codes), PASSWORD_BCRYPT));
+            
+            $this->db->where('id', $backup_codes_data['id'])
+                ->update('backup_codes', [
+                    'codes' => json_encode($new_hashed_codes),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+            
+            // Return the new readable backup codes
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'New backup codes generated successfully',
+                    'data' => [
+                        'backup_codes' => $new_codes,
+                        'count' => count($new_codes),
+                        'warning' => 'These are new backup codes. Save them in a secure location. Each code can only be used once.'
+                    ]
+                ]));
+                
+        } catch (Exception $e) {
+            log_message('error', 'Get backup codes error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Internal server error while retrieving backup codes'
+                ]));
+        }
+    }
+    
+    /**
      * Handle OPTIONS preflight requests (CORS)
      */
     public function options() {
