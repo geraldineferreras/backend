@@ -172,7 +172,8 @@ class AttendanceController extends BaseController
         if (!$data) return;
 
         // Validate required fields
-        $required_fields = ['student_id', 'class_id', 'date', 'status'];
+        // status is optional if session_started_at is provided (backend will auto-compute)
+        $required_fields = ['student_id', 'class_id', 'date'];
         if (!$this->validate_required_fields($data, $required_fields)) {
             return;
         }
@@ -267,11 +268,36 @@ class AttendanceController extends BaseController
                 ->where('date', $data->date)
                 ->get('attendance')->row_array();
 
+            // Auto-compute status using 15-minute grace if requested
+            // Conditions: (a) status not provided OR status === 'auto', AND session_started_at provided
+            if ((!isset($data->status) || (isset($data->status) && strtolower($data->status) === 'auto'))
+                && isset($data->session_started_at) && !empty($data->session_started_at)) {
+                // Determine time_in reference (provided or current server time)
+                $now_time = isset($data->time_in) && !empty($data->time_in) ? $data->time_in : date('H:i:s');
+                // Build full datetime strings for accurate diff if date provided
+                $sessionStartDt = strtotime($data->session_started_at);
+                $scanDt = strtotime($data->date . ' ' . $now_time);
+                if ($sessionStartDt !== false && $scanDt !== false) {
+                    $diffMinutes = (int) floor(($scanDt - $sessionStartDt) / 60);
+                    if ($diffMinutes <= 15) {
+                        $data->status = 'present';
+                    } elseif ($diffMinutes <= 120) { // within 2 hours
+                        $data->status = 'late';
+                    } else {
+                        $data->status = 'absent';
+                    }
+                    // Also ensure time_in is set using the computed scan time
+                    if (!isset($data->time_in) || empty($data->time_in)) {
+                        $data->time_in = date('H:i:s', $scanDt);
+                    }
+                }
+            }
+
             // Check for approved excuse letter
             $excuse_letter = $this->check_excuse_letter($data->student_id, $class['class_id'], $data->date);
             
             // Determine final status
-            $final_status = $data->status;
+            $final_status = isset($data->status) ? $data->status : 'present';
             $excuse_note = null;
             
             if ($excuse_letter && $data->status === 'absent') {
@@ -1056,6 +1082,130 @@ class AttendanceController extends BaseController
             $this->send_success(null, 'Attendance record deleted successfully');
         } catch (Exception $e) {
             $this->send_error('Failed to delete attendance record: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Auto-mark unrecorded students as absent after cutoff
+     * Endpoint: POST /api/attendance/auto-absent
+     * Body: { class_id: number, date: 'YYYY-MM-DD', cutoff_minutes?: 120 }
+     */
+    public function auto_absent_post()
+    {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        $data = $this->get_json_input();
+        if (!$data) return;
+
+        if (!isset($data->class_id) || !isset($data->date)) {
+            $this->send_error('class_id and date are required', 400);
+            return;
+        }
+
+        $cutoff = isset($data->cutoff_minutes) ? (int)$data->cutoff_minutes : 120;
+        if ($cutoff < 1) $cutoff = 120;
+
+        try {
+            // Verify teacher has access to this classroom (classrooms.id)
+            $classroom = $this->db->select('classrooms.*')
+                ->from('classrooms')
+                ->where('classrooms.id', $data->class_id)
+                ->where('classrooms.teacher_id', $user_data['user_id'])
+                ->where('classrooms.is_active', 1)
+                ->get()->row_array();
+
+            if (!$classroom) {
+                $this->send_error('Classroom not found or access denied', 404);
+                return;
+            }
+
+            // Find the corresponding class_id from classes table
+            $class = $this->db->select('classes.*')
+                ->from('classes')
+                ->where('classes.subject_id', $classroom['subject_id'])
+                ->where('classes.section_id', $classroom['section_id'])
+                ->where('classes.teacher_id', $classroom['teacher_id'])
+                ->where('classes.status', 'active')
+                ->get()->row_array();
+
+            if (!$class) {
+                $this->send_error('No active class found for this classroom', 404);
+                return;
+            }
+
+            // Get enrolled students
+            $enrolled_sql = "SELECT users.user_id, users.full_name FROM users 
+                              JOIN classroom_enrollments ce ON users.user_id = ce.student_id COLLATE utf8mb4_unicode_ci
+                              WHERE ce.classroom_id = ? AND ce.status = 'active' AND users.role = 'student' AND users.status = 'active'";
+            $enrolled = $this->db->query($enrolled_sql, [$classroom['id']])->result_array();
+
+            // Map students who already have attendance records for the date
+            $existing = $this->db->select('student_id')
+                ->from('attendance')
+                ->where('class_id', $class['class_id'])
+                ->where('date', $data->date)
+                ->get()->result_array();
+            $recorded = array_column($existing, 'student_id');
+
+            $created = 0;
+            foreach ($enrolled as $stud) {
+                if (in_array($stud['user_id'], $recorded, true)) {
+                    continue;
+                }
+
+                // Skip if there is an approved excuse letter for the date
+                $excuse = $this->db->select('letter_id')
+                    ->from('excuse_letters')
+                    ->where('student_id', $stud['user_id'])
+                    ->where('class_id', $class['class_id'])
+                    ->where('date_absent', $data->date)
+                    ->where('status', 'approved')
+                    ->get()->row_array();
+                if ($excuse) {
+                    // Create excused instead of absent to keep consistency
+                    $this->db->insert('attendance', [
+                        'student_id' => $stud['user_id'],
+                        'class_id' => $class['class_id'],
+                        'subject_id' => $classroom['subject_id'],
+                        'section_name' => $classroom['section_name'],
+                        'date' => $data->date,
+                        'time_in' => null,
+                        'status' => 'excused',
+                        'notes' => 'Auto-excused by system (approved excuse letter)',
+                        'teacher_id' => $user_data['user_id'],
+                        'created_at' => date('Y-m-d H:i:s'),
+                        'updated_at' => date('Y-m-d H:i:s')
+                    ]);
+                    $created++;
+                    continue;
+                }
+
+                // Insert absent record
+                $this->db->insert('attendance', [
+                    'student_id' => $stud['user_id'],
+                    'class_id' => $class['class_id'],
+                    'subject_id' => $classroom['subject_id'],
+                    'section_name' => $classroom['section_name'],
+                    'date' => $data->date,
+                    'time_in' => null,
+                    'status' => 'absent',
+                    'notes' => 'Auto-marked absent after cutoff (' . $cutoff . ' mins)',
+                    'teacher_id' => $user_data['user_id'],
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+                $created++;
+            }
+
+            $this->send_success([
+                'created_records' => $created,
+                'cutoff_minutes' => $cutoff,
+                'class_id' => $classroom['id'],
+                'date' => $data->date
+            ], 'Auto-absent operation completed');
+        } catch (Exception $e) {
+            $this->send_error('Failed to run auto-absent: ' . $e->getMessage(), 500);
         }
     }
 

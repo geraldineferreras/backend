@@ -134,6 +134,7 @@ $route['api/admin/sections/semester/(:any)/year/(:any)']['get'] = 'api/AdminCont
 $route['api/admin/sections/semester/(:any)']['get'] = 'api/AdminController/sections_by_semester_year_get/$1';
 $route['api/admin/sections/semester']['get'] = 'api/AdminController/sections_by_semester_year_get';
 $route['api/admin/sections/debug']['get'] = 'api/AdminController/sections_debug_get';
+$route['api/admin/sections/auto-create']['post'] = 'api/AdminController/auto_create_sections_post';
 $route['api/admin/advisers']['get'] = 'api/AdminController/advisers_get';
 $route['api/admin/programs']['get'] = 'api/AdminController/programs_get';
 $route['api/admin/year-levels']['get'] = 'api/AdminController/year_levels_get';
@@ -151,6 +152,7 @@ $route['api/attendance/students/(:num)/(:any)']['get'] = 'api/AttendanceControll
 $route['api/attendance/students/(:num)']['get'] = 'api/AttendanceController/students_get/$1';
 $route['api/attendance/record']['post'] = 'api/AttendanceController/record_post';
 $route['api/attendance/bulk-record']['post'] = 'api/AttendanceController/bulk_record_post';
+$route['api/attendance/auto-absent']['post'] = 'api/AttendanceController/auto_absent_post';
 $route['api/attendance/records/(:num)/(:any)']['get'] = 'api/AttendanceController/records_get/$1/$2';
 $route['api/attendance/update/(:num)']['put'] = 'api/AttendanceController/update_put/$1';
 $route['api/attendance/summary/(:num)']['get'] = 'api/AttendanceController/summary_get/$1';
@@ -171,6 +173,20 @@ $route['api/student/debug-classes']['get'] = 'api/StudentController/debug_classe
 $route['api/student/classroom/(:any)/people']['get'] = 'api/StudentController/classroom_people_get/$1';
 $route['api/student/classroom/(:any)/stream']['get'] = 'api/StudentController/classroom_stream_get/$1';
 $route['api/student/classroom/(:any)/stream']['post'] = 'api/StudentController/classroom_stream_post/$1';
+
+// Student Profile Options APIs
+$route['api/student/programs']['get'] = 'api/StudentController/programs_get';
+$route['api/student/programs/(:any)/years']['get'] = 'api/StudentController/programs_years_get/$1';
+$route['api/student/programs/(:any)/years/(:any)/sections']['get'] = 'api/StudentController/programs_years_sections_get/$1/$2';
+$route['api/student/profile-options']['get'] = 'api/StudentController/profile_options_get';
+$route['api/student/sections-grouped']['get'] = 'api/StudentController/sections_grouped_get';
+
+// Student Profile API - Form fields only
+$route['api/student/profile']['get'] = 'api/StudentController/profile_get';
+
+// Student Profile Update API
+$route['api/student/profile/update']['put'] = 'api/StudentController/profile_update_put';
+$route['api/student/profile/update']['post'] = 'api/StudentController/profile_update_post';
 
 // Student Stream Comments
 $route['api/student/classroom/(:any)/stream/(:num)/comment']['post'] = 'api/StudentController/classroom_stream_comment_post/$1/$2';

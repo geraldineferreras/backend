@@ -59,6 +59,14 @@ class Section_model extends CI_Model {
             ->get()->row_array();
     }
 
+    public function get_section_by_id($section_id) {
+        return $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic')
+            ->from('sections')
+            ->join('users', 'sections.adviser_id = users.user_id', 'left')
+            ->where('sections.section_id', $section_id)
+            ->get()->row_array();
+    }
+
     public function insert($data) {
         // Set created_at to current timestamp
         $data['created_at'] = date('Y-m-d H:i:s');

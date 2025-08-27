@@ -1207,11 +1207,14 @@ class Auth extends BaseController {
             
             if (!$user) {
                 // Create new user from Google OAuth
+                $user_id = generate_user_id('STD'); // Generate unique user ID for student
                 $user_data = [
+                    'user_id' => $user_id,
                     'email' => $google_user_data['email'],
                     'full_name' => $google_user_data['name'],
                     'role' => 'student', // Default role, can be changed later
                     'status' => 'active',
+                    'password' => password_hash('google_oauth_' . uniqid(), PASSWORD_DEFAULT), // Placeholder password for OAuth users
                     'google_id' => $google_user_data['google_id'],
                     'account_type' => 'google',
                     'google_email_verified' => true,
@@ -1231,7 +1234,7 @@ class Auth extends BaseController {
                     return;
                 }
                 
-                $user_id = $this->db->insert_id();
+                // Use the generated user_id instead of insert_id()
                 $user = $this->User_model->get_by_id($user_id);
                 
                 // Send welcome notification

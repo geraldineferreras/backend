@@ -7,7 +7,7 @@ class AdminController extends BaseController {
     public function __construct() {
         parent::__construct();
         $this->load->model(['Section_model', 'User_model']);
-        $this->load->helper(['response', 'auth', 'notification']);
+        $this->load->helper(['response', 'auth', 'notification', 'utility']);
         $this->load->library('Token_lib');
         // CORS headers are already handled by BaseController
     }
@@ -87,9 +87,15 @@ class AdminController extends BaseController {
             return json_response(false, 'Invalid semester: must be "1st" or "2nd"', null, 400);
         }
         
+        // Standardize program name to shortcut format
+        $program_shortcut = $this->standardize_program_name($data->program);
+        if (!$program_shortcut) {
+            return json_response(false, 'Invalid program. Must be BSIT, BSIS, BSCS, or ACT', null, 400);
+        }
+        
         $insert_data = [
             'section_name' => $data->section_name,
-            'program' => $data->program,
+            'program' => $program_shortcut, // Always save as shortcut
             'year_level' => $data->year_level,
             'adviser_id' => $data->adviser_id,
             'semester' => $data->semester,
@@ -155,9 +161,15 @@ class AdminController extends BaseController {
             return json_response(false, 'Invalid semester: must be "1st" or "2nd"', null, 400);
         }
         
+        // Standardize program name to shortcut format
+        $program_shortcut = $this->standardize_program_name($data->program);
+        if (!$program_shortcut) {
+            return json_response(false, 'Invalid program. Must be BSIT, BSIS, BSCS, or ACT', null, 400);
+        }
+        
         $update_data = [
             'section_name' => $data->section_name,
-            'program' => $data->program,
+            'program' => $program_shortcut, // Always save as shortcut
             'year_level' => $data->year_level,
             'adviser_id' => $data->adviser_id,
             'semester' => $data->semester,
@@ -1335,5 +1347,141 @@ class AdminController extends BaseController {
                     'message' => 'Failed to retrieve section count summary: ' . $e->getMessage()
                 ]));
         }
+    }
+    
+    /**
+     * Auto-create sections for all programs and year levels (Admin only)
+     * POST /api/admin/sections/auto-create
+     * Creates sections without advisers, academic year, or semester
+     */
+    public function auto_create_sections_post() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+
+        try {
+            // Define programs and year levels
+            $programs = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
+            $year_levels = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+            $sections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
+            
+            $created_count = 0;
+            $existing_count = 0;
+            $errors = [];
+            
+            // Start transaction
+            $this->db->trans_start();
+            
+            foreach ($programs as $program) {
+                foreach ($year_levels as $year_level) {
+                    foreach ($sections as $section_letter) {
+                        $section_name = $program . ' ' . substr($year_level, 0, 1) . $section_letter;
+                        
+                        // Check if section already exists
+                        $existing = $this->db->get_where('sections', [
+                            'section_name' => $section_name
+                        ])->row_array();
+                        
+                        if (!$existing) {
+                            // Create section without adviser, academic year, or semester
+                            // Only use columns that actually exist in the table
+                            $section_data = [
+                                'section_name' => $section_name,
+                                'program' => $program,
+                                'year_level' => $year_level,
+                                'adviser_id' => null,
+                                'semester' => null,
+                                'academic_year' => null
+                                // Note: created_at has a default value, so we don't need to set it
+                            ];
+                            
+                            $this->db->insert('sections', $section_data);
+                            if ($this->db->affected_rows() > 0) {
+                                $created_count++;
+                            } else {
+                                $errors[] = "Failed to create section: $section_name";
+                            }
+                        } else {
+                            $existing_count++;
+                        }
+                    }
+                }
+            }
+            
+            // Complete transaction
+            if ($this->db->trans_status() === FALSE) {
+                $this->db->trans_rollback();
+                $this->send_error('Failed to create sections. Transaction rolled back.', 500);
+                return;
+            }
+            
+            $this->db->trans_commit();
+            
+            $total_sections = $created_count + $existing_count;
+            $response_data = [
+                'created_sections' => $created_count,
+                'existing_sections' => $existing_count,
+                'total_sections' => $total_sections,
+                'programs' => $programs,
+                'year_levels' => $year_levels,
+                'sections_per_year' => count($sections),
+                'errors' => $errors
+            ];
+            
+            $this->send_success($response_data, "Successfully created $created_count new sections. $existing_count sections already existed.");
+            
+        } catch (Exception $e) {
+            $this->db->trans_rollback();
+            $this->send_error('Failed to auto-create sections: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Standardize program name to shortcut format
+     * 
+     * @param string $program_name The program name (can be full name or shortcut)
+     * @return string|false The standardized shortcut or false if invalid
+     */
+    private function standardize_program_name($program_name) {
+        $program_name = trim($program_name);
+        
+        // Direct shortcuts
+        $shortcuts = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
+        if (in_array(strtoupper($program_name), $shortcuts)) {
+            return strtoupper($program_name);
+        }
+        
+        // Map full names to shortcuts
+        $full_to_short = [
+            'Bachelor of Science in Information Technology' => 'BSIT',
+            'Bachelor of Science in Information Systems' => 'BSIS',
+            'Bachelor of Science in Computer Science' => 'BSCS',
+            'Associate in Computer Technology' => 'ACT'
+        ];
+        
+        // Check exact matches
+        if (isset($full_to_short[$program_name])) {
+            return $full_to_short[$program_name];
+        }
+        
+        // Check case-insensitive matches
+        foreach ($full_to_short as $full_name => $shortcut) {
+            if (strcasecmp($program_name, $full_name) === 0) {
+                return $shortcut;
+            }
+        }
+        
+        // Check partial matches (for flexibility)
+        $program_lower = strtolower($program_name);
+        if (strpos($program_lower, 'information technology') !== false) {
+            return 'BSIT';
+        } elseif (strpos($program_lower, 'information systems') !== false) {
+            return 'BSIS';
+        } elseif (strpos($program_lower, 'computer science') !== false) {
+            return 'BSCS';
+        } elseif (strpos($program_lower, 'computer technology') !== false) {
+            return 'ACT';
+        }
+        
+        return false; // Invalid program name
     }
 }

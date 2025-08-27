@@ -85,7 +85,22 @@ if (!function_exists('log_attendance_event')) {
                 'updated_at' => date('Y-m-d H:i:s')
             ];
             
+            // Suppress DB debug so duplicate key won't render a fatal page
+            $prevDebug = $CI->db->db_debug;
+            $CI->db->db_debug = false;
             $CI->db->insert('attendance_logs', $log_data);
+            $dbErr = $CI->db->error();
+            // Restore previous debug setting
+            $CI->db->db_debug = $prevDebug;
+            if (!empty($dbErr['code'])) {
+                // Gracefully ignore duplicate key errors
+                if ((int)$dbErr['code'] === 1062) {
+                    log_message('debug', 'attendance_logs duplicate ignored: ' . ($dbErr['message'] ?? ''));
+                    return false;
+                }
+                // Re-throw other DB errors
+                throw new Exception('DB error inserting attendance_logs: ' . $dbErr['message']);
+            }
             return $CI->db->insert_id();
             
         } catch (Exception $e) {
