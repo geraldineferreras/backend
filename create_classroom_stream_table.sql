@@ -1,0 +1,33 @@
+
+-- Create classroom_stream table with all required columns
+CREATE TABLE IF NOT EXISTS `classroom_stream` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `class_code` varchar(20) NOT NULL,
+  `classroom_id` int(11) NOT NULL,
+  `user_id` varchar(50) NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `content` text NOT NULL,
+  `is_draft` tinyint(1) NOT NULL DEFAULT 0,
+  `is_scheduled` tinyint(1) NOT NULL DEFAULT 0,
+  `scheduled_at` datetime DEFAULT NULL,
+  `notification_dispatched_at` datetime DEFAULT NULL,
+  `allow_comments` tinyint(1) NOT NULL DEFAULT 1,
+  `attachment_type` enum('file','link','youtube','google_drive','multiple') DEFAULT NULL,
+  `attachment_url` text DEFAULT NULL,
+  `status` enum('published','draft','scheduled','deleted') NOT NULL DEFAULT 'published',
+  `is_pinned` tinyint(1) NOT NULL DEFAULT 0,
+  `liked_by_user_ids` json DEFAULT NULL,
+  `visible_to_student_ids` json DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_class_code` (`class_code`),
+  KEY `idx_classroom_id` (`classroom_id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_is_draft` (`is_draft`),
+  KEY `idx_is_scheduled` (`is_scheduled`),
+  KEY `idx_status` (`status`),
+  KEY `idx_created_at` (`created_at`),
+  CONSTRAINT `fk_classroom_stream_classroom` FOREIGN KEY (`classroom_id`) REFERENCES `classrooms` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_classroom_stream_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

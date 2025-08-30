@@ -64,9 +64,15 @@ class ExcuseLetterController extends BaseController
             if (!$data) return;
         }
 
-        // Validate required fields
-        $required_fields = ['class_id', 'date_absent', 'reason'];
+        // Validate required fields - accept either class_id or classroom_id
+        $required_fields = ['date_absent', 'reason'];
         if (!$this->validate_required_fields($data, $required_fields)) {
+            return;
+        }
+        
+        // Check if either class_id or classroom_id is provided
+        if (empty($data->class_id) && empty($data->classroom_id)) {
+            $this->send_error('Either class_id or classroom_id is required', 400);
             return;
         }
 
@@ -77,41 +83,44 @@ class ExcuseLetterController extends BaseController
         }
 
         try {
-            // First, try to find the class in the classes table
-            $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
-                ->from('classes')
-                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
-                ->join('sections', 'classes.section_id = sections.section_id', 'left')
-                ->where('classes.class_id', $data->class_id)
+            // Determine which ID to use and find the corresponding class
+            $classroom_id = $data->classroom_id ?? $data->class_id;
+            $class = null;
+            
+            // First, try to find the classroom directly
+            $classroom = $this->db->select('classrooms.*, subjects.subject_name, sections.section_name')
+                ->from('classrooms')
+                ->join('subjects', 'classrooms.subject_id = subjects.id', 'left')
+                ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
+                ->where('classrooms.id', $classroom_id)
                 ->get()->row_array();
 
-            // If not found in classes table, try to find corresponding classroom
-            if (!$class) {
-                // Check if this is a classroom ID instead of class ID
-                $classroom = $this->db->select('classrooms.*, subjects.subject_name, sections.section_name')
-                    ->from('classrooms')
-                    ->join('subjects', 'classrooms.subject_id = subjects.id', 'left')
-                    ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
-                    ->where('classrooms.id', $data->class_id)
+            if ($classroom) {
+                // Find corresponding class in classes table based on subject and section
+                $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
+                    ->from('classes')
+                    ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                    ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                    ->where('classes.subject_id', $classroom['subject_id'])
+                    ->where('classes.section_id', $classroom['section_id'])
+                    ->where('classes.teacher_id', $classroom['teacher_id'])
                     ->get()->row_array();
 
-                if ($classroom) {
-                    // Find corresponding class in classes table based on subject and section
-                    $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
-                        ->from('classes')
-                        ->join('subjects', 'classes.subject_id = subjects.id', 'left')
-                        ->join('sections', 'classes.section_id = sections.section_id', 'left')
-                        ->where('classes.subject_id', $classroom['subject_id'])
-                        ->where('classes.section_id', $classroom['section_id'])
-                        ->where('classes.teacher_id', $classroom['teacher_id'])
-                        ->get()->row_array();
+                if (!$class) {
+                    $this->send_error('No corresponding class found for this classroom', 404);
+                    return;
+                }
+            } else {
+                // If not found in classrooms, try to find in classes table
+                $class = $this->db->select('classes.*, subjects.subject_name, sections.section_name')
+                    ->from('classes')
+                    ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                    ->join('sections', 'classes.section_id = sections.section_id', 'left')
+                    ->where('classes.class_id', $classroom_id)
+                    ->get()->row_array();
 
-                    if (!$class) {
-                        $this->send_error('No corresponding class found for this classroom', 404);
-                        return;
-                    }
-                } else {
-                    $this->send_error('Class not found', 404);
+                if (!$class) {
+                    $this->send_error('Classroom or class not found', 404);
                     return;
                 }
             }
@@ -133,7 +142,7 @@ class ExcuseLetterController extends BaseController
 
             // Check if excuse letter already exists for this date and class
             $existing = $this->db->where('student_id', $user_data['user_id'])
-                ->where('class_id', $data->class_id)
+                ->where('class_id', $class['class_id'])
                 ->where('date_absent', $data->date_absent)
                 ->get('excuse_letters')->row_array();
 
@@ -144,7 +153,7 @@ class ExcuseLetterController extends BaseController
 
             $excuse_data = [
                 'student_id' => $user_data['user_id'],
-                'class_id' => $data->class_id,
+                'class_id' => $class['class_id'], // Use the class_id from the found class
                 'teacher_id' => $class['teacher_id'], // Add teacher_id from class
                 'date_absent' => $data->date_absent,
                 'reason' => $data->reason,

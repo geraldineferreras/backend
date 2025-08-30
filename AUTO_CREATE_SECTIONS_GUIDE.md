@@ -9,7 +9,7 @@ The Auto-Create Sections functionality allows administrators to automatically ge
 The system automatically creates **176 sections** with the following structure:
 
 - **4 Programs**: BSIT, BSIS, BSCS, ACT
-- **4 Year Levels**: 1st Year, 2nd Year, 3rd Year, 4th Year  
+- **4 Year Levels**: 1, 2, 3, 4 (numeric values)  
 - **11 Sections per Year**: A, B, C, D, E, F, G, H, I, J, K
 
 ### Section Naming Convention
@@ -17,10 +17,10 @@ The system automatically creates **176 sections** with the following structure:
 Sections are named using the pattern: `{PROGRAM} {YEAR_LEVEL_FIRST_LETTER}{SECTION_LETTER}`
 
 Examples:
-- `BSIT 1A` (BSIT 1st Year, Section A)
-- `BSIS 2B` (BSIS 2nd Year, Section B)
-- `BSCS 3C` (BSCS 3rd Year, Section C)
-- `ACT 4K` (ACT 4th Year, Section K)
+- `BSIT 1A` (BSIT Year 1, Section A)
+- `BSIS 2B` (BSIS Year 2, Section B)
+- `BSCS 3C` (BSCS Year 3, Section C)
+- `ACT 4K` (ACT Year 4, Section K)
 
 ## API Endpoint
 
@@ -53,7 +53,7 @@ No body required - the endpoint automatically generates all sections.
     "existing_sections": 0,
     "total_sections": 176,
     "programs": ["BSIT", "BSIS", "BSCS", "ACT"],
-    "year_levels": ["1st Year", "2nd Year", "3rd Year", "4th Year"],
+    "year_levels": [1, 2, 3, 4],
     "sections_per_year": 11,
     "errors": []
   }
@@ -182,7 +182,7 @@ export default AutoCreateSections;
 The endpoint creates records in the `sections` table with:
 - `section_name`: Auto-generated (e.g., "BSIT 1A")
 - `program`: Program abbreviation (BSIT, BSIS, BSCS, ACT)
-- `year_level`: Full year level name (1st Year, 2nd Year, etc.)
+- `year_level`: Numeric year level (1, 2, 3, 4)
 - `adviser_id`: NULL (no adviser assigned)
 - `semester`: NULL (no semester specified)
 - `academic_year`: NULL (no academic year specified)

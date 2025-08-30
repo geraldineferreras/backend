@@ -115,6 +115,12 @@ class ClassroomStream_model extends CI_Model {
         $this->db->order_by('cs.created_at', 'DESC');
         $posts = $this->db->get()->result_array();
         
+        // Add comment count for each post
+        foreach ($posts as &$post) {
+            $comment_count = $this->db->where('stream_id', $post['id'])->count_all_results('classroom_stream_comments');
+            $post['comment_count'] = $comment_count;
+        }
+        
         // Load StreamAttachment model for multiple attachments
         $this->load->model('StreamAttachment_model');
         
@@ -321,6 +327,11 @@ class ClassroomStream_model extends CI_Model {
         }
         
         return $comments;
+    }
+    
+    // Get comment count for a stream post
+    public function get_comment_count($stream_id) {
+        return $this->db->where('stream_id', $stream_id)->count_all_results('classroom_stream_comments');
     }
 
     // Get a single post by id

@@ -740,7 +740,25 @@ class StudentController extends BaseController {
             }
 
             // Check if student is in the correct section for this class
-            if ($user_data['section_id'] != $classroom['section_id']) {
+            // Some tokens (e.g., Google sign-in) may not include section_id, so fetch from DB as fallback
+            $student_section_id = isset($user_data['section_id']) ? $user_data['section_id'] : null;
+            if (empty($student_section_id)) {
+                $student_row = $this->db->select('section_id')
+                    ->from('users')
+                    ->where('user_id', $user_data['user_id'])
+                    ->get()->row_array();
+                $student_section_id = $student_row['section_id'] ?? null;
+            }
+
+            if (empty($student_section_id)) {
+                $this->output
+                    ->set_status_header(403)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Your account has no section assigned. Please update your profile or contact an administrator.']));
+                return;
+            }
+
+            if ($student_section_id != $classroom['section_id']) {
                 $this->output
                     ->set_status_header(403)
                     ->set_content_type('application/json')
@@ -758,19 +776,24 @@ class StudentController extends BaseController {
 
             $this->db->insert('classroom_enrollments', $enrollment_data);
 
-            // Log the enrollment activity
+            // Log the enrollment activity (use Audit_model::create_log for compatibility)
             $this->load->model('Audit_model');
             if (class_exists('Audit_model')) {
-                $this->Audit_model->log_activity(
-                    $user_data['user_id'],
-                    'class_enrollment',
-                    'Student joined class',
-                    [
+                $this->Audit_model->create_log([
+                    'user_id' => $user_data['user_id'],
+                    'user_name' => $user_data['full_name'] ?? 'Unknown User',
+                    'user_role' => 'student',
+                    'action_type' => 'class_enrollment',
+                    'module' => 'class',
+                    'table_name' => 'classroom_enrollments',
+                    'record_id' => $classroom['id'] ?? null,
+                    'details' => json_encode([
+                        'message' => 'Student joined class',
                         'class_code' => $class_code,
-                        'subject_name' => $classroom['subject_name'],
-                        'section_name' => $classroom['section_name']
-                    ]
-                );
+                        'subject_name' => $classroom['subject_name'] ?? null,
+                        'section_name' => $classroom['section_name'] ?? null
+                    ])
+                ]);
             }
 
             $this->output
@@ -864,18 +887,23 @@ class StudentController extends BaseController {
             $this->db->where('id', $enrollment['id'])
                 ->update('classroom_enrollments', ['status' => 'dropped']);
 
-            // Log the activity
+            // Log the activity using Audit_model::create_log
             $this->load->model('Audit_model');
             if (class_exists('Audit_model')) {
-                $this->Audit_model->log_activity(
-                    $user_data['user_id'],
-                    'class_drop',
-                    'Student left class',
-                    [
+                $this->Audit_model->create_log([
+                    'user_id' => $user_data['user_id'],
+                    'user_name' => $user_data['full_name'] ?? 'Unknown User',
+                    'user_role' => 'student',
+                    'action_type' => 'class_drop',
+                    'module' => 'class',
+                    'table_name' => 'classroom_enrollments',
+                    'record_id' => $classroom['id'] ?? null,
+                    'details' => json_encode([
+                        'message' => 'Student left class',
                         'class_code' => $class_code,
                         'classroom_id' => $classroom['id']
-                    ]
-                );
+                    ])
+                ]);
             }
 
             $this->output
@@ -978,7 +1006,7 @@ class StudentController extends BaseController {
                 ce.status as enrollment_status
             ')
             ->from('classroom_enrollments ce')
-            ->join('users u', 'ce.student_id = u.user_id')
+            ->join('users u', 'BINARY u.user_id = BINARY ce.student_id', 'inner', false)
             ->where('ce.classroom_id', $classroom['id'])
             ->where('ce.status', 'active')
             ->where('u.role', 'student')
@@ -1104,17 +1132,18 @@ class StudentController extends BaseController {
             }
 
             // Get stream posts (only published posts, not drafts or scheduled)
-            $posts = $this->db->select('
-                cs.*,
-                u.full_name as user_name,
-                u.profile_pic
-            ')
+            $posts = $this->db->select('cs.*, u.full_name as user_name, u.profile_pic')
             ->from('classroom_stream cs')
             ->join('users u', 'cs.user_id = u.user_id')
-            ->where('cs.classroom_id', $classroom['id'])
+            ->where('cs.class_code', $class_code)
             ->where('cs.is_draft', 0)
-            ->where('cs.is_scheduled', 0)
-            ->where('cs.status', 'published')
+            ->group_start()
+                ->where('cs.is_scheduled', 0)
+                ->or_group_start()
+                    ->where('cs.is_scheduled', 1)
+                    ->where('cs.scheduled_at <=', date('Y-m-d H:i:s'))
+                ->group_end()
+            ->group_end()
             ->order_by('cs.created_at', 'DESC')
             ->get()->result_array();
 
@@ -1130,6 +1159,7 @@ class StudentController extends BaseController {
                     'attachment_url' => $post['attachment_url'],
                     'allow_comments' => (bool)$post['allow_comments'],
                     'is_pinned' => (bool)$post['is_pinned'],
+                    'comment_count' => isset($post['comment_count']) ? (int)$post['comment_count'] : 0,
                     'created_at' => $post['created_at'],
                     'updated_at' => $post['updated_at']
                 ];
@@ -1223,6 +1253,7 @@ class StudentController extends BaseController {
 
             // Prepare post data
             $post_data = [
+                'class_code' => $class_code,
                 'classroom_id' => $classroom['id'],
                 'user_id' => $user_data['user_id'],
                 'title' => trim($input['title']),
@@ -1245,18 +1276,76 @@ class StudentController extends BaseController {
             // Log the activity
             $this->load->model('Audit_model');
             if (class_exists('Audit_model')) {
-                $this->Audit_model->log_activity(
-                    $user_data['user_id'],
-                    'stream_post_create',
-                    'Student created stream post',
-                    [
+                $this->Audit_model->create_log([
+                    'user_id' => $user_data['user_id'],
+                    'user_name' => $user_data['full_name'] ?? 'Unknown User',
+                    'user_role' => 'student',
+                    'action_type' => 'stream_post_create',
+                    'module' => 'classroom_stream',
+                    'table_name' => 'classroom_stream',
+                    'record_id' => $post_id,
+                    'details' => 'Student created stream post',
+                    'description' => json_encode([
                         'class_code' => $class_code,
                         'post_id' => $post_id,
                         'title' => $post_data['title']
-                    ]
-                );
+                    ])
+                ]);
             }
 
+            // Create notifications for teacher and other students
+            if (!$post_data['is_draft'] && !$post_data['is_scheduled']) {
+                $this->load->helper('notification');
+                
+                // Get teacher of this class
+                $teacher = $this->db->select('teacher_id')
+                    ->from('classrooms')
+                    ->where('id', $classroom['id'])
+                    ->get()->row_array();
+                
+                // Get other students in this class (excluding the poster)
+                $other_students = $this->db->select('ce.student_id')
+                    ->from('classroom_enrollments ce')
+                    ->where('ce.classroom_id', $classroom['id'])
+                    ->where('ce.student_id !=', $user_data['user_id'])
+                    ->where('ce.status', 'active')
+                    ->get()->result_array();
+                
+                $notification_user_ids = [];
+                
+                // Add teacher to notifications
+                if ($teacher && $teacher['teacher_id']) {
+                    $notification_user_ids[] = $teacher['teacher_id'];
+                }
+                
+                // Add other students to notifications
+                if (!empty($other_students)) {
+                    foreach ($other_students as $student) {
+                        $notification_user_ids[] = $student['student_id'];
+                    }
+                }
+                
+                // Create notifications if there are recipients
+                if (!empty($notification_user_ids)) {
+                    $title = $post_data['title'] ?: 'New Student Post';
+                    $message = $post_data['content'];
+                    
+                    create_notifications_for_users(
+                        $notification_user_ids,
+                        'announcement',
+                        $title,
+                        $message,
+                        $post_id,
+                        'announcement',
+                        $class_code,
+                        false
+                    );
+                    
+                    // Log notification creation
+                    log_message('info', "Student stream post notifications sent to " . count($notification_user_ids) . " users for post {$post_id}");
+                }
+            }
+            
             $this->output
                 ->set_status_header(201)
                 ->set_content_type('application/json')
@@ -1356,6 +1445,173 @@ class StudentController extends BaseController {
         }
     }
 
+    /**
+     * Get student grades (supports optional class_code query param)
+     * GET /api/student/grades?class_code=ABC123
+     */
+    public function grades_get() {
+        $user_data = require_auth($this);
+        if (!$user_data) {
+            return;
+        }
+        if ($user_data['role'] !== 'student') {
+            $this->output
+                ->set_status_header(403)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+
+        $class_code = $this->input->get('class_code');
+        if (!$class_code) {
+            $this->output
+                ->set_status_header(400)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'class_code is required. Use /api/student/classroom/{class_code}/grades or pass ?class_code='
+                ]));
+            return;
+        }
+
+        return $this->classroom_grades_get($class_code);
+    }
+
+    /**
+     * Get student's grades for a specific class
+     * GET /api/student/classroom/{class_code}/grades
+     */
+    public function classroom_grades_get($class_code) {
+        // Require student authentication
+        $user_data = require_auth($this);
+        if (!$user_data) {
+            return; // Error response already sent
+        }
+
+        // Verify user is a student
+        if ($user_data['role'] !== 'student') {
+            $this->output
+                ->set_status_header(403)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+
+        try {
+            // Find classroom by class_code
+            $classroom = $this->db->where('class_code', $class_code)
+                ->where('is_active', 1)
+                ->get('classrooms')->row_array();
+
+            if (!$classroom) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Classroom not found']));
+                return;
+            }
+
+            // Ensure the student is enrolled
+            $enrollment = $this->db->where('classroom_id', $classroom['id'])
+                ->where('student_id', $user_data['user_id'])
+                ->where('status', 'active')
+                ->get('classroom_enrollments')->row_array();
+
+            if (!$enrollment) {
+                $this->output
+                    ->set_status_header(403)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Access denied. You are not enrolled in this class']));
+                return;
+            }
+
+            // Get all tasks for this class
+            $escaped_code = $this->db->escape_str($class_code);
+            $tasks = $this->db->select('ct.task_id, ct.title, ct.type, ct.points, ct.due_date')
+                ->from('class_tasks ct')
+                ->where("ct.class_codes LIKE '%\"$escaped_code\"%'", null, false)
+                ->where('ct.is_draft', 0)
+                ->where('ct.is_scheduled', 0)
+                ->order_by('ct.due_date', 'ASC')
+                ->get()->result_array();
+
+            // Get this student's submissions (and scores) for those tasks
+            $submissions = $this->db->select('ts.task_id, ts.grade as score, ts.feedback as remarks, ts.status')
+                ->from('task_submissions ts')
+                ->where('ts.class_code', $class_code)
+                ->where('ts.student_id', $user_data['user_id'])
+                ->get()->result_array();
+
+            // Index submissions by task_id for easy lookup
+            $taskIdToSubmission = [];
+            foreach ($submissions as $s) {
+                $taskIdToSubmission[$s['task_id']] = $s;
+            }
+
+            // Merge tasks with student's submission/grade
+            $items = [];
+            $total_points = 0;
+            $total_earned = 0;
+            $graded_count = 0;
+            foreach ($tasks as $t) {
+                $sub = $taskIdToSubmission[$t['task_id']] ?? null;
+                $score = $sub['score'] ?? null;
+                if ($score !== null && $t['points'] > 0) {
+                    $graded_count++;
+                    $total_points += (float)$t['points'];
+                    $total_earned += (float)$score;
+                }
+                $items[] = [
+                    'task_id' => $t['task_id'],
+                    'title' => $t['title'],
+                    'type' => $t['type'],
+                    'points' => (float)$t['points'],
+                    'due_date' => $t['due_date'],
+                    'score' => $score !== null ? (float)$score : null,
+                    'status' => $sub['status'] ?? null,
+                    'remarks' => $sub['remarks'] ?? null
+                ];
+            }
+
+            $average_percent = ($total_points > 0) ? round(($total_earned / $total_points) * 100, 2) : null;
+
+            $response = [
+                'classroom' => [
+                    'class_code' => $classroom['class_code'],
+                    'subject_id' => $classroom['subject_id'],
+                    'section_id' => $classroom['section_id']
+                ],
+                'student' => [
+                    'user_id' => $user_data['user_id'],
+                    'full_name' => $user_data['full_name'] ?? null
+                ],
+                'summary' => [
+                    'tasks_total' => count($tasks),
+                    'tasks_graded' => $graded_count,
+                    'total_points' => $total_points,
+                    'total_earned' => $total_earned,
+                    'average_percent' => $average_percent
+                ],
+                'items' => $items
+            ];
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Student grades retrieved',
+                    'data' => $response
+                ]));
+        } catch (Exception $e) {
+            log_message('error', 'Student classroom grades error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to retrieve grades']));
+        }
+    }
+
     // Helper methods
 
     /**
@@ -1446,5 +1702,360 @@ class StudentController extends BaseController {
         }
         
         return $semester;
+    }
+
+    /**
+     * Get comment count for a stream post
+     * GET /api/student/classroom/{class_code}/stream/{stream_id}/comment-count
+     */
+    public function classroom_stream_comment_count_get($class_code, $stream_id) {
+        $user_data = require_auth($this);
+        if (!$user_data) { return; }
+        if ($user_data['role'] !== 'student') {
+            $this->output->set_status_header(403)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+        try {
+            // Validate classroom
+            $classroom = $this->db->where('class_code', $class_code)->where('is_active', 1)->get('classrooms')->row_array();
+            if (!$classroom) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Classroom not found']));
+                return;
+            }
+            // Check enrollment
+            $enrollment = $this->db->where('classroom_id', $classroom['id'])
+                ->where('student_id', $user_data['user_id'])->where('status', 'active')
+                ->get('classroom_enrollments')->row_array();
+            if (!$enrollment) {
+                $this->output->set_status_header(403)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Access denied. You are not enrolled in this class']));
+                return;
+            }
+            // Validate stream belongs to class
+            $stream = $this->db->where('id', (int)$stream_id)->where('class_code', $class_code)->get('classroom_stream')->row_array();
+            if (!$stream) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Stream post not found']));
+                return;
+            }
+            $this->load->model('ClassroomStream_model');
+            $comment_count = $this->ClassroomStream_model->get_comment_count((int)$stream_id);
+            $this->output->set_status_header(200)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'message' => 'Comment count retrieved', 'data' => ['comment_count' => $comment_count]]));
+        } catch (Exception $e) {
+            $this->output->set_status_header(500)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to retrieve comment count']));
+        }
+    }
+
+    /**
+     * Get comments on a stream post
+     * GET /api/student/classroom/{class_code}/stream/{stream_id}/comments
+     */
+    public function classroom_stream_comments_get($class_code, $stream_id) {
+        $user_data = require_auth($this);
+        if (!$user_data) { return; }
+        if ($user_data['role'] !== 'student') {
+            $this->output->set_status_header(403)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+        try {
+            // Validate classroom
+            $classroom = $this->db->where('class_code', $class_code)->where('is_active', 1)->get('classrooms')->row_array();
+            if (!$classroom) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Classroom not found']));
+                return;
+            }
+            // Check enrollment
+            $enrollment = $this->db->where('classroom_id', $classroom['id'])
+                ->where('student_id', $user_data['user_id'])->where('status', 'active')
+                ->get('classroom_enrollments')->row_array();
+            if (!$enrollment) {
+                $this->output->set_status_header(403)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Access denied. You are not enrolled in this class']));
+                return;
+            }
+            // Validate stream belongs to class
+            $stream = $this->db->where('id', (int)$stream_id)->where('class_code', $class_code)->get('classroom_stream')->row_array();
+            if (!$stream) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Stream post not found']));
+                return;
+            }
+            $this->load->model('ClassroomStream_model');
+            $comments = $this->ClassroomStream_model->get_comments((int)$stream_id);
+            $this->output->set_status_header(200)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'message' => 'Comments retrieved', 'data' => $comments]));
+        } catch (Exception $e) {
+            $this->output->set_status_header(500)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to retrieve comments']));
+        }
+    }
+
+    /**
+     * Add a comment to a stream post
+     * POST /api/student/classroom/{class_code}/stream/{stream_id}/comment
+     * Body: { "comment": "text" }
+     */
+    public function classroom_stream_comment_post($class_code, $stream_id) {
+        $user_data = require_auth($this);
+        if (!$user_data) { return; }
+        if ($user_data['role'] !== 'student') {
+            $this->output->set_status_header(403)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+        try {
+            $classroom = $this->db->where('class_code', $class_code)->where('is_active', 1)->get('classrooms')->row_array();
+            if (!$classroom) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Classroom not found']));
+                return;
+            }
+            $enrollment = $this->db->where('classroom_id', $classroom['id'])
+                ->where('student_id', $user_data['user_id'])->where('status', 'active')
+                ->get('classroom_enrollments')->row_array();
+            if (!$enrollment) {
+                $this->output->set_status_header(403)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Access denied. You are not enrolled in this class']));
+                return;
+            }
+            $stream = $this->db->where('id', (int)$stream_id)->where('class_code', $class_code)->get('classroom_stream')->row_array();
+            if (!$stream) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Stream post not found']));
+                return;
+            }
+            $input = json_decode(file_get_contents('php://input'), true);
+            $comment_text = isset($input['comment']) ? trim($input['comment']) : '';
+            if ($comment_text === '') {
+                $this->output->set_status_header(400)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Comment text is required']));
+                return;
+            }
+            $this->load->model('ClassroomStream_model');
+            $comment_id = $this->ClassroomStream_model->add_comment((int)$stream_id, $user_data['user_id'], $comment_text);
+            
+            if ($comment_id) {
+                // Create notifications for comment
+                $this->load->helper('notification');
+                
+                $notification_user_ids = [];
+                
+                // Notify post author if different from commenter
+                if ($stream['user_id'] !== $user_data['user_id']) {
+                    $notification_user_ids[] = $stream['user_id'];
+                }
+                
+                // Notify other students in this class (excluding commenter)
+                $other_students = $this->db->select('ce.student_id')
+                    ->from('classroom_enrollments ce')
+                    ->where('ce.classroom_id', $classroom['id'])
+                    ->where('ce.student_id !=', $user_data['user_id'])
+                    ->where('ce.status', 'active')
+                    ->get()->result_array();
+                
+                foreach ($other_students as $student) {
+                    $notification_user_ids[] = $student['student_id'];
+                }
+                
+                // Create notifications if there are recipients
+                if (!empty($notification_user_ids)) {
+                    $commenter_name = $user_data['full_name'] ?? $user_data['user_id'];
+                    $title = 'New comment from ' . $commenter_name;
+                    $snippet = mb_substr(trim($comment_text), 0, 120);
+                    if (mb_strlen(trim($comment_text)) > 120) {
+                        $snippet .= '…';
+                    }
+                    $message = $snippet;
+                    
+                    create_notifications_for_users(
+                        $notification_user_ids,
+                        'announcement',
+                        $title,
+                        $message,
+                        $stream_id,
+                        'announcement',
+                        $class_code,
+                        false
+                    );
+                    
+                    // Log notification creation
+                    log_message('info', "Comment notifications sent to " . count($notification_user_ids) . " users for comment {$comment_id}");
+                }
+                
+                // Get updated comments list
+                $comments = $this->ClassroomStream_model->get_comments($stream_id);
+                
+                $this->output->set_status_header(201)->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => true, 
+                        'message' => 'Comment added successfully', 
+                        'data' => [
+                            'comment_id' => $comment_id,
+                            'comments' => $comments
+                        ]
+                    ]));
+            } else {
+                $this->output->set_status_header(500)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to add comment']));
+            }
+        } catch (Exception $e) {
+            $this->output->set_status_header(500)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to add comment']));
+        }
+    }
+
+    /**
+     * Edit a comment (owner only)
+     * PUT /api/student/classroom/{class_code}/stream/{stream_id}/comment/{comment_id}
+     * Body: { "comment": "text" }
+     */
+    public function classroom_stream_comment_put($class_code, $stream_id, $comment_id) {
+        $user_data = require_auth($this);
+        if (!$user_data) { return; }
+        if ($user_data['role'] !== 'student') {
+            $this->output->set_status_header(403)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+        try {
+            // Validate classroom and enrollment
+            $classroom = $this->db->where('class_code', $class_code)->where('is_active', 1)->get('classrooms')->row_array();
+            if (!$classroom) { $this->output->set_status_header(404)->set_content_type('application/json')->set_output(json_encode(['status' => false, 'message' => 'Classroom not found'])); return; }
+            $enrollment = $this->db->where('classroom_id', $classroom['id'])->where('student_id', $user_data['user_id'])->where('status', 'active')->get('classroom_enrollments')->row_array();
+            if (!$enrollment) { $this->output->set_status_header(403)->set_content_type('application/json')->set_output(json_encode(['status' => false, 'message' => 'Access denied. You are not enrolled in this class'])); return; }
+            // Validate stream
+            $stream = $this->db->where('id', (int)$stream_id)->where('class_code', $class_code)->get('classroom_stream')->row_array();
+            if (!$stream) { $this->output->set_status_header(404)->set_content_type('application/json')->set_output(json_encode(['status' => false, 'message' => 'Stream post not found'])); return; }
+            // Parse input
+            $input = json_decode(file_get_contents('php://input'), true);
+            $comment_text = isset($input['comment']) ? trim($input['comment']) : '';
+            if ($comment_text === '') { $this->output->set_status_header(400)->set_content_type('application/json')->set_output(json_encode(['status' => false, 'message' => 'Comment text is required'])); return; }
+            $this->load->model('ClassroomStream_model');
+            $ok = $this->ClassroomStream_model->update_comment((int)$comment_id, $user_data['user_id'], $comment_text);
+            if (!$ok) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Comment not found or not owned by you']));
+                return;
+            }
+            $this->output->set_status_header(200)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'message' => 'Comment updated']));
+        } catch (Exception $e) {
+            $this->output->set_status_header(500)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to update comment']));
+        }
+    }
+
+    /**
+     * Delete a comment (owner only)
+     * DELETE /api/student/classroom/{class_code}/stream/{stream_id}/comment/{comment_id}
+     */
+    public function classroom_stream_comment_delete($class_code, $stream_id, $comment_id) {
+        $user_data = require_auth($this);
+        if (!$user_data) { return; }
+        if ($user_data['role'] !== 'student') {
+            $this->output->set_status_header(403)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+        try {
+            // Validate classroom and enrollment
+            $classroom = $this->db->where('class_code', $class_code)->where('is_active', 1)->get('classrooms')->row_array();
+            if (!$classroom) { $this->output->set_status_header(404)->set_content_type('application/json')->set_output(json_encode(['status' => false, 'message' => 'Classroom not found'])); return; }
+            $enrollment = $this->db->where('classroom_id', $classroom['id'])->where('student_id', $user_data['user_id'])->where('status', 'active')->get('classroom_enrollments')->row_array();
+            if (!$enrollment) { $this->output->set_status_header(403)->set_content_type('application/json')->set_output(json_encode(['status' => false, 'message' => 'Access denied. You are not enrolled in this class'])); return; }
+            // Validate stream
+            $stream = $this->db->where('id', (int)$stream_id)->where('class_code', $class_code)->get('classroom_stream')->row_array();
+            if (!$stream) { $this->output->set_status_header(404)->set_content_type('application/json')->set_output(json_encode(['status' => false, 'message' => 'Stream post not found'])); return; }
+            $this->load->model('ClassroomStream_model');
+            $ok = $this->ClassroomStream_model->delete_comment((int)$comment_id, $user_data['user_id']);
+            if (!$ok) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Comment not found or not owned by you']));
+                return;
+            }
+            $this->output->set_status_header(200)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'message' => 'Comment deleted']));
+        } catch (Exception $e) {
+            $this->output->set_status_header(500)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to delete comment']));
+        }
+    }
+
+    /**
+     * Get student's enrolled classes with proper mapping for excuse letters
+     * GET /api/student/classes
+     */
+    public function classes_get() {
+        // Require student authentication
+        $user_data = require_auth($this);
+        if (!$user_data) {
+            return; // Error response already sent
+        }
+
+        // Verify user is a student
+        if ($user_data['role'] !== 'student') {
+            $this->output
+                ->set_status_header(403)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+
+        try {
+            // Get student's enrolled classes with proper mapping
+            $classes = $this->db->select('
+                c.id as classroom_id,
+                c.class_code,
+                c.subject_id,
+                c.section_id,
+                c.semester,
+                c.school_year,
+                c.teacher_id,
+                s.subject_name,
+                s.subject_code,
+                sec.section_name,
+                u.full_name as teacher_name,
+                cl.class_id as excuse_letter_class_id
+            ')
+            ->from('classroom_enrollments ce')
+            ->join('classrooms c', 'ce.classroom_id = c.id')
+            ->join('subjects s', 'c.subject_id = s.id')
+            ->join('sections sec', 'c.section_id = sec.section_id')
+            ->join('users u', 'c.teacher_id = u.user_id')
+            ->join('classes cl', 'cl.subject_id = c.subject_id AND cl.section_id = c.section_id AND cl.teacher_id = c.teacher_id', 'left')
+            ->where('ce.student_id', $user_data['user_id'])
+            ->where('ce.status', 'active')
+            ->order_by('s.subject_name', 'ASC')
+            ->order_by('sec.section_name', 'ASC')
+            ->get()->result_array();
+
+            // Add display-friendly fields
+            foreach ($classes as &$class) {
+                $class['display_name'] = $class['subject_name'] . ' (' . $class['subject_code'] . ') - ' . $class['section_name'];
+                $class['is_enrolled'] = true;
+                $class['enrolled_at'] = date('Y-m-d H:i:s');
+            }
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Classes retrieved successfully',
+                    'data' => $classes
+                ]));
+
+        } catch (Exception $e) {
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to retrieve classes: ' . $e->getMessage()]));
+        }
     }
 }

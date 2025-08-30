@@ -87,6 +87,11 @@ class AdminController extends BaseController {
             return json_response(false, 'Invalid semester: must be "1st" or "2nd"', null, 400);
         }
         
+        // Validate year_level is numeric
+        if (!is_numeric($data->year_level) || $data->year_level < 1 || $data->year_level > 4) {
+            return json_response(false, 'Invalid year_level: must be a number between 1 and 4', null, 400);
+        }
+        
         // Standardize program name to shortcut format
         $program_shortcut = $this->standardize_program_name($data->program);
         if (!$program_shortcut) {
@@ -159,6 +164,11 @@ class AdminController extends BaseController {
         // Validate semester
         if (!in_array($data->semester, ['1st', '2nd'])) {
             return json_response(false, 'Invalid semester: must be "1st" or "2nd"', null, 400);
+        }
+        
+        // Validate year_level is numeric
+        if (!is_numeric($data->year_level) || $data->year_level < 1 || $data->year_level > 4) {
+            return json_response(false, 'Invalid year_level: must be a number between 1 and 4', null, 400);
         }
         
         // Standardize program name to shortcut format
@@ -1361,7 +1371,7 @@ class AdminController extends BaseController {
         try {
             // Define programs and year levels
             $programs = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
-            $year_levels = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+            $year_levels = [1, 2, 3, 4]; // Changed to numeric values
             $sections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
             
             $created_count = 0;
@@ -1374,7 +1384,7 @@ class AdminController extends BaseController {
             foreach ($programs as $program) {
                 foreach ($year_levels as $year_level) {
                     foreach ($sections as $section_letter) {
-                        $section_name = $program . ' ' . substr($year_level, 0, 1) . $section_letter;
+                        $section_name = $program . ' ' . $year_level . $section_letter;
                         
                         // Check if section already exists
                         $existing = $this->db->get_where('sections', [
@@ -1422,7 +1432,7 @@ class AdminController extends BaseController {
                 'existing_sections' => $existing_count,
                 'total_sections' => $total_sections,
                 'programs' => $programs,
-                'year_levels' => $year_levels,
+                'year_levels' => $year_levels, // Now contains [1, 2, 3, 4]
                 'sections_per_year' => count($sections),
                 'errors' => $errors
             ];

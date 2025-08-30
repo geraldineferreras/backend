@@ -168,7 +168,9 @@ $route['api/attendance/excuse-letter-status/(:any)/(:any)']['get'] = 'api/Attend
 $route['api/student/grades']['get'] = 'api/StudentController/grades_get';
 $route['api/student/join-class']['post'] = 'api/StudentController/join_class';
 $route['api/student/my-classes']['get'] = 'api/StudentController/my_classes';
+$route['api/student/classes']['get'] = 'api/StudentController/classes_get';
 $route['api/student/leave-class']['delete'] = 'api/StudentController/leave_class';
+$route['api/student/classroom/(:any)/grades']['get'] = 'api/StudentController/classroom_grades_get/$1';
 $route['api/student/debug-classes']['get'] = 'api/StudentController/debug_classes';
 $route['api/student/classroom/(:any)/people']['get'] = 'api/StudentController/classroom_people_get/$1';
 $route['api/student/classroom/(:any)/stream']['get'] = 'api/StudentController/classroom_stream_get/$1';
@@ -190,6 +192,7 @@ $route['api/student/profile/update']['post'] = 'api/StudentController/profile_up
 
 // Student Stream Comments
 $route['api/student/classroom/(:any)/stream/(:num)/comment']['post'] = 'api/StudentController/classroom_stream_comment_post/$1/$2';
+$route['api/student/classroom/(:any)/stream/(:num)/comment-count']['get'] = 'api/StudentController/classroom_stream_comment_count_get/$1/$2';
 $route['api/student/classroom/(:any)/stream/(:num)/comments']['get'] = 'api/StudentController/classroom_stream_comments_get/$1/$2';
 $route['api/student/classroom/(:any)/stream/(:num)/comment/(:num)']['put'] = 'api/StudentController/classroom_stream_comment_put/$1/$2/$3';
 $route['api/student/classroom/(:any)/stream/(:num)/comment/(:num)']['delete'] = 'api/StudentController/classroom_stream_comment_delete/$1/$2/$3';
