@@ -672,6 +672,10 @@ class AdminController extends BaseController {
         $user_data = require_admin($this);
         if (!$user_data) return;
         $this->load->model('Class_model');
+        $this->load->model('Subject_model');
+        $this->load->model('Section_model');
+        $this->load->model('User_model');
+        
         $data = json_decode(file_get_contents('php://input'), true);
         if (json_last_error() !== JSON_ERROR_NONE) {
             return json_response(false, 'Invalid JSON format', null, 400);
@@ -684,6 +688,9 @@ class AdminController extends BaseController {
         }
         $id = $this->Class_model->insert($data);
         if ($id) {
+            // Send notification to teacher about new subject assignment
+            $this->send_teacher_subject_assignment_notification($data['teacher_id'], $data['subject_id'], $data['section_id'], $data['semester'], $data['school_year']);
+            
             return json_response(true, 'Class created successfully', ['class_id' => $id], 201);
         } else {
             return json_response(false, 'Failed to create class', null, 500);
@@ -694,12 +701,27 @@ class AdminController extends BaseController {
         $user_data = require_admin($this);
         if (!$user_data) return;
         $this->load->model('Class_model');
+        $this->load->model('Subject_model');
+        $this->load->model('Section_model');
+        $this->load->model('User_model');
+        
+        // Get current class data before update
+        $current_class = $this->Class_model->get_by_id($id);
+        if (!$current_class) {
+            return json_response(false, 'Class not found', null, 404);
+        }
+        
         $data = json_decode(file_get_contents('php://input'), true);
         if (json_last_error() !== JSON_ERROR_NONE) {
             return json_response(false, 'Invalid JSON format', null, 400);
         }
         $success = $this->Class_model->update($id, $data);
         if ($success) {
+            // Send notification if teacher assignment changed
+            if (isset($data['teacher_id']) && $data['teacher_id'] !== $current_class['teacher_id']) {
+                $this->send_teacher_subject_assignment_notification($data['teacher_id'], $data['subject_id'] ?? $current_class['subject_id'], $data['section_id'] ?? $current_class['section_id'], $data['semester'] ?? $current_class['semester'], $data['school_year'] ?? $current_class['school_year']);
+            }
+            
             return json_response(true, 'Class updated successfully');
         } else {
             return json_response(false, 'Failed to update class', null, 500);
@@ -710,8 +732,21 @@ class AdminController extends BaseController {
         $user_data = require_admin($this);
         if (!$user_data) return;
         $this->load->model('Class_model');
+        $this->load->model('Subject_model');
+        $this->load->model('Section_model');
+        $this->load->model('User_model');
+        
+        // Get class data before deletion
+        $class = $this->Class_model->get_by_id($id);
+        if (!$class) {
+            return json_response(false, 'Class not found', null, 404);
+        }
+        
         $success = $this->Class_model->delete($id);
         if ($success) {
+            // Send notification to teacher about subject assignment removal
+            $this->send_teacher_subject_removal_notification($class['teacher_id'], $class['subject_id'], $class['section_id'], $class['semester'], $class['school_year']);
+            
             return json_response(true, 'Class deleted successfully');
         } else {
             return json_response(false, 'Failed to delete class', null, 500);
@@ -1069,6 +1104,94 @@ class AdminController extends BaseController {
 
         } catch (Exception $e) {
             log_message('error', "Failed to send student section assignment notifications: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send notification to teacher about new subject assignment
+     */
+    private function send_teacher_subject_assignment_notification($teacher_id, $subject_id, $section_id, $semester, $school_year) {
+        try {
+            $this->load->helper('notification');
+            
+            // Get teacher details
+            $teacher = $this->User_model->get_by_id($teacher_id);
+            if (!$teacher) {
+                log_message('error', "Teacher not found for subject assignment notification: {$teacher_id}");
+                return;
+            }
+            
+            // Get subject details
+            $subject = $this->Subject_model->get_by_id($subject_id);
+            if (!$subject) {
+                log_message('error', "Subject not found for assignment notification: {$subject_id}");
+                return;
+            }
+            
+            // Get section details
+            $section = $this->Section_model->get_by_id($section_id);
+            if (!$section) {
+                log_message('error', "Section not found for assignment notification: {$section_id}");
+                return;
+            }
+            
+            $title = "New Subject Assignment";
+            $message = "Hello {$teacher['full_name']}, you have been assigned to teach ";
+            $message .= "{$subject['subject_name']} ({$subject['subject_code']}) ";
+            $message .= "for Section {$section['section_name']} ";
+            $message .= "({$semester} Semester, {$school_year}). ";
+            $message .= "You can now create classrooms and manage this subject offering.";
+            
+            create_system_notification($teacher_id, $title, $message, false);
+            
+            log_message('info', "Subject assignment notification sent to teacher {$teacher_id} for subject {$subject['subject_name']}");
+            
+        } catch (Exception $e) {
+            log_message('error', "Failed to send teacher subject assignment notification: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Send notification to teacher about subject assignment removal
+     */
+    private function send_teacher_subject_removal_notification($teacher_id, $subject_id, $section_id, $semester, $school_year) {
+        try {
+            $this->load->helper('notification');
+            
+            // Get teacher details
+            $teacher = $this->User_model->get_by_id($teacher_id);
+            if (!$teacher) {
+                log_message('error', "Teacher not found for subject removal notification: {$teacher_id}");
+                return;
+            }
+            
+            // Get subject details
+            $subject = $this->Subject_model->get_by_id($subject_id);
+            if (!$subject) {
+                log_message('error', "Subject not found for removal notification: {$subject_id}");
+                return;
+            }
+            
+            // Get section details
+            $section = $this->Section_model->get_by_id($section_id);
+            if (!$section) {
+                log_message('error', "Section not found for removal notification: {$section_id}");
+                return;
+            }
+            
+            $title = "Subject Assignment Removed";
+            $message = "Hello {$teacher['full_name']}, your assignment for ";
+            $message .= "{$subject['subject_name']} ({$subject['subject_code']}) ";
+            $message .= "Section {$section['section_name']} ";
+            $message .= "({$semester} Semester, {$school_year}) ";
+            $message .= "has been removed by the administrator.";
+            
+            create_system_notification($teacher_id, $title, $message, false);
+            
+            log_message('info', "Subject removal notification sent to teacher {$teacher_id} for subject {$subject['subject_name']}");
+            
+        } catch (Exception $e) {
+            log_message('error', "Failed to send teacher subject removal notification: " . $e->getMessage());
         }
     }
 

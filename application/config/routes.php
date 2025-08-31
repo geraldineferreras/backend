@@ -264,6 +264,7 @@ $route['api/teacher/classroom/(:any)']['put'] = 'api/TeacherController/classroom
 $route['api/teacher/classroom/(:any)']['delete'] = 'api/TeacherController/classrooms_delete_by_code/$1';
 $route['api/teacher/classroom/(:any)/stream']['post'] = 'api/TeacherController/classroom_stream_post/$1';
 $route['api/teacher/classroom/(:any)/stream']['get'] = 'api/TeacherController/classroom_stream_get/$1';
+$route['api/teacher/classroom/(:any)/stream/(:num)']['put'] = 'api/TeacherController/classroom_stream_put/$1/$2';
 $route['api/teacher/classroom/(:any)/stream/(:num)/like']['post'] = 'api/TeacherController/classroom_stream_like_post/$1/$2';
 $route['api/teacher/classroom/(:any)/stream/(:num)/unlike']['post'] = 'api/TeacherController/classroom_stream_unlike_post/$1/$2';
 $route['api/teacher/classroom/(:any)/stream/(:num)/pin']['post'] = 'api/TeacherController/classroom_stream_pin_post/$1/$2';

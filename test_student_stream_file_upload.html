@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Stream Posting with File Uploads Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .file-inputs {
+            border: 2px dashed #ddd;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .file-input-group {
+            margin-bottom: 10px;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { border-color: #28a745; background-color: #d4edda; }
+        .error { border-color: #dc3545; background-color: #f8d7da; }
+        .info { border-color: #17a2b8; background-color: #d1ecf1; }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-bottom: none;
+            background-color: #f8f9fa;
+        }
+        .tab.active {
+            background-color: white;
+            border-color: #ddd;
+            border-bottom: 1px solid white;
+            margin-bottom: -1px;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>Student Stream Posting with File Uploads Test</h1>
+    
+    <div class="container">
+        <h3>Authentication</h3>
+        <div class="form-group">
+            <label for="tokenInput">JWT Token:</label>
+            <input type="text" id="tokenInput" placeholder="Enter your JWT token" style="width: 100%;">
+            <button onclick="setToken()">Set Token</button>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" onclick="showTab('multipart')">Multipart with Files</div>
+        <div class="tab" onclick="showTab('json')">JSON Only</div>
+        <div class="tab" onclick="showTab('view')">View Posts</div>
+    </div>
+
+    <!-- Multipart with Files Tab -->
+    <div id="multipart" class="tab-content active">
+        <div class="container">
+            <h3>Create Stream Post with File Uploads (Multipart)</h3>
+            <form id="multipartForm">
+                <div class="form-group">
+                    <label for="classCode">Class Code:</label>
+                    <input type="text" id="classCode" value="J56NHD" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="title">Title (Optional):</label>
+                    <input type="text" id="title" placeholder="Enter post title">
+                </div>
+                
+                <div class="form-group">
+                    <label for="content">Content:</label>
+                    <textarea id="content" placeholder="Enter post content" required>This is a test post with file attachments from a student.</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="isDraft">Is Draft:</label>
+                    <select id="isDraft">
+                        <option value="0">No (Published)</option>
+                        <option value="1">Yes (Draft)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="allowComments">Allow Comments:</label>
+                    <select id="allowComments">
+                        <option value="1">Yes</option>
+                        <option value="0">No</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>File Attachments:</label>
+                    <div class="file-inputs">
+                        <div class="file-input-group">
+                            <input type="file" id="attachment0" accept="*/*">
+                        </div>
+                        <div class="file-input-group">
+                            <input type="file" id="attachment1" accept="*/*">
+                        </div>
+                        <div class="file-input-group">
+                            <input type="file" id="attachment2" accept="*/*">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Link Attachments:</label>
+                    <input type="url" id="link0" placeholder="Enter URL for link attachment">
+                    <input type="url" id="link1" placeholder="Enter URL for link attachment">
+                </div>
+                
+                <button type="submit">Create Post with Files</button>
+            </form>
+            
+            <div id="multipartResponse" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- JSON Only Tab -->
+    <div id="json" class="tab-content">
+        <div class="container">
+            <h3>Create Stream Post (JSON Only)</h3>
+            <form id="jsonForm">
+                <div class="form-group">
+                    <label for="jsonClassCode">Class Code:</label>
+                    <input type="text" id="jsonClassCode" value="J56NHD" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="jsonTitle">Title:</label>
+                    <input type="text" id="jsonTitle" value="JSON Test Post" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="jsonContent">Content:</label>
+                    <textarea id="jsonContent" required>This is a test post using JSON format.</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="jsonIsDraft">Is Draft:</label>
+                    <select id="jsonIsDraft">
+                        <option value="0">No (Published)</option>
+                        <option value="1">Yes (Draft)</option>
+                    </select>
+                </div>
+                
+                <button type="submit">Create JSON Post</button>
+            </form>
+            
+            <div id="jsonResponse" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- View Posts Tab -->
+    <div id="view" class="tab-content">
+        <div class="container">
+            <h3>View Stream Posts</h3>
+            <div class="form-group">
+                <label for="viewClassCode">Class Code:</label>
+                <input type="text" id="viewClassCode" value="J56NHD">
+                <button onclick="loadPosts()">Load Posts</button>
+            </div>
+            
+            <div id="postsList"></div>
+        </div>
+    </div>
+
+    <script>
+        let authToken = '';
+        
+        // Check for stored token
+        const storedToken = localStorage.getItem('authToken');
+        if (storedToken) {
+            authToken = storedToken;
+            document.getElementById('tokenInput').value = storedToken;
+        }
+
+        function setToken() {
+            authToken = document.getElementById('tokenInput').value;
+            localStorage.setItem('authToken', authToken);
+            alert('Token set successfully!');
+        }
+
+        function showTab(tabName) {
+            // Hide all tab contents
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => content.classList.remove('active'));
+            
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Show selected tab content and activate tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        async function createMultipartPost() {
+            const formData = new FormData();
+            formData.append('title', document.getElementById('title').value);
+            formData.append('content', document.getElementById('content').value);
+            formData.append('is_draft', document.getElementById('isDraft').value);
+            formData.append('allow_comments', document.getElementById('allowComments').value);
+            
+            // Add file attachments
+            for (let i = 0; i < 3; i++) {
+                const file = document.getElementById(`attachment${i}`).files[0];
+                if (file) {
+                    formData.append(`attachment_${i}`, file);
+                }
+            }
+            
+            // Add link attachments
+            for (let i = 0; i < 2; i++) {
+                const link = document.getElementById(`link${i}`).value;
+                if (link) {
+                    formData.append(`link_${i}`, link);
+                }
+            }
+            
+            try {
+                const response = await fetch(`/index.php/api/student/classroom/${document.getElementById('classCode').value}/stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: formData
+                });
+                
+                const result = await response.json();
+                const responseDiv = document.getElementById('multipartResponse');
+                responseDiv.style.display = 'block';
+                
+                if (result.status) {
+                    responseDiv.className = 'response success';
+                    responseDiv.textContent = `✅ Post created successfully!\n\nPost ID: ${result.data.id}\nTitle: ${result.data.title}\nContent: ${result.data.content}\nAttachment Type: ${result.data.attachment_type || 'None'}\nAttachments Count: ${result.data.attachments_count || 0}\n\nResponse: ${JSON.stringify(result, null, 2)}`;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.textContent = `❌ Failed to create post:\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const responseDiv = document.getElementById('multipartResponse');
+                responseDiv.style.display = 'block';
+                responseDiv.className = 'response error';
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function createJsonPost() {
+            const jsonData = {
+                title: document.getElementById('jsonTitle').value,
+                content: document.getElementById('jsonContent').value,
+                is_draft: parseInt(document.getElementById('jsonIsDraft').value),
+                allow_comments: 1
+            };
+            
+            try {
+                const response = await fetch(`/index.php/api/student/classroom/${document.getElementById('jsonClassCode').value}/stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(jsonData)
+                });
+                
+                const result = await response.json();
+                const responseDiv = document.getElementById('jsonResponse');
+                responseDiv.style.display = 'block';
+                
+                if (result.status) {
+                    responseDiv.className = 'response success';
+                    responseDiv.textContent = `✅ JSON post created successfully!\n\nPost ID: ${result.data.id}\nTitle: ${result.data.title}\nContent: ${result.data.content}\n\nResponse: ${JSON.stringify(result, null, 2)}`;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.textContent = `❌ Failed to create JSON post:\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const responseDiv = document.getElementById('jsonResponse');
+                responseDiv.style.display = 'block';
+                responseDiv.className = 'response error';
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function loadPosts() {
+            const classCode = document.getElementById('viewClassCode').value;
+            
+            try {
+                const response = await fetch(`/index.php/api/student/classroom/${classCode}/stream`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                const postsList = document.getElementById('postsList');
+                
+                if (result.status) {
+                    let html = '<h3>Stream Posts:</h3>';
+                    result.data.forEach(post => {
+                        html += `
+                            <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 4px;">
+                                <strong>ID:</strong> ${post.id}<br>
+                                <strong>Title:</strong> ${post.title || 'No title'}<br>
+                                <strong>Content:</strong> ${post.content.substring(0, 100)}${post.content.length > 100 ? '...' : ''}<br>
+                                <strong>Status:</strong> ${post.is_draft ? 'Draft' : 'Published'}<br>
+                                <strong>Attachments:</strong> ${post.attachment_type || 'None'}<br>
+                                <strong>Created:</strong> ${post.created_at}<br>
+                                <strong>Updated:</strong> ${post.updated_at || 'Never'}<br>
+                                ${post.attachments ? `<strong>Attachment Count:</strong> ${post.attachments.length}` : ''}
+                            </div>
+                        `;
+                    });
+                    postsList.innerHTML = html;
+                } else {
+                    postsList.innerHTML = `<div class="response error">Failed to load posts: ${result.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('postsList').innerHTML = `<div class="response error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Form event listeners
+        document.getElementById('multipartForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            createMultipartPost();
+        });
+        
+        document.getElementById('jsonForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            createJsonPost();
+        });
+    </script>
+</body>
+</html>

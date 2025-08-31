@@ -23,31 +23,34 @@ class ClassroomStream_model extends CI_Model {
 
     // Get all posts for a classroom, with optional filters, and filter by student_id if provided
     public function get_by_class_code($class_code, $filters = [], $student_id = null) {
-        $this->db->where('class_code', $class_code);
+        $this->db->select('cs.*, u.full_name as user_name, u.profile_pic');
+        $this->db->from('classroom_stream cs');
+        $this->db->join('users u', 'cs.user_id = u.user_id', 'left');
+        $this->db->where('cs.class_code', $class_code);
         if (isset($filters['is_draft'])) {
-            $this->db->where('is_draft', $filters['is_draft']);
+            $this->db->where('cs.is_draft', $filters['is_draft']);
         }
         if (isset($filters['is_scheduled'])) {
-            $this->db->where('is_scheduled', $filters['is_scheduled']);
+            $this->db->where('cs.is_scheduled', $filters['is_scheduled']);
         }
         // When requesting published-only for student UI: exclude drafts and only include
         // scheduled posts that are due (scheduled_at <= now)
         if (isset($filters['published_only']) && $filters['published_only']) {
-            $this->db->where('is_draft', 0);
+            $this->db->where('cs.is_draft', 0);
             $this->db->group_start();
-            $this->db->where('is_scheduled', 0);
+            $this->db->where('cs.is_scheduled', 0);
             $this->db->or_group_start();
-            $this->db->where('is_scheduled', 1);
-            $this->db->where('scheduled_at <=', date('Y-m-d H:i:s'));
+            $this->db->where('cs.is_scheduled', 1);
+            $this->db->where('cs.scheduled_at <=', date('Y-m-d H:i:s'));
             $this->db->group_end();
             $this->db->group_end();
         }
         if (isset($filters['scheduled_only']) && $filters['scheduled_only']) {
-            $this->db->where('is_scheduled', 1);
-            $this->db->where('scheduled_at >', date('Y-m-d H:i:s'));
+            $this->db->where('cs.is_scheduled', 1);
+            $this->db->where('cs.scheduled_at >', date('Y-m-d H:i:s'));
         }
-        $this->db->order_by('created_at', 'DESC');
-        $posts = $this->db->get('classroom_stream')->result_array();
+        $this->db->order_by('cs.created_at', 'DESC');
+        $posts = $this->db->get()->result_array();
         if ($student_id) {
             // Filter posts: show if visible_to_student_ids is null/empty or contains student_id
             $posts = array_filter($posts, function($post) use ($student_id) {
@@ -192,32 +195,41 @@ class ClassroomStream_model extends CI_Model {
             }
             // Keep the raw path for users with profile pictures (like profile_pic in user API)
             
-            // Handle multiple attachments
-            if ($post['attachment_type'] === 'multiple') {
+            // Handle attachments - load from stream_attachments table for consistency
+            if (!empty($post['attachment_type']) && $post['attachment_type'] !== 'none') {
                 $attachments = $this->StreamAttachment_model->get_by_stream_id($post['id']);
-                $post['attachments'] = [];
-                foreach ($attachments as $attachment) {
-                    $post['attachments'][] = [
-                        'attachment_id' => $attachment['attachment_id'],
-                        'file_name' => $attachment['file_name'],
-                        'original_name' => $attachment['original_name'],
-                        'file_path' => $attachment['file_path'],
-                        'file_size' => $attachment['file_size'],
-                        'mime_type' => $attachment['mime_type'],
-                        'attachment_type' => $attachment['attachment_type'],
-                        'attachment_url' => $attachment['attachment_url'],
-                        'serving_url' => get_file_url($attachment['file_path']),
-                        'file_type' => get_file_type($attachment['file_path'])
-                    ];
-                }
-                // Keep backward compatibility
-                $post['attachment_serving_url'] = !empty($attachments) ? get_file_url($attachments[0]['file_path']) : null;
-                $post['attachment_file_type'] = !empty($attachments) ? get_file_type($attachments[0]['file_path']) : null;
-            } else {
-                // Single attachment (backward compatibility)
-                if (!empty($post['attachment_url'])) {
-                    $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
-                    $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                if (!empty($attachments)) {
+                    $post['attachments'] = [];
+                    foreach ($attachments as $attachment) {
+                        $post['attachments'][] = [
+                            'attachment_id' => $attachment['attachment_id'],
+                            'file_name' => $attachment['file_name'],
+                            'original_name' => $attachment['original_name'],
+                            'file_path' => $attachment['file_path'],
+                            'file_size' => $attachment['file_size'],
+                            'mime_type' => $attachment['mime_type'],
+                            'attachment_type' => $attachment['attachment_type'],
+                            'attachment_url' => $attachment['attachment_url'],
+                            'serving_url' => get_file_url($attachment['file_path']),
+                            'file_type' => get_file_type($attachment['file_path'])
+                        ];
+                    }
+                    
+                    // Keep backward compatibility
+                    $post['attachment_serving_url'] = get_file_url($attachments[0]['file_path']);
+                    $post['attachment_file_type'] = get_file_type($attachments[0]['file_path']);
+                    
+                    // For single files, also set the main attachment fields for consistency
+                    if (count($attachments) === 1) {
+                        $post['attachment_url'] = $attachments[0]['attachment_url'];
+                        $post['attachment_type'] = 'file';
+                    }
+                } else {
+                    // Fallback to main table fields if no attachments found
+                    if (!empty($post['attachment_url'])) {
+                        $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                        $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                    }
                 }
             }
         }
@@ -248,32 +260,41 @@ class ClassroomStream_model extends CI_Model {
             }
             // Keep the raw path for users with profile pictures (like profile_pic in user API)
             
-            // Handle multiple attachments
-            if ($post['attachment_type'] === 'multiple') {
+            // Handle attachments - load from stream_attachments table for consistency
+            if (!empty($post['attachment_type']) && $post['attachment_type'] !== 'none') {
                 $attachments = $this->StreamAttachment_model->get_by_stream_id($post['id']);
-                $post['attachments'] = [];
-                foreach ($attachments as $attachment) {
-                    $post['attachments'][] = [
-                        'attachment_id' => $attachment['attachment_id'],
-                        'file_name' => $attachment['file_name'],
-                        'original_name' => $attachment['original_name'],
-                        'file_path' => $attachment['file_path'],
-                        'file_size' => $attachment['file_size'],
-                        'mime_type' => $attachment['mime_type'],
-                        'attachment_type' => $attachment['attachment_type'],
-                        'attachment_url' => $attachment['attachment_url'],
-                        'serving_url' => get_file_url($attachment['file_path']),
-                        'file_type' => get_file_type($attachment['file_path'])
-                    ];
-                }
-                // Keep backward compatibility
-                $post['attachment_serving_url'] = !empty($attachments) ? get_file_url($attachments[0]['file_path']) : null;
-                $post['attachment_file_type'] = !empty($attachments) ? get_file_type($attachments[0]['file_path']) : null;
-            } else {
-                // Single attachment (backward compatibility)
-                if (!empty($post['attachment_url'])) {
-                    $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
-                    $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                if (!empty($attachments)) {
+                    $post['attachments'] = [];
+                    foreach ($attachments as $attachment) {
+                        $post['attachments'][] = [
+                            'attachment_id' => $attachment['attachment_id'],
+                            'file_name' => $attachment['file_name'],
+                            'original_name' => $attachment['original_name'],
+                            'file_path' => $attachment['file_path'],
+                            'file_size' => $attachment['file_size'],
+                            'mime_type' => $attachment['mime_type'],
+                            'attachment_type' => $attachment['attachment_type'],
+                            'attachment_url' => $attachment['attachment_url'],
+                            'serving_url' => get_file_url($attachment['file_path']),
+                            'file_type' => get_file_type($attachment['file_path'])
+                        ];
+                    }
+                    
+                    // Keep backward compatibility
+                    $post['attachment_serving_url'] = get_file_url($attachments[0]['file_path']);
+                    $post['attachment_file_type'] = get_file_type($attachments[0]['file_path']);
+                    
+                    // For single files, also set the main attachment fields for consistency
+                    if (count($attachments) === 1) {
+                        $post['attachment_url'] = $attachments[0]['attachment_url'];
+                        $post['attachment_type'] = 'file';
+                    }
+                } else {
+                    // Fallback to main table fields if no attachments found
+                    if (!empty($post['attachment_url'])) {
+                        $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                        $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                    }
                 }
             }
         }
@@ -338,24 +359,43 @@ class ClassroomStream_model extends CI_Model {
     public function get_by_id($id) {
         $post = $this->db->get_where('classroom_stream', ['id' => $id])->row_array();
         
-        if ($post && $post['attachment_type'] === 'multiple') {
-            // Load StreamAttachment model for multiple attachments
+        if ($post && !empty($post['attachment_type']) && $post['attachment_type'] !== 'none') {
+            // Load StreamAttachment model for attachments
             $this->load->model('StreamAttachment_model');
             $attachments = $this->StreamAttachment_model->get_by_stream_id($id);
-            $post['attachments'] = [];
-            foreach ($attachments as $attachment) {
-                $post['attachments'][] = [
-                    'attachment_id' => $attachment['attachment_id'],
-                    'file_name' => $attachment['file_name'],
-                    'original_name' => $attachment['original_name'],
-                    'file_path' => $attachment['file_path'],
-                    'file_size' => $attachment['file_size'],
-                    'mime_type' => $attachment['mime_type'],
-                    'attachment_type' => $attachment['attachment_type'],
-                    'attachment_url' => $attachment['attachment_url'],
-                    'serving_url' => get_file_url($attachment['file_path']),
-                    'file_type' => get_file_type($attachment['file_path'])
-                ];
+            
+            if (!empty($attachments)) {
+                $post['attachments'] = [];
+                foreach ($attachments as $attachment) {
+                    $post['attachments'][] = [
+                        'attachment_id' => $attachment['attachment_id'],
+                        'file_name' => $attachment['file_name'],
+                        'original_name' => $attachment['original_name'],
+                        'file_path' => $attachment['file_path'],
+                        'file_size' => $attachment['file_size'],
+                        'mime_type' => $attachment['mime_type'],
+                        'attachment_type' => $attachment['attachment_type'],
+                        'attachment_url' => $attachment['attachment_url'],
+                        'serving_url' => get_file_url($attachment['file_path']),
+                        'file_type' => get_file_type($attachment['file_path'])
+                    ];
+                }
+                
+                // Keep backward compatibility
+                $post['attachment_serving_url'] = get_file_url($attachments[0]['file_path']);
+                $post['attachment_file_type'] = get_file_type($attachments[0]['file_path']);
+                
+                // For single files, also set the main attachment fields for consistency
+                if (count($attachments) === 1) {
+                    $post['attachment_url'] = $attachments[0]['attachment_url'];
+                    $post['attachment_type'] = 'file';
+                }
+            } else {
+                // Fallback to main table fields if no attachments found
+                if (!empty($post['attachment_url'])) {
+                    $post['attachment_serving_url'] = get_file_url($post['attachment_url']);
+                    $post['attachment_file_type'] = get_file_type($post['attachment_url']);
+                }
             }
         }
         

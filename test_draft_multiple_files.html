@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Draft Multiple Files</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        .file-inputs {
+            border: 2px dashed #ddd;
+            padding: 20px;
+            text-align: center;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .file-inputs:hover {
+            border-color: #007bff;
+        }
+        .file-input {
+            margin: 10px 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .draft-list {
+            margin-top: 30px;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+        .draft-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        .draft-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .draft-content {
+            margin-bottom: 10px;
+            color: #666;
+        }
+        .draft-attachments {
+            margin-top: 10px;
+        }
+        .attachment-item {
+            display: inline-block;
+            background-color: #e9ecef;
+            padding: 5px 10px;
+            margin: 2px;
+            border-radius: 15px;
+            font-size: 12px;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #155724;
+            background-color: #d4edda;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Draft Multiple Files</h1>
+    
+    <div id="message"></div>
+    
+    <form id="draftForm">
+        <div class="form-group">
+            <label for="title">Title:</label>
+            <input type="text" id="title" name="title" placeholder="Enter title" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="content">Content:</label>
+            <textarea id="content" name="content" placeholder="Enter content" required></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label>Attachments:</label>
+            <div class="file-inputs">
+                <div class="file-input">
+                    <input type="file" name="attachment_0" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.ppt,.pptx,.xls,.xlsx,.txt,.zip,.rar,.mp4,.mp3">
+                </div>
+                <div class="file-input">
+                    <input type="file" name="attachment_1" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.ppt,.pptx,.xls,.xlsx,.txt,.zip,.rar,.mp4,.mp3">
+                </div>
+                <div class="file-input">
+                    <input type="file" name="attachment_2" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.ppt,.pptx,.xls,.xlsx,.txt,.zip,.rar,.mp4,.mp3">
+                </div>
+                <button type="button" onclick="addFileInput()">+ Add More Files</button>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="class_code">Class Code:</label>
+            <input type="text" id="class_code" name="class_code" placeholder="Enter class code" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="student_ids">Student IDs (comma-separated):</label>
+            <input type="text" id="student_ids" name="student_ids" placeholder="2021302596, 2021305889">
+        </div>
+        
+        <button type="submit">Save as Draft</button>
+        <button type="button" onclick="publishDraft()">Publish Draft</button>
+    </form>
+    
+    <div class="draft-list">
+        <h2>Drafts</h2>
+        <button onclick="loadDrafts()">Load Drafts</button>
+        <div id="draftsList"></div>
+    </div>
+    
+    <script>
+        let currentDraftId = null;
+        let fileInputCount = 3;
+        
+        function addFileInput() {
+            const fileInputs = document.querySelector('.file-inputs');
+            const newInput = document.createElement('div');
+            newInput.className = 'file-input';
+            newInput.innerHTML = `<input type="file" name="attachment_${fileInputCount}" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.ppt,.pptx,.xls,.xlsx,.txt,.zip,.rar,.mp4,.mp3">`;
+            fileInputs.insertBefore(newInput, fileInputs.lastElementChild);
+            fileInputCount++;
+        }
+        
+        function showMessage(message, type = 'success') {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 5000);
+        }
+        
+        document.getElementById('draftForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            
+            // Add form fields
+            formData.append('title', document.getElementById('title').value);
+            formData.append('content', document.getElementById('content').value);
+            formData.append('is_draft', '1');
+            formData.append('is_scheduled', '0');
+            formData.append('scheduled_at', '');
+            formData.append('allow_comments', '1');
+            formData.append('class_code', document.getElementById('class_code').value);
+            
+            const studentIds = document.getElementById('student_ids').value;
+            if (studentIds) {
+                formData.append('student_ids', studentIds);
+            }
+            
+            // Add files
+            const fileInputs = document.querySelectorAll('input[type="file"]');
+            fileInputs.forEach((input, index) => {
+                if (input.files[0]) {
+                    formData.append(`attachment_${index}`, input.files[0]);
+                }
+            });
+            
+            try {
+                const response = await fetch('/api/teacher/classroom/' + document.getElementById('class_code').value + '/stream', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + localStorage.getItem('token')
+                    },
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Draft saved successfully!');
+                    currentDraftId = result.data.id;
+                    document.getElementById('draftForm').reset();
+                    loadDrafts();
+                } else {
+                    showMessage('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
+            }
+        });
+        
+        async function publishDraft() {
+            if (!currentDraftId) {
+                showMessage('No draft to publish. Save a draft first.', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/teacher/classroom/${document.getElementById('class_code').value}/stream/draft/${currentDraftId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + localStorage.getItem('token')
+                    },
+                    body: JSON.stringify({
+                        is_draft: 0
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Draft published successfully!');
+                    currentDraftId = null;
+                    loadDrafts();
+                } else {
+                    showMessage('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
+            }
+        }
+        
+        async function loadDrafts() {
+            const classCode = document.getElementById('class_code').value;
+            if (!classCode) {
+                showMessage('Please enter a class code first.', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/teacher/classroom/${classCode}/stream/drafts`, {
+                    headers: {
+                        'Authorization': 'Bearer ' + localStorage.getItem('token')
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayDrafts(result.data);
+                } else {
+                    showMessage('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
+            }
+        }
+        
+        function displayDrafts(drafts) {
+            const draftsList = document.getElementById('draftsList');
+            
+            if (drafts.length === 0) {
+                draftsList.innerHTML = '<p>No drafts found.</p>';
+                return;
+            }
+            
+            draftsList.innerHTML = drafts.map(draft => `
+                <div class="draft-item">
+                    <div class="draft-title">${draft.title || 'No Title'}</div>
+                    <div class="draft-content">${draft.content}</div>
+                    <div class="draft-attachments">
+                        <strong>Attachments:</strong>
+                        ${draft.attachments && draft.attachments.length > 0 ? 
+                            draft.attachments.map(att => 
+                                `<span class="attachment-item">${att.original_name} (${att.file_type})</span>`
+                            ).join('') : 
+                            'No attachments'
+                        }
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <small>Created: ${new Date(draft.created_at).toLocaleString()}</small>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Check if user is logged in
+        if (!localStorage.getItem('token')) {
+            showMessage('Please log in first. Token not found.', 'error');
+        }
+    </script>
+</body>
+</html>

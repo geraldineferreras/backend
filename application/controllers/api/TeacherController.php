@@ -448,9 +448,24 @@ class TeacherController extends BaseController
         
         $id = $this->ClassroomStream_model->insert($insert_data);
         if ($id) {
-            // Handle multiple attachments if we have more than one
-            if (!empty($all_attachments) && count($all_attachments) > 1) {
+            // Handle attachments - save ALL attachments to the attachments table for consistency
+            if (!empty($all_attachments)) {
                 $this->StreamAttachment_model->insert_multiple($id, $all_attachments);
+                
+                // Update the main post with attachment info for backward compatibility
+                if (count($all_attachments) === 1) {
+                    // Single file - set main table fields for backward compatibility
+                    $this->db->where('id', $id)->update('classroom_stream', [
+                        'attachment_type' => 'file',
+                        'attachment_url' => $all_attachments[0]['attachment_url']
+                    ]);
+                } else {
+                    // Multiple files - set type to multiple
+                    $this->db->where('id', $id)->update('classroom_stream', [
+                        'attachment_type' => 'multiple',
+                        'attachment_url' => null
+                    ]);
+                }
             }
             
             $post = $this->ClassroomStream_model->get_by_id($id);
@@ -494,6 +509,278 @@ class TeacherController extends BaseController
             return json_response(true, 'Announcement posted successfully', $post, 201);
         } else {
             return json_response(false, 'Failed to post announcement', null, 500);
+        }
+    }
+
+    // Edit a stream post by ID (supports both drafts and published posts)
+    public function classroom_stream_put($class_code, $stream_id) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+        
+        $this->load->model('ClassroomStream_model');
+        $this->load->model('StreamAttachment_model');
+        
+        // Check if the stream post exists and belongs to this teacher
+        $existing_post = $this->ClassroomStream_model->get_by_id($stream_id);
+        if (!$existing_post || $existing_post['class_code'] !== $class_code || $existing_post['user_id'] !== $user_data['user_id']) {
+            return json_response(false, 'Stream post not found or access denied', null, 404);
+        }
+        
+        // Support both raw JSON bodies and multipart form-data
+        $data = [];
+        $all_attachments = [];
+        
+        // Check if this is a multipart request by examining Content-Type header
+        $is_multipart = false;
+        $content_type = $this->input->get_request_header('Content-Type');
+        if ($content_type && strpos($content_type, 'multipart/form-data') !== false) {
+            $is_multipart = true;
+        }
+        
+        if ($is_multipart) {
+            // Handle multipart form-data for file uploads
+            $this->load->helper('file');
+            
+            // For PUT requests with multipart, we need to parse the raw input manually
+            // because $_POST is not populated the same way as with POST requests
+            $raw_input = file_get_contents('php://input');
+            $boundary = null;
+            
+            // Extract boundary from Content-Type header
+            if (preg_match('/boundary=(.*)$/', $content_type, $matches)) {
+                $boundary = $matches[1];
+            }
+            
+            if ($boundary) {
+                // Parse multipart data manually
+                $parts = explode('--' . $boundary, $raw_input);
+                $data = [];
+                
+                foreach ($parts as $part) {
+                    if (empty($part) || $part === '--') continue;
+                    
+                    // Parse each part
+                    if (preg_match('/name="([^"]+)"/', $part, $name_matches)) {
+                        $field_name = $name_matches[1];
+                        
+                        // Check if this is a file upload
+                        if (preg_match('/filename="([^"]+)"/', $part)) {
+                            // This is a file - we'll handle it separately
+                            continue;
+                        }
+                        
+                        // Extract the value (text field)
+                        $value_start = strpos($part, "\r\n\r\n") + 4;
+                        $value_end = strrpos($part, "\r\n");
+                        if ($value_start !== false && $value_end !== false && $value_end > $value_start) {
+                            $value = substr($part, $value_start, $value_end - $value_start);
+                            $data[$field_name] = trim($value);
+                        }
+                    }
+                }
+            } else {
+                // Fallback: try to get data from $_POST (may work in some cases)
+                $data = [
+                    'title' => $this->input->post('title'),
+                    'content' => $this->input->post('content'),
+                    'is_draft' => $this->input->post('is_draft'),
+                    'is_scheduled' => $this->input->post('is_scheduled'),
+                    'scheduled_at' => $this->input->post('scheduled_at'),
+                    'allow_comments' => $this->input->post('allow_comments'),
+                    'student_ids' => $this->input->post('student_ids')
+                ];
+            }
+            
+            // Handle multiple file uploads - check both $_FILES and $_POST for file data
+            $uploaded_files = [];
+            $file_inputs = ['attachment_0', 'attachment_1', 'attachment_2', 'attachment_3', 'attachment_4'];
+            
+            foreach ($file_inputs as $input_name) {
+                // Check if file was uploaded via $_FILES
+                if (isset($_FILES[$input_name]) && $_FILES[$input_name]['error'] === UPLOAD_ERR_OK) {
+                    $file = $_FILES[$input_name];
+                    $original_name = $file['name'];
+                    $file_size = $file['size'];
+                    $file_type = $file['type'];
+                    
+                    // Generate unique filename
+                    $extension = pathinfo($original_name, PATHINFO_EXTENSION);
+                    $file_name = uniqid('stream_') . '_' . time() . '.' . $extension;
+                    $upload_path = 'uploads/announcement/';
+                    
+                    // Create directory if it doesn't exist
+                    if (!is_dir($upload_path)) {
+                        mkdir($upload_path, 0755, true);
+                    }
+                    
+                    $file_path = $upload_path . $file_name;
+                    
+                    if (move_uploaded_file($file['tmp_name'], $file_path)) {
+                        $uploaded_files[] = [
+                            'file_path' => $file_path,
+                            'file_name' => $file_name,
+                            'original_name' => $original_name,
+                            'file_size' => $file_size,
+                            'mime_type' => $file_type,
+                            'attachment_type' => 'file',
+                            'attachment_url' => $file_path
+                        ];
+                    }
+                }
+                // Check if file data was sent via $_POST (for PUT requests)
+                elseif (isset($_POST[$input_name]) && !empty($_POST[$input_name])) {
+                    // This handles cases where files might be sent differently in PUT requests
+                    $file_data = $_POST[$input_name];
+                    if (is_array($file_data) && isset($file_data['tmp_name']) && $file_data['error'] === UPLOAD_ERR_OK) {
+                        $original_name = $file_data['name'];
+                        $file_size = $file_data['size'];
+                        $file_type = $file_data['type'];
+                        
+                        // Generate unique filename
+                        $extension = pathinfo($original_name, PATHINFO_EXTENSION);
+                        $file_name = uniqid('stream_') . '_' . time() . '.' . $extension;
+                        $upload_path = 'uploads/announcement/';
+                        
+                        // Create directory if it doesn't exist
+                        if (!is_dir($upload_path)) {
+                            mkdir($upload_path, 0755, true);
+                        }
+                        
+                        $file_path = $upload_path . $file_name;
+                        
+                        if (move_uploaded_file($file_data['tmp_name'], $file_path)) {
+                            $uploaded_files[] = [
+                                'file_path' => $file_path,
+                                'file_name' => $file_name,
+                                'original_name' => $original_name,
+                                'file_size' => $file_size,
+                                'mime_type' => $file_type,
+                                'attachment_type' => 'file',
+                                'attachment_url' => $file_path
+                            ];
+                        }
+                    }
+                }
+            }
+            
+            // Handle link attachments if provided
+            $link_attachments = [];
+            $link_fields = ['link_0', 'link_1', 'link_2', 'link_3', 'link_4'];
+            foreach ($link_fields as $link_field) {
+                $link_url = $data[$link_field] ?? $this->input->post($link_field);
+                if (!empty($link_url) && filter_var($link_url, FILTER_VALIDATE_URL)) {
+                    $link_attachments[] = [
+                        'file_path' => $link_url,
+                        'file_name' => 'link_' . uniqid(),
+                        'original_name' => $link_url,
+                        'file_size' => 0,
+                        'mime_type' => 'text/plain',
+                        'attachment_type' => 'link',
+                        'attachment_url' => $link_url
+                    ];
+                }
+            }
+            
+            $all_attachments = array_merge($uploaded_files, $link_attachments);
+            
+        } else {
+            // Handle JSON request
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return json_response(false, 'Invalid JSON format', null, 400);
+            }
+        }
+        
+        // Validate required fields
+        $required = ['content'];
+        foreach ($required as $field) {
+            if (empty($data[$field])) {
+                return json_response(false, "$field is required", null, 400);
+            }
+        }
+        
+        // Prepare update data
+        $update_data = [
+            'title' => $data['title'] ?? $existing_post['title'],
+            'content' => $data['content'],
+            'is_draft' => $data['is_draft'] ?? $existing_post['is_draft'],
+            'is_scheduled' => $data['is_scheduled'] ?? $existing_post['is_scheduled'],
+            'scheduled_at' => $data['scheduled_at'] ?? $existing_post['scheduled_at'],
+            'allow_comments' => $data['allow_comments'] ?? $existing_post['allow_comments'],
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+        
+        if (!empty($data['student_ids'])) {
+            $update_data['visible_to_student_ids'] = json_encode($data['student_ids']);
+        }
+        
+        // Handle attachments if provided
+        if (!empty($all_attachments)) {
+            // Delete existing attachments
+            $this->StreamAttachment_model->delete_by_stream_id($stream_id);
+            
+            // Insert new attachments
+            $this->StreamAttachment_model->insert_multiple($stream_id, $all_attachments);
+            
+            // Update the main post with attachment info for backward compatibility
+            if (count($all_attachments) === 1) {
+                // Single file - set main table fields for backward compatibility
+                $update_data['attachment_type'] = 'file';
+                $update_data['attachment_url'] = $all_attachments[0]['attachment_url'];
+            } else {
+                // Multiple files - set type to multiple
+                $update_data['attachment_type'] = 'multiple';
+                $update_data['attachment_url'] = null;
+            }
+        } else {
+            // If no new attachments provided, keep existing ones
+            // But update attachment_type if needed
+            if ($existing_post['attachment_type'] === 'multiple') {
+                $existing_attachments = $this->StreamAttachment_model->get_by_stream_id($stream_id);
+                if (count($existing_attachments) === 1) {
+                    // Update to single file type
+                    $update_data['attachment_type'] = 'file';
+                    $update_data['attachment_url'] = $existing_attachments[0]['attachment_url'];
+                }
+            }
+        }
+        
+        // Update the stream post
+        $success = $this->ClassroomStream_model->update($stream_id, $update_data);
+        if ($success) {
+            // If publishing now and either not scheduled or scheduled time already reached, send notifications now
+            if (isset($data['is_draft']) && !$data['is_draft'] && (empty($data['is_scheduled']) || empty($data['scheduled_at']) || strtotime($data['scheduled_at']) <= time())) {
+                $this->load->helper('notification');
+                $updated = $this->ClassroomStream_model->get_by_id($stream_id);
+                $user_ids = [];
+                if (!empty($updated['visible_to_student_ids'])) {
+                    $user_ids = json_decode($updated['visible_to_student_ids'], true) ?: [];
+                } else {
+                    $students = get_class_students($class_code);
+                    if ($students) {
+                        $user_ids = array_column($students, 'user_id');
+                    }
+                }
+                if (!empty($user_ids)) {
+                    $title = $updated['title'] ?: 'Updated Announcement';
+                    $message = $updated['content'] ?? 'An announcement has been updated.';
+                    create_notifications_for_users(
+                        $user_ids,
+                        'announcement',
+                        $title,
+                        $message,
+                        $stream_id,
+                        'announcement',
+                        $class_code,
+                        false
+                    );
+                }
+            }
+            
+            $updated_post = $this->ClassroomStream_model->get_by_id($stream_id);
+            return json_response(true, 'Stream post updated successfully', $updated_post);
+        } else {
+            return json_response(false, 'Failed to update stream post', null, 500);
         }
     }
 

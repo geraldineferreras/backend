@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Multipart PUT Request</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { border-color: #28a745; background-color: #d4edda; }
+        .error { border-color: #dc3545; background-color: #f8d7da; }
+    </style>
+</head>
+<body>
+    <h1>Test Multipart PUT Request for Stream Post Editing</h1>
+    
+    <div class="container">
+        <h3>Authentication</h3>
+        <div class="form-group">
+            <label for="tokenInput">JWT Token:</label>
+            <input type="text" id="tokenInput" placeholder="Enter your JWT token" style="width: 100%;">
+            <button onclick="setToken()">Set Token</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h3>Edit Stream Post with Multipart Form-Data</h3>
+        <form id="editForm">
+            <div class="form-group">
+                <label for="classCode">Class Code:</label>
+                <input type="text" id="classCode" value="J56NHD" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="streamId">Stream Post ID:</label>
+                <input type="text" id="streamId" value="167" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="title">Title:</label>
+                <input type="text" id="title" value="Updated Title" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="content">Content:</label>
+                <textarea id="content" required>Updated content for testing multipart PUT request.</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="attachment0">File Attachment 1:</label>
+                <input type="file" id="attachment0" accept="*/*">
+            </div>
+            
+            <div class="form-group">
+                <label for="attachment1">File Attachment 2:</label>
+                <input type="file" id="attachment1" accept="*/*">
+            </div>
+            
+            <div class="form-group">
+                <label for="link0">Link Attachment:</label>
+                <input type="url" id="link0" placeholder="https://example.com" value="https://about.google/">
+            </div>
+            
+            <button type="submit">Update Stream Post (Multipart)</button>
+        </form>
+        
+        <div id="response" class="response" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h3>Test JSON PUT Request</h3>
+        <button onclick="testJsonPut()">Test JSON PUT (for comparison)</button>
+        <div id="jsonResponse" class="response" style="display: none;"></div>
+    </div>
+
+    <script>
+        let authToken = '';
+        
+        // Check for stored token
+        const storedToken = localStorage.getItem('authToken');
+        if (storedToken) {
+            authToken = storedToken;
+            document.getElementById('tokenInput').value = storedToken;
+        }
+
+        function setToken() {
+            authToken = document.getElementById('tokenInput').value;
+            localStorage.setItem('authToken', authToken);
+            alert('Token set successfully!');
+        }
+
+        async function updateStreamPost() {
+            const formData = new FormData();
+            formData.append('title', document.getElementById('title').value);
+            formData.append('content', document.getElementById('content').value);
+            
+            // Add file attachments
+            const file0 = document.getElementById('attachment0').files[0];
+            if (file0) {
+                formData.append('attachment_0', file0);
+            }
+            
+            const file1 = document.getElementById('attachment1').files[0];
+            if (file1) {
+                formData.append('attachment_1', file1);
+            }
+            
+            // Add link attachment
+            const link0 = document.getElementById('link0').value;
+            if (link0) {
+                formData.append('link_0', link0);
+            }
+            
+            try {
+                const response = await fetch(`/index.php/api/teacher/classroom/${document.getElementById('classCode').value}/stream/${document.getElementById('streamId').value}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: formData
+                });
+                
+                const result = await response.json();
+                const responseDiv = document.getElementById('response');
+                responseDiv.style.display = 'block';
+                
+                if (result.status) {
+                    responseDiv.className = 'response success';
+                    responseDiv.textContent = `✅ PUT request successful!\n\nResponse: ${JSON.stringify(result, null, 2)}`;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.textContent = `❌ PUT request failed:\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const responseDiv = document.getElementById('response');
+                responseDiv.style.display = 'block';
+                responseDiv.className = 'response error';
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function testJsonPut() {
+            const jsonData = {
+                title: 'JSON Update Test',
+                content: 'This is a test update using JSON format.',
+                is_draft: 0
+            };
+            
+            try {
+                const response = await fetch(`/index.php/api/teacher/classroom/${document.getElementById('classCode').value}/stream/${document.getElementById('streamId').value}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(jsonData)
+                });
+                
+                const result = await response.json();
+                const responseDiv = document.getElementById('jsonResponse');
+                responseDiv.style.display = 'block';
+                
+                if (result.status) {
+                    responseDiv.className = 'response success';
+                    responseDiv.textContent = `✅ JSON PUT request successful!\n\nResponse: ${JSON.stringify(result, null, 2)}`;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.textContent = `❌ JSON PUT request failed:\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const responseDiv = document.getElementById('jsonResponse');
+                responseDiv.style.display = 'block';
+                responseDiv.className = 'response error';
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        // Form event listener
+        document.getElementById('editForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            updateStreamPost();
+        });
+    </script>
+</body>
+</html>

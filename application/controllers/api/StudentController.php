@@ -795,6 +795,9 @@ class StudentController extends BaseController {
                     ])
                 ]);
             }
+            
+            // Send notification to teacher about new student enrollment
+            $this->send_student_enrollment_notification($classroom['teacher_id'], $user_data, $classroom);
 
             $this->output
                 ->set_status_header(201)
@@ -1131,25 +1134,21 @@ class StudentController extends BaseController {
                 return;
             }
 
-            // Get stream posts (only published posts, not drafts or scheduled)
-            $posts = $this->db->select('cs.*, u.full_name as user_name, u.profile_pic')
-            ->from('classroom_stream cs')
-            ->join('users u', 'cs.user_id = u.user_id')
-            ->where('cs.class_code', $class_code)
-            ->where('cs.is_draft', 0)
-            ->group_start()
-                ->where('cs.is_scheduled', 0)
-                ->or_group_start()
-                    ->where('cs.is_scheduled', 1)
-                    ->where('cs.scheduled_at <=', date('Y-m-d H:i:s'))
-                ->group_end()
-            ->group_end()
-            ->order_by('cs.created_at', 'DESC')
-            ->get()->result_array();
+            // Load the ClassroomStream model to get posts with proper attachment handling
+            $this->load->model('ClassroomStream_model');
+            
+            // Get stream posts with published-only filter and student visibility
+            $posts = $this->ClassroomStream_model->get_by_class_code($class_code, [
+                'published_only' => true
+            ], $user_data['user_id']);
 
-            // Format posts
-            $formatted_posts = array_map(function($post) {
-                return [
+            // Format posts and add comment count
+            $formatted_posts = [];
+            foreach ($posts as $post) {
+                // Get comment count for this post
+                $comment_count = $this->db->where('stream_id', $post['id'])->count_all_results('classroom_stream_comments');
+                
+                $formatted_post = [
                     'id' => $post['id'],
                     'user_name' => $post['user_name'],
                     'profile_pic' => $post['profile_pic'],
@@ -1159,11 +1158,25 @@ class StudentController extends BaseController {
                     'attachment_url' => $post['attachment_url'],
                     'allow_comments' => (bool)$post['allow_comments'],
                     'is_pinned' => (bool)$post['is_pinned'],
-                    'comment_count' => isset($post['comment_count']) ? (int)$post['comment_count'] : 0,
+                    'comment_count' => $comment_count,
                     'created_at' => $post['created_at'],
                     'updated_at' => $post['updated_at']
                 ];
-            }, $posts);
+                
+                // Add multiple attachments if present
+                if ($post['attachment_type'] === 'multiple' && isset($post['attachments'])) {
+                    $formatted_post['attachments'] = $post['attachments'];
+                    // Keep backward compatibility
+                    $formatted_post['attachment_serving_url'] = $post['attachment_serving_url'];
+                    $formatted_post['attachment_file_type'] = $post['attachment_file_type'];
+                } else if (!empty($post['attachment_url'])) {
+                    // Single attachment (backward compatibility)
+                    $formatted_post['attachment_serving_url'] = $post['attachment_serving_url'];
+                    $formatted_post['attachment_file_type'] = $post['attachment_file_type'];
+                }
+                
+                $formatted_posts[] = $formatted_post;
+            }
 
             $this->output
                 ->set_status_header(200)
@@ -1231,23 +1244,105 @@ class StudentController extends BaseController {
                 return;
             }
 
-            // Get input data
-            $input = json_decode(file_get_contents('php://input'), true);
+            // Support both JSON and multipart form-data
+            $input = [];
+            $all_attachments = [];
             
-            if (!$input) {
-                $this->output
-                    ->set_status_header(400)
-                    ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid JSON data provided']));
-                return;
+            // Check if this is a multipart request
+            $content_type = $this->input->get_request_header('Content-Type');
+            $is_multipart = $content_type && strpos($content_type, 'multipart/form-data') !== false;
+            
+            if ($is_multipart) {
+                // Handle multipart form-data for file uploads
+                $this->load->helper('file');
+                
+                // Get form data
+                $input = [
+                    'title' => $this->input->post('title'),
+                    'content' => $this->input->post('content'),
+                    'is_draft' => $this->input->post('is_draft'),
+                    'is_scheduled' => $this->input->post('is_scheduled'),
+                    'scheduled_at' => $this->input->post('scheduled_at'),
+                    'allow_comments' => $this->input->post('allow_comments'),
+                    'student_ids' => $this->input->post('student_ids')
+                ];
+                
+                // Handle multiple file uploads
+                $uploaded_files = [];
+                $file_inputs = ['attachment_0', 'attachment_1', 'attachment_2', 'attachment_3', 'attachment_4'];
+                
+                foreach ($file_inputs as $input_name) {
+                    if (isset($_FILES[$input_name]) && $_FILES[$input_name]['error'] === UPLOAD_ERR_OK) {
+                        $file = $_FILES[$input_name];
+                        $original_name = $file['name'];
+                        $file_size = $file['size'];
+                        $file_type = $file['type'];
+                        
+                        // Generate unique filename
+                        $extension = pathinfo($original_name, PATHINFO_EXTENSION);
+                        $file_name = uniqid('student_stream_') . '_' . time() . '.' . $extension;
+                        $upload_path = 'uploads/announcement/';
+                        
+                        // Create directory if it doesn't exist
+                        if (!is_dir($upload_path)) {
+                            mkdir($upload_path, 0755, true);
+                        }
+                        
+                        $file_path = $upload_path . $file_name;
+                        
+                        if (move_uploaded_file($file['tmp_name'], $file_path)) {
+                            $uploaded_files[] = [
+                                'file_path' => $file_path,
+                                'file_name' => $file_name,
+                                'original_name' => $original_name,
+                                'file_size' => $file_size,
+                                'mime_type' => $file_type,
+                                'attachment_type' => 'file',
+                                'attachment_url' => $file_path
+                            ];
+                        }
+                    }
+                }
+                
+                // Handle link attachments if provided
+                $link_attachments = [];
+                $link_fields = ['link_0', 'link_1', 'link_2', 'link_3', 'link_4'];
+                foreach ($link_fields as $link_field) {
+                    $link_url = $this->input->post($link_field);
+                    if (!empty($link_url) && filter_var($link_url, FILTER_VALIDATE_URL)) {
+                        $link_attachments[] = [
+                            'file_path' => $link_url,
+                            'file_name' => 'link_' . uniqid(),
+                            'original_name' => $link_url,
+                            'file_size' => 0,
+                            'mime_type' => 'text/plain',
+                            'attachment_type' => 'link',
+                            'attachment_url' => $link_url
+                        ];
+                    }
+                }
+                
+                $all_attachments = array_merge($uploaded_files, $link_attachments);
+                
+            } else {
+                // Handle JSON request
+                $input = json_decode(file_get_contents('php://input'), true);
+                
+                if (!$input) {
+                    $this->output
+                        ->set_status_header(400)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Invalid JSON data provided']));
+                    return;
+                }
             }
 
             // Validate required fields
-            if (empty($input['title']) || empty($input['content'])) {
+            if (empty($input['content'])) {
                 $this->output
                     ->set_status_header(400)
                     ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Title and content are required']));
+                    ->set_output(json_encode(['status' => false, 'message' => 'Content is required']));
                 return;
             }
 
@@ -1256,14 +1351,14 @@ class StudentController extends BaseController {
                 'class_code' => $class_code,
                 'classroom_id' => $classroom['id'],
                 'user_id' => $user_data['user_id'],
-                'title' => trim($input['title']),
+                'title' => trim($input['title'] ?? ''),
                 'content' => trim($input['content']),
                 'is_draft' => isset($input['is_draft']) ? (int)$input['is_draft'] : 0,
                 'is_scheduled' => isset($input['is_scheduled']) ? (int)$input['is_scheduled'] : 0,
                 'scheduled_at' => isset($input['scheduled_at']) ? $input['scheduled_at'] : null,
                 'allow_comments' => isset($input['allow_comments']) ? (int)$input['allow_comments'] : 1,
-                'attachment_type' => isset($input['attachment_type']) ? $input['attachment_type'] : null,
-                'attachment_url' => isset($input['attachment_url']) ? $input['attachment_url'] : null,
+                'attachment_type' => null,
+                'attachment_url' => null,
                 'status' => 'published',
                 'created_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s')
@@ -1272,6 +1367,44 @@ class StudentController extends BaseController {
             // Insert the post
             $this->db->insert('classroom_stream', $post_data);
             $post_id = $this->db->insert_id();
+
+            // Handle attachments if provided
+            if (!empty($all_attachments)) {
+                // Load StreamAttachment model
+                $this->load->model('StreamAttachment_model');
+                
+                // Log attachment processing
+                log_message('info', "Student stream post: Processing " . count($all_attachments) . " attachments for post_id: $post_id");
+                
+                // Insert attachments
+                $insert_result = $this->StreamAttachment_model->insert_multiple($post_id, $all_attachments);
+                
+                if ($insert_result) {
+                    log_message('info', "Student stream post: Successfully inserted " . count($all_attachments) . " attachments for post_id: $post_id");
+                } else {
+                    log_message('error', "Student stream post: Failed to insert attachments for post_id: $post_id");
+                    // Log database error
+                    $error = $this->db->error();
+                    log_message('error', "Student stream post: Database error: " . json_encode($error));
+                }
+                
+                // Update the main post with attachment info for backward compatibility
+                if (count($all_attachments) === 1) {
+                    // Single file - set main table fields for backward compatibility
+                    $this->db->where('id', $post_id)->update('classroom_stream', [
+                        'attachment_type' => 'file',
+                        'attachment_url' => $all_attachments[0]['attachment_url']
+                    ]);
+                } else {
+                    // Multiple files - set type to multiple
+                    $this->db->where('id', $post_id)->update('classroom_stream', [
+                        'attachment_type' => 'multiple',
+                        'attachment_url' => null
+                    ]);
+                }
+            } else {
+                log_message('info', "Student stream post: No attachments provided for post_id: $post_id");
+            }
 
             // Log the activity
             $this->load->model('Audit_model');
@@ -1288,7 +1421,8 @@ class StudentController extends BaseController {
                     'description' => json_encode([
                         'class_code' => $class_code,
                         'post_id' => $post_id,
-                        'title' => $post_data['title']
+                        'title' => $post_data['title'],
+                        'attachments_count' => count($all_attachments)
                     ])
                 ]);
             }
@@ -1346,6 +1480,9 @@ class StudentController extends BaseController {
                 }
             }
             
+            // Get the updated post with attachment info
+            $updated_post = $this->db->where('id', $post_id)->get('classroom_stream')->row_array();
+            
             $this->output
                 ->set_status_header(201)
                 ->set_content_type('application/json')
@@ -1354,9 +1491,12 @@ class StudentController extends BaseController {
                     'message' => 'Post created successfully',
                     'data' => [
                         'id' => $post_id,
-                        'title' => $post_data['title'],
-                        'content' => $post_data['content'],
-                        'created_at' => $post_data['created_at']
+                        'title' => $updated_post['title'],
+                        'content' => $updated_post['content'],
+                        'attachment_type' => $updated_post['attachment_type'],
+                        'attachment_url' => $updated_post['attachment_url'],
+                        'attachments_count' => count($all_attachments),
+                        'created_at' => $updated_post['created_at']
                     ]
                 ]));
 
@@ -2056,6 +2196,44 @@ class StudentController extends BaseController {
                 ->set_status_header(500)
                 ->set_content_type('application/json')
                 ->set_output(json_encode(['status' => false, 'message' => 'Failed to retrieve classes: ' . $e->getMessage()]));
+        }
+    }
+
+    /**
+     * Send notification to teacher about new student enrollment
+     */
+    private function send_student_enrollment_notification($teacher_id, $student_data, $classroom_data) {
+        try {
+            $this->load->helper('notification');
+            
+            // Get teacher details
+            $teacher = $this->db->select('full_name')
+                ->from('users')
+                ->where('user_id', $teacher_id)
+                ->get()->row_array();
+            
+            if (!$teacher) {
+                log_message('error', "Teacher not found for enrollment notification: {$teacher_id}");
+                return;
+            }
+            
+            $student_name = $student_data['full_name'] ?? $student_data['user_id'];
+            $subject_name = $classroom_data['subject_name'] ?? 'Unknown Subject';
+            $section_name = $classroom_data['section_name'] ?? 'Unknown Section';
+            $class_code = $classroom_data['class_code'] ?? 'Unknown Class';
+            
+            $title = "New Student Enrollment";
+            $message = "Hello {$teacher['full_name']}, a new student has joined your class. ";
+            $message .= "{$student_name} has enrolled in {$subject_name} for Section {$section_name} ";
+            $message .= "({$classroom_data['semester']} Semester, {$classroom_data['school_year']}). ";
+            $message .= "You can now see them in your class roster and assign them tasks.";
+            
+            create_system_notification($teacher_id, $title, $message, false);
+            
+            log_message('info', "Student enrollment notification sent to teacher {$teacher_id} for student {$student_name} in class {$class_code}");
+            
+        } catch (Exception $e) {
+            log_message('error', "Failed to send student enrollment notification: " . $e->getMessage());
         }
     }
 }

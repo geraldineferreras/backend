@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream Post Editing Test - Teacher Role</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .file-inputs {
+            border: 2px dashed #ddd;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .file-input-group {
+            margin-bottom: 10px;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { border-color: #28a745; background-color: #d4edda; }
+        .error { border-color: #dc3545; background-color: #f8d7da; }
+        .info { border-color: #17a2b8; background-color: #d1ecf1; }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-bottom: none;
+            background-color: #f8f9fa;
+        }
+        .tab.active {
+            background-color: white;
+            border-color: #ddd;
+            border-bottom: 1px solid white;
+            margin-bottom: -1px;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .attachment-preview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .attachment-item {
+            background: #e9ecef;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            max-width: 200px;
+            word-break: break-all;
+        }
+        .remove-attachment {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Stream Post Editing Test - Teacher Role</h1>
+    
+    <div class="tabs">
+        <div class="tab active" onclick="showTab('edit')">Edit Stream Post</div>
+        <div class="tab" onclick="showTab('create')">Create Test Post</div>
+        <div class="tab" onclick="showTab('view')">View Posts</div>
+    </div>
+
+    <!-- Edit Stream Post Tab -->
+    <div id="edit" class="tab-content active">
+        <div class="container">
+            <h2>Edit Stream Post</h2>
+            <form id="editForm">
+                <div class="form-group">
+                    <label for="editClassCode">Class Code:</label>
+                    <input type="text" id="editClassCode" value="ABC123" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editStreamId">Stream Post ID:</label>
+                    <input type="text" id="editStreamId" placeholder="Enter the stream post ID to edit" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editTitle">Title:</label>
+                    <input type="text" id="editTitle" placeholder="Enter post title">
+                </div>
+                
+                <div class="form-group">
+                    <label for="editContent">Content:</label>
+                    <textarea id="editContent" placeholder="Enter post content" required></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editIsDraft">Is Draft:</label>
+                    <select id="editIsDraft">
+                        <option value="0">No (Published)</option>
+                        <option value="1">Yes (Draft)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editAllowComments">Allow Comments:</label>
+                    <select id="editAllowComments">
+                        <option value="1">Yes</option>
+                        <option value="0">No</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>File Attachments:</label>
+                    <div class="file-inputs">
+                        <div class="file-input-group">
+                            <input type="file" id="editAttachment0" accept="*/*">
+                            <button type="button" onclick="removeAttachment(0)" class="remove-attachment">×</button>
+                        </div>
+                        <div class="file-input-group">
+                            <input type="file" id="editAttachment1" accept="*/*">
+                            <button type="button" onclick="removeAttachment(1)" class="remove-attachment">×</button>
+                        </div>
+                        <div class="file-input-group">
+                            <input type="file" id="editAttachment2" accept="*/*">
+                            <button type="button" onclick="removeAttachment(2)" class="remove-attachment">×</button>
+                        </div>
+                        <div class="file-input-group">
+                            <input type="file" id="editAttachment3" accept="*/*">
+                            <button type="button" onclick="removeAttachment(3)" class="remove-attachment">×</button>
+                        </div>
+                        <div class="file-input-group">
+                            <input type="file" id="editAttachment4" accept="*/*">
+                            <button type="button" onclick="removeAttachment(4)" class="remove-attachment">×</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Link Attachments:</label>
+                    <input type="url" id="editLink0" placeholder="Enter URL for link attachment">
+                    <input type="url" id="editLink1" placeholder="Enter URL for link attachment">
+                    <input type="url" id="editLink2" placeholder="Enter URL for link attachment">
+                </div>
+                
+                <button type="submit">Update Stream Post</button>
+                <button type="button" onclick="loadPostForEditing()">Load Post for Editing</button>
+            </form>
+            
+            <div id="editResponse" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Create Test Post Tab -->
+    <div id="create" class="tab-content">
+        <div class="container">
+            <h2>Create Test Stream Post</h2>
+            <form id="createForm">
+                <div class="form-group">
+                    <label for="createClassCode">Class Code:</label>
+                    <input type="text" id="createClassCode" value="ABC123" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="createTitle">Title:</label>
+                    <input type="text" id="createTitle" value="Test Post for Editing" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="createContent">Content:</label>
+                    <textarea id="createContent" required>This is a test post that we will edit later.</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="createIsDraft">Is Draft:</label>
+                    <select id="createIsDraft">
+                        <option value="0">No (Published)</option>
+                        <option value="1">Yes (Draft)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>File Attachments:</label>
+                    <div class="file-inputs">
+                        <div class="file-input-group">
+                            <input type="file" id="createAttachment0" accept="*/*">
+                        </div>
+                        <div class="file-input-group">
+                            <input type="file" id="createAttachment1" accept="*/*">
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="submit">Create Test Post</button>
+            </form>
+            
+            <div id="createResponse" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- View Posts Tab -->
+    <div id="view" class="tab-content">
+        <div class="container">
+            <h2>View Stream Posts</h2>
+            <div class="form-group">
+                <label for="viewClassCode">Class Code:</label>
+                <input type="text" id="viewClassCode" value="ABC123">
+                <button onclick="loadPosts()">Load Posts</button>
+            </div>
+            
+            <div id="postsList"></div>
+        </div>
+    </div>
+
+    <script>
+        let authToken = '';
+        
+        // Check for stored token
+        const storedToken = localStorage.getItem('authToken');
+        if (storedToken) {
+            authToken = storedToken;
+            document.getElementById('tokenInput').value = storedToken;
+        }
+
+        function showTab(tabName) {
+            // Hide all tab contents
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => content.classList.remove('active'));
+            
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Show selected tab content and activate tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function removeAttachment(index) {
+            document.getElementById(`editAttachment${index}`).value = '';
+        }
+
+        async function createTestPost() {
+            const formData = new FormData();
+            formData.append('title', document.getElementById('createTitle').value);
+            formData.append('content', document.getElementById('createContent').value);
+            formData.append('is_draft', document.getElementById('createIsDraft').value);
+            formData.append('allow_comments', '1');
+            
+            // Add file attachments
+            for (let i = 0; i < 2; i++) {
+                const file = document.getElementById(`createAttachment${i}`).files[0];
+                if (file) {
+                    formData.append(`attachment_${i}`, file);
+                }
+            }
+            
+            try {
+                const response = await fetch(`/index.php/api/teacher/classroom/${document.getElementById('createClassCode').value}/stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: formData
+                });
+                
+                const result = await response.json();
+                const responseDiv = document.getElementById('createResponse');
+                responseDiv.style.display = 'block';
+                
+                if (result.status) {
+                    responseDiv.className = 'response success';
+                    responseDiv.textContent = `✅ Post created successfully!\n\nPost ID: ${result.data.id}\n\nResponse: ${JSON.stringify(result, null, 2)}`;
+                    
+                    // Auto-fill the edit form with the new post ID
+                    document.getElementById('editStreamId').value = result.data.id;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.textContent = `❌ Failed to create post:\n\n${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const responseDiv = document.getElementById('createResponse');
+                responseDiv.style.display = 'block';
+                responseDiv.className = 'response error';
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function updateStreamPost() {
+            const formData = new FormData();
+            formData.append('title', document.getElementById('editTitle').value);
+            formData.append('content', document.getElementById('editContent').value);
+            formData.append('is_draft', document.getElementById('editIsDraft').value);
+            formData.append('allow_comments', document.getElementById('editAllowComments').value);
+            
+            // Add file attachments
+            for (let i = 0; i < 5; i++) {
+                const file = document.getElementById(`editAttachment${i}`).files[0];
+                if (file) {
+                    formData.append(`attachment_${i}`, file);
+                }
+            }
+            
+            // Add link attachments
+            for (let i = 0; i < 3; i++) {
+                const link = document.getElementById(`editLink${i}`).value;
+                if (link) {
+                    formData.append(`link_${i}`, link);
+                }
+            }
+            
+            try {
+                const response = await fetch(`/index.php/api/teacher/classroom/${document.getElementById('editClassCode').value}/stream/${document.getElementById('editStreamId').value}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: formData
+                });
+                
+                const result = await response.json();
+                const responseDiv = document.getElementById('editResponse');
+                responseDiv.style.display = 'block';
+                
+                if (result.status) {
+                    responseDiv.className = 'response success';
+                    responseDiv.textContent = `✅ Post updated successfully!\n\nResponse: ${JSON.stringify(result, null, 2)}`;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.textContent = `❌ Failed to update post:\n\n${JSON.stringify(result, null, 2)}`;
+                }
+            } catch (error) {
+                const responseDiv = document.getElementById('editResponse');
+                responseDiv.style.display = 'block';
+                responseDiv.className = 'response error';
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function loadPostForEditing() {
+            const classCode = document.getElementById('editClassCode').value;
+            const streamId = document.getElementById('editStreamId').value;
+            
+            if (!streamId) {
+                alert('Please enter a stream post ID');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/index.php/api/teacher/classroom/${classCode}/stream`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.status) {
+                    const post = result.data.find(p => p.id == streamId);
+                    if (post) {
+                        // Fill the form with existing data
+                        document.getElementById('editTitle').value = post.title || '';
+                        document.getElementById('editContent').value = post.content || '';
+                        document.getElementById('editIsDraft').value = post.is_draft || '0';
+                        document.getElementById('editAllowComments').value = post.allow_comments || '1';
+                        
+                        // Show current attachments if any
+                        if (post.attachments && post.attachments.length > 0) {
+                            alert(`Current post has ${post.attachments.length} attachment(s).\n\nNote: When you update with new attachments, existing ones will be replaced.`);
+                        }
+                    } else {
+                        alert('Post not found in the stream');
+                    }
+                } else {
+                    alert(`Failed to load posts: ${result.message}`);
+                }
+            } catch (error) {
+                alert(`Error loading post: ${error.message}`);
+            }
+        }
+
+        async function loadPosts() {
+            const classCode = document.getElementById('viewClassCode').value;
+            
+            try {
+                const response = await fetch(`/index.php/api/teacher/classroom/${classCode}/stream`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                const postsList = document.getElementById('postsList');
+                
+                if (result.status) {
+                    let html = '<h3>Stream Posts:</h3>';
+                    result.data.forEach(post => {
+                        html += `
+                            <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 4px;">
+                                <strong>ID:</strong> ${post.id}<br>
+                                <strong>Title:</strong> ${post.title || 'No title'}<br>
+                                <strong>Content:</strong> ${post.content.substring(0, 100)}${post.content.length > 100 ? '...' : ''}<br>
+                                <strong>Status:</strong> ${post.is_draft ? 'Draft' : 'Published'}<br>
+                                <strong>Attachments:</strong> ${post.attachment_type || 'None'}<br>
+                                <strong>Created:</strong> ${post.created_at}<br>
+                                <strong>Updated:</strong> ${post.updated_at || 'Never'}<br>
+                                ${post.attachments ? `<strong>Attachment Count:</strong> ${post.attachments.length}` : ''}
+                            </div>
+                        `;
+                    });
+                    postsList.innerHTML = html;
+                } else {
+                    postsList.innerHTML = `<div class="response error">Failed to load posts: ${result.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('postsList').innerHTML = `<div class="response error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Form event listeners
+        document.getElementById('createForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            createTestPost();
+        });
+        
+        document.getElementById('editForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            updateStreamPost();
+        });
+
+        // Add token input at the top
+        const tokenInput = document.createElement('div');
+        tokenInput.innerHTML = `
+            <div class="container">
+                <h3>Authentication</h3>
+                <div class="form-group">
+                    <label for="tokenInput">JWT Token:</label>
+                    <input type="text" id="tokenInput" placeholder="Enter your JWT token" style="width: 100%;">
+                    <button onclick="setToken()">Set Token</button>
+                </div>
+            </div>
+        `;
+        document.body.insertBefore(tokenInput, document.body.firstChild);
+
+        function setToken() {
+            authToken = document.getElementById('tokenInput').value;
+            localStorage.setItem('authToken', authToken);
+            alert('Token set successfully!');
+        }
+    </script>
+</body>
+</html>
