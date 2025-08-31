@@ -2117,4 +2117,160 @@ class TaskController extends BaseController
             $this->send_error('Failed to delete task attachment: ' . $e->getMessage(), 500);
         }
     }
+
+    /**
+     * Manual grade student without submission (Teacher only)
+     * POST /api/tasks/{task_id}/manual-grade
+     * 
+     * This endpoint is perfect for face-to-face activities where teachers
+     * want to grade students without requiring file submissions
+     */
+    public function manual_grade_post($task_id)
+    {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        $data = $this->get_json_input();
+        if (!$data) {
+            $this->send_error('Invalid request data', 400);
+            return;
+        }
+
+        // Validate required fields
+        $required_fields = ['student_id', 'class_code', 'grade'];
+        if (!$this->validate_required_fields($data, $required_fields)) {
+            return;
+        }
+
+        try {
+            // Verify the task exists and belongs to the teacher
+            $task = $this->Task_model->get_by_id($task_id);
+            if (!$task || $task['teacher_id'] !== $user_data['user_id']) {
+                $this->send_error('Task not found or access denied', 404);
+                return;
+            }
+
+            // Validate grade
+            $grade = floatval($data->grade);
+            if ($grade < 0 || $grade > $task['points']) {
+                $this->send_error("Grade must be between 0 and {$task['points']}", 400);
+                return;
+            }
+
+            // First get the classroom by class_code
+            $classroom = $this->db->select('id, class_code')
+                ->from('classrooms')
+                ->where('class_code', $data->class_code)
+                ->get()->row_array();
+
+            if (!$classroom) {
+                $this->send_error('Class not found', 404);
+                return;
+            }
+
+            // Check if student is enrolled in the class using classroom_id
+            $enrollment = $this->db->select('*')
+                ->from('classroom_enrollments')
+                ->where('student_id', $data->student_id)
+                ->where('classroom_id', $classroom['id'])
+                ->where('status', 'active')
+                ->get()->row_array();
+
+            if (!$enrollment) {
+                $this->send_error('Student not enrolled in this class', 400);
+                return;
+            }
+
+            // Get or create submission for this student and task
+            $submission = $this->get_or_create_manual_submission($data->student_id, $task_id, $data->class_code);
+            if (!$submission) {
+                $this->send_error('Failed to create manual submission record', 500);
+                return;
+            }
+
+            // Grade the submission
+            $success = $this->Task_model->grade_submission(
+                $submission['submission_id'], 
+                $grade, 
+                $data->feedback ?? null
+            );
+
+            if ($success) {
+                // Get student details for response
+                $student = $this->db->select('full_name, student_num')
+                    ->from('users')
+                    ->where('user_id', $data->student_id)
+                    ->get()->row_array();
+
+                // Send notification to student about manual grade
+                $this->load->model('Notification_model');
+                $this->Notification_model->create_notification([
+                    'user_id' => $data->student_id,
+                    'title' => 'Manual Grade Received',
+                    'message' => "You received a manual grade of {$grade}/{$task['points']} for '{$task['title']}'",
+                    'type' => 'task_grade',
+                    'related_id' => $task_id,
+                    'class_code' => $data->class_code
+                ]);
+
+                $this->send_success([
+                    'submission_id' => $submission['submission_id'],
+                    'student_name' => $student['full_name'],
+                    'student_num' => $student['student_num'],
+                    'grade' => $grade,
+                    'max_points' => $task['points'],
+                    'percentage' => round(($grade / $task['points']) * 100, 1),
+                    'feedback' => $data->feedback ?? null,
+                    'task_title' => $task['title'],
+                    'graded_at' => date('Y-m-d H:i:s')
+                ], 'Student graded successfully via manual grading');
+            } else {
+                $this->send_error('Failed to save grade', 500);
+            }
+
+        } catch (Exception $e) {
+            log_message('error', 'Manual grading error: ' . $e->getMessage());
+            $this->send_error('Internal server error during manual grading', 500);
+        }
+    }
+
+    /**
+     * Get or create manual submission for student and task
+     */
+    private function get_or_create_manual_submission($student_id, $task_id, $class_code)
+    {
+        // Check if submission already exists
+        $existing_submission = $this->db->select('*')
+            ->from('task_submissions')
+            ->where('task_id', $task_id)
+            ->where('student_id', $student_id)
+            ->where('class_code', $class_code)
+            ->get()->row_array();
+
+        if ($existing_submission) {
+            return $existing_submission;
+        }
+
+        // Create new manual submission record
+        $submission_data = [
+            'task_id' => $task_id,
+            'student_id' => $student_id,
+            'class_code' => $class_code,
+            'submission_content' => 'Manual grading - Face-to-face activity',
+            'attachment_type' => null,
+            'attachment_url' => null,
+            'submitted_at' => date('Y-m-d H:i:s'),
+            'status' => 'submitted'
+        ];
+
+        $this->db->insert('task_submissions', $submission_data);
+        $submission_id = $this->db->insert_id();
+
+        if ($submission_id) {
+            $submission_data['submission_id'] = $submission_id;
+            return $submission_data;
+        }
+
+        return null;
+    }
 } 

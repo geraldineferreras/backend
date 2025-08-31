@@ -310,6 +310,7 @@ $route['api/tasks/(:num)/submission']['get'] = 'api/TaskController/student_submi
 $route['api/tasks/(:num)/submissions']['get'] = 'api/TaskController/task_submissions_get/$1';
 $route['api/tasks/(:num)/stats']['get'] = 'api/TaskController/stats_get/$1';
 $route['api/tasks/(:num)/bulk-grade']['post'] = 'api/TaskController/bulk_grade_post/$1';
+$route['api/tasks/(:num)/manual-grade']['post'] = 'api/TaskController/manual_grade_post/$1';
 $route['api/tasks/files/(:any)']['get'] = 'api/TaskController/serve_file/$1';
 $route['api/tasks/files/info/(:any)']['get'] = 'api/TaskController/get_task_file_info/$1';
 $route['api/tasks/files/list']['get'] = 'api/TaskController/list_task_files';

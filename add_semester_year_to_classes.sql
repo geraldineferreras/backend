@@ -20,3 +20,5 @@ UPDATE `classes` SET `school_year` = '2024' WHERE `school_year` IS NULL;
 
 -- Verify the changes
 DESCRIBE `classes`;
+
+

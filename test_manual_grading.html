@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Grading API Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 25px;
+            border-left: 4px solid #667eea;
+        }
+
+        .section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-right: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .result.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+
+        .manual-grading-modal {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            border: 2px solid #e1e5e9;
+        }
+
+        .important-note {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #856404;
+        }
+
+        .icon-hand {
+            font-size: 20px;
+        }
+
+        .description {
+            color: #6c757d;
+            font-style: italic;
+            margin-bottom: 20px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 25px;
+        }
+
+        .student-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .student-card {
+            background: white;
+            border: 1px solid #e1e5e9;
+            border-radius: 8px;
+            padding: 20px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .student-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .student-card h4 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .student-info {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .grade-status {
+            font-weight: 600;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .grade-status.not-graded {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .grade-status.graded {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .config-section {
+            background: #e3f2fd;
+            border-left-color: #2196f3;
+        }
+
+        .manual-grading-section {
+            background: #f3e5f5;
+            border-left-color: #9c27b0;
+        }
+
+        .testing-section {
+            background: #e8f5e8;
+            border-left-color: #4caf50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📝 Manual Grading API Test</h1>
+            <p>Test the new manual grading system for face-to-face activities without file submissions</p>
+        </div>
+
+        <div class="content">
+            <!-- Configuration Section -->
+            <div class="section config-section">
+                <h3>⚙️ Configuration</h3>
+                <div class="form-group">
+                    <label for="baseUrl">Base URL:</label>
+                    <input type="url" id="baseUrl" value="http://localhost/scms_new_backup" placeholder="Enter your base URL">
+                </div>
+                <div class="form-group">
+                    <label for="teacherToken">Teacher JWT Token:</label>
+                    <input type="text" id="teacherToken" placeholder="Enter your teacher JWT token">
+                </div>
+                <div class="form-group">
+                    <label for="taskId">Task ID:</label>
+                    <input type="number" id="taskId" value="105" placeholder="Enter task ID">
+                </div>
+                <div class="form-group">
+                    <label for="classCode">Class Code:</label>
+                    <input type="text" id="classCode" value="A4V9TE" placeholder="Enter class code">
+                </div>
+                <button class="btn" onclick="testConnection()">Test Connection</button>
+                <div id="connectionResult"></div>
+            </div>
+
+            <!-- Manual Grading Section -->
+            <div class="section manual-grading-section">
+                <h3>🎯 Manual Grading</h3>
+                <p class="description">Grade students manually without requiring file submissions or attachments</p>
+                
+                <div class="manual-grading-modal">
+                    <h4>Manual Grading Form</h4>
+                    <p>Perfect for face-to-face activities and manual assessment</p>
+                    
+                    <div class="important-note">
+                        <span class="icon-hand">🤚</span>
+                        <span>Face-to-Face Activity: Student assigned but no submission yet. Grading will create a manual submission record.</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="studentId">Student ID:</label>
+                        <input type="text" id="studentId" placeholder="Enter student ID (e.g., STU123456)">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="grade">Score (out of <span id="maxPoints">10</span>):</label>
+                        <input type="number" id="grade" min="0" max="10" placeholder="Enter score">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="feedback">Feedback (Optional):</label>
+                        <textarea id="feedback" rows="3" placeholder="Enter feedback for the student..."></textarea>
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button class="btn-secondary" onclick="clearForm()">Clear Form</button>
+                        <button class="btn" onclick="submitManualGrade()">Submit Manual Grade</button>
+                    </div>
+                </div>
+                
+                <div id="manualGradeResult"></div>
+            </div>
+
+            <!-- Student List Section -->
+            <div class="section">
+                <h3>👥 Sample Students</h3>
+                <p>Click on a student to populate the grading form</p>
+                
+                <div class="student-list" id="studentList">
+                    <!-- Students will be populated here -->
+                </div>
+            </div>
+
+            <!-- Testing Section -->
+            <div class="section testing-section">
+                <h3>🧪 Testing Tools</h3>
+                <button class="btn" onclick="testManualGrading()">Test Manual Grading API</button>
+                <button class="btn" onclick="testInvalidGrade()">Test Invalid Grade</button>
+                <button class="btn" onclick="testMissingFields()">Test Missing Fields</button>
+                <button class="btn" onclick="testUnauthorized()">Test Unauthorized Access</button>
+                <div id="testingResult"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Sample student data
+        const sampleStudents = [
+            { id: 'STU123456', name: 'Denmark Danan', student_num: '2021305973', status: 'not-graded' },
+            { id: 'STU789012', name: 'Jordan L. Salenga', student_num: '2021305974', status: 'not-graded' },
+            { id: 'STU345678', name: 'Maria Santos', student_num: '2021305975', status: 'not-graded' },
+            { id: 'STU901234', name: 'John Doe', student_num: '2021305976', status: 'not-graded' }
+        ];
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            populateStudentList();
+            updateMaxPoints();
+        });
+
+        // Populate student list
+        function populateStudentList() {
+            const studentList = document.getElementById('studentList');
+            studentList.innerHTML = sampleStudents.map(student => `
+                <div class="student-card" onclick="selectStudent('${student.id}', '${student.name}', '${student.student_num}')">
+                    <h4>${student.name}</h4>
+                    <div class="student-info">
+                        <div>ID: ${student.id}</div>
+                        <div>Student #: ${student.student_num}</div>
+                    </div>
+                    <div class="grade-status ${student.status}">${student.status.replace('-', ' ')}</div>
+                </div>
+            `).join('');
+        }
+
+        // Select student for grading
+        function selectStudent(studentId, studentName, studentNum) {
+            document.getElementById('studentId').value = studentId;
+            document.getElementById('grade').value = '';
+            document.getElementById('feedback').value = '';
+            
+            // Highlight selected student
+            document.querySelectorAll('.student-card').forEach(card => {
+                card.style.border = '1px solid #e1e5e9';
+            });
+            event.currentTarget.style.border = '2px solid #667eea';
+            
+            showResult('info', `Selected student: ${studentName} (${studentId})`);
+        }
+
+        // Update max points based on task
+        function updateMaxPoints() {
+            const taskId = document.getElementById('taskId').value;
+            // In a real implementation, you'd fetch the task details
+            // For now, we'll use a default value
+            document.getElementById('maxPoints').textContent = '10';
+        }
+
+        // Test connection
+        async function testConnection() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const token = document.getElementById('teacherToken').value;
+            
+            if (!baseUrl || !token) {
+                showResult('error', 'Please provide both base URL and teacher token');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${baseUrl}/api/auth/verify`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResult('success', `Connection successful! Logged in as: ${result.data.full_name}`);
+                } else {
+                    showResult('error', `Connection failed: ${result.message}`);
+                }
+            } catch (error) {
+                showResult('error', `Connection error: ${error.message}`);
+            }
+        }
+
+        // Submit manual grade
+        async function submitManualGrade() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const token = document.getElementById('teacherToken').value;
+            const taskId = document.getElementById('taskId').value;
+            const studentId = document.getElementById('studentId').value;
+            const classCode = document.getElementById('classCode').value;
+            const grade = document.getElementById('grade').value;
+            const feedback = document.getElementById('feedback').value;
+
+            // Validation
+            if (!baseUrl || !token || !taskId || !studentId || !classCode || !grade) {
+                showResult('error', 'Please fill in all required fields');
+                return;
+            }
+
+            if (grade < 0 || grade > 10) {
+                showResult('error', 'Grade must be between 0 and 10');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${baseUrl}/api/tasks/${taskId}/manual-grade`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        student_id: studentId,
+                        class_code: classCode,
+                        grade: parseInt(grade),
+                        feedback: feedback || null
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResult('success', `✅ Student graded successfully!\n\n${JSON.stringify(result.data, null, 2)}`);
+                    
+                    // Update student status
+                    updateStudentStatus(studentId, 'graded');
+                    
+                    // Clear form
+                    clearForm();
+                } else {
+                    showResult('error', `❌ Grading failed: ${result.message}`);
+                }
+            } catch (error) {
+                showResult('error', `❌ Error: ${error.message}`);
+            }
+        }
+
+        // Update student status
+        function updateStudentStatus(studentId, status) {
+            const studentCard = document.querySelector(`[onclick*="${studentId}"]`);
+            if (studentCard) {
+                const statusElement = studentCard.querySelector('.grade-status');
+                statusElement.className = `grade-status ${status}`;
+                statusElement.textContent = status.replace('-', ' ');
+            }
+        }
+
+        // Clear form
+        function clearForm() {
+            document.getElementById('studentId').value = '';
+            document.getElementById('grade').value = '';
+            document.getElementById('feedback').value = '';
+            
+            // Remove student selection highlight
+            document.querySelectorAll('.student-card').forEach(card => {
+                card.style.border = '1px solid #e1e5e9';
+            });
+        }
+
+        // Test manual grading API
+        async function testManualGrading() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const token = document.getElementById('teacherToken').value;
+            const taskId = document.getElementById('taskId').value;
+            
+            if (!baseUrl || !token || !taskId) {
+                showResult('error', 'Please configure base URL, token, and task ID first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${baseUrl}/api/tasks/${taskId}/manual-grade`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        student_id: 'STU123456',
+                        class_code: 'A4V9TE',
+                        grade: 8,
+                        feedback: 'Test feedback for manual grading API'
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResult('success', `✅ Manual grading API test successful!\n\n${JSON.stringify(result.data, null, 2)}`);
+                } else {
+                    showResult('error', `❌ Manual grading API test failed: ${result.message}`);
+                }
+            } catch (error) {
+                showResult('error', `❌ API test error: ${error.message}`);
+            }
+        }
+
+        // Test invalid grade
+        async function testInvalidGrade() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const token = document.getElementById('teacherToken').value;
+            const taskId = document.getElementById('taskId').value;
+            
+            if (!baseUrl || !token || !taskId) {
+                showResult('error', 'Please configure base URL, token, and task ID first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${baseUrl}/api/tasks/${taskId}/manual-grade`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        student_id: 'STU123456',
+                        class_code: 'A4V9TE',
+                        grade: 15, // Invalid grade (above max points)
+                        feedback: 'Test invalid grade'
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (!result.success) {
+                    showResult('info', `✅ Invalid grade test passed - API correctly rejected grade 15\n\n${JSON.stringify(result, null, 2)}`);
+                } else {
+                    showResult('error', `❌ Invalid grade test failed - API should have rejected grade 15`);
+                }
+            } catch (error) {
+                showResult('error', `❌ Invalid grade test error: ${error.message}`);
+            }
+        }
+
+        // Test missing fields
+        async function testMissingFields() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const token = document.getElementById('teacherToken').value;
+            const taskId = document.getElementById('taskId').value;
+            
+            if (!baseUrl || !token || !taskId) {
+                showResult('error', 'Please configure base URL, token, and task ID first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${baseUrl}/api/tasks/${taskId}/manual-grade`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        // Missing required fields
+                        student_id: 'STU123456'
+                        // Missing class_code and grade
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (!result.success) {
+                    showResult('info', `✅ Missing fields test passed - API correctly rejected incomplete data\n\n${JSON.stringify(result, null, 2)}`);
+                } else {
+                    showResult('error', `❌ Missing fields test failed - API should have rejected incomplete data`);
+                }
+            } catch (error) {
+                showResult('error', `❌ Missing fields test error: ${error.message}`);
+            }
+        }
+
+        // Test unauthorized access
+        async function testUnauthorized() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const taskId = document.getElementById('taskId').value;
+            
+            if (!baseUrl || !taskId) {
+                showResult('error', 'Please configure base URL and task ID first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${baseUrl}/api/tasks/${taskId}/manual-grade`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer invalid_token'
+                    },
+                    body: JSON.stringify({
+                        student_id: 'STU123456',
+                        class_code: 'A4V9TE',
+                        grade: 8,
+                        feedback: 'Test unauthorized access'
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (!result.success) {
+                    showResult('info', `✅ Unauthorized access test passed - API correctly rejected invalid token\n\n${JSON.stringify(result, null, 2)}`);
+                } else {
+                    showResult('error', `❌ Unauthorized access test failed - API should have rejected invalid token`);
+                }
+            } catch (error) {
+                showResult('error', `❌ Unauthorized access test error: ${error.message}`);
+            }
+        }
+
+        // Show result
+        function showResult(type, message) {
+            const resultDiv = document.getElementById(`${type === 'success' ? 'manualGrade' : type === 'info' ? 'manualGrade' : 'testing'}Result`);
+            if (resultDiv) {
+                resultDiv.className = `result ${type}`;
+                resultDiv.textContent = message;
+            }
+        }
+
+        // Clear all results
+        function clearResults() {
+            document.querySelectorAll('.result').forEach(result => {
+                result.textContent = '';
+                result.className = 'result';
+            });
+        }
+    </script>
+</body>
+</html>
