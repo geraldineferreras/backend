@@ -742,14 +742,75 @@ class AdminController extends BaseController {
             return json_response(false, 'Class not found', null, 404);
         }
         
-        $success = $this->Class_model->delete($id);
-        if ($success) {
-            // Send notification to teacher about subject assignment removal
-            $this->send_teacher_subject_removal_notification($class['teacher_id'], $class['subject_id'], $class['section_id'], $class['semester'], $class['school_year']);
+        try {
+            // Start transaction to ensure data consistency
+            $this->db->trans_start();
             
-            return json_response(true, 'Class deleted successfully');
-        } else {
-            return json_response(false, 'Failed to delete class', null, 500);
+            // Clean up related data before deleting the class
+            
+            // 1. Delete attendance records for this class
+            $this->db->where('class_id', $id)->delete('attendance');
+            
+            // 2. Delete excuse letters for this class
+            $this->db->where('class_id', $id)->delete('excuse_letters');
+            
+            // 3. Find all classrooms that correspond to this class (subject offering)
+            // and clean up their related data
+            $classrooms = $this->db->select('id, class_code')
+                ->from('classrooms')
+                ->where('subject_id', $class['subject_id'])
+                ->where('section_id', $class['section_id'])
+                ->where('teacher_id', $class['teacher_id'])
+                ->get()->result_array();
+            
+            foreach ($classrooms as $classroom) {
+                $class_code = $classroom['class_code'];
+                
+                // 3a. Update class_tasks to remove this class_code from class_codes JSON
+                $this->db->query("
+                    UPDATE class_tasks 
+                    SET class_codes = JSON_REMOVE(class_codes, JSON_UNQUOTE(JSON_SEARCH(class_codes, 'one', ?)))
+                    WHERE JSON_CONTAINS(class_codes, ?)
+                ", [$class_code, json_encode($class_code)]);
+                
+                // 3b. Delete task submissions for this class_code
+                $this->db->where('class_code', $class_code)->delete('task_submissions');
+                
+                // 3c. Delete task student assignments for this class_code
+                $this->db->where('class_code', $class_code)->delete('task_student_assignments');
+                
+                // 3d. Delete classroom stream posts for this class_code
+                $this->db->where('class_code', $class_code)->delete('classroom_stream');
+                
+                // 3e. Delete classroom enrollments for this classroom
+                $this->db->where('classroom_id', $classroom['id'])->delete('classroom_enrollments');
+                
+                // 3f. Delete the classroom itself
+                $this->db->where('id', $classroom['id'])->delete('classrooms');
+            }
+            
+            // 4. Now delete the class (subject offering)
+            $success = $this->Class_model->delete($id);
+            
+            if ($success) {
+                // Commit transaction
+                $this->db->trans_complete();
+                
+                // Send notification to teacher about subject assignment removal
+                $this->send_teacher_subject_removal_notification($class['teacher_id'], $class['subject_id'], $class['section_id'], $class['semester'], $class['school_year']);
+                
+                return json_response(true, 'Class deleted successfully');
+            } else {
+                // Rollback transaction
+                $this->db->trans_rollback();
+                return json_response(false, 'Failed to delete class', null, 500);
+            }
+            
+        } catch (Exception $e) {
+            // Rollback transaction on error
+            $this->db->trans_rollback();
+            log_message('error', 'Error deleting class: ' . $e->getMessage());
+            return json_response(false, 'Error deleting class: ' . $e->getMessage(), null, 500);
         }
     }
 
