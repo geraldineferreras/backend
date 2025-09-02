@@ -36,6 +36,7 @@ $port = $envPort ? (int)$envPort : 3306;
 echo "🔍 Testing Database Connection and Table Structure...\n\n";
 
 try {
+    echo "Using settings => host: $host, port: $port, user: $username, db: $database\n";
     // Test connection
     $dsn = "mysql:host=$host;port=$port;dbname=$database";
     $pdo = new PDO($dsn, $username, $password);
