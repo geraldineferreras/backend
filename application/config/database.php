@@ -73,12 +73,20 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 $active_group = 'default';
 $query_builder = TRUE;
 
+// Resolve environment variables from multiple providers (Railway, local, etc.)
+$envHost = getenv('DB_HOST') ? getenv('DB_HOST') : getenv('MYSQLHOST');
+$envUser = getenv('DB_USER') ? getenv('DB_USER') : getenv('MYSQLUSER');
+$envPass = getenv('DB_PASS') ? getenv('DB_PASS') : getenv('MYSQLPASSWORD');
+$envName = getenv('DB_NAME') ? getenv('DB_NAME') : getenv('MYSQLDATABASE');
+$envPort = getenv('DB_PORT') ? getenv('DB_PORT') : getenv('MYSQLPORT');
+
 $db['default'] = array(
 	'dsn'	=> '',
-	'hostname' => getenv('DB_HOST') ? getenv('DB_HOST') : 'localhost',
-	'username' => getenv('DB_USER') ? getenv('DB_USER') : 'root',
-	'password' => getenv('DB_PASS') ? getenv('DB_PASS') : '',
-	'database' => getenv('DB_NAME') ? getenv('DB_NAME') : 'scms_db',
+	// Use 127.0.0.1 to force TCP and avoid socket issues
+	'hostname' => $envHost ? $envHost : '127.0.0.1',
+	'username' => $envUser ? $envUser : 'root',
+	'password' => $envPass ? $envPass : '',
+	'database' => $envName ? $envName : 'scms_db',
 	'dbdriver' => 'mysqli',
 	'dbprefix' => '',
 	'pconnect' => FALSE,
@@ -95,11 +103,11 @@ $db['default'] = array(
 	'save_queries' => TRUE
 );
 
-// If DB_PORT is provided and hostname has no port, append it for mysqli
-if (getenv('DB_PORT')) {
+// If port is provided and hostname has no port, append it for mysqli
+if ($envPort) {
     $currentHost = $db['default']['hostname'];
     if (strpos($currentHost, ':') === FALSE) {
-        $db['default']['hostname'] = $currentHost . ':' . getenv('DB_PORT');
+        $db['default']['hostname'] = $currentHost . ':' . $envPort;
     }
 }
 
