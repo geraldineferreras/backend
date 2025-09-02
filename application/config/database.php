@@ -132,3 +132,19 @@ if (getenv('DATABASE_URL')) {
         }
     }
 }
+
+// Also support Railway's MYSQL_URL/MYSQL_PUBLIC_URL formats
+foreach (['MYSQL_URL', 'MYSQL_PUBLIC_URL'] as $urlVar) {
+    $url = getenv($urlVar);
+    if ($url) {
+        $parts = parse_url($url);
+        if ($parts !== false) {
+            if (isset($parts['host'])) { $db['default']['hostname'] = $parts['host']; }
+            if (isset($parts['port'])) { $db['default']['port'] = (int) $parts['port']; }
+            if (isset($parts['user'])) { $db['default']['username'] = $parts['user']; }
+            if (isset($parts['pass'])) { $db['default']['password'] = $parts['pass']; }
+            if (isset($parts['path'])) { $db['default']['database'] = ltrim($parts['path'], '/'); }
+            break; // first available wins
+        }
+    }
+}
