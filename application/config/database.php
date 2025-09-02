@@ -95,6 +95,14 @@ $db['default'] = array(
 	'save_queries' => TRUE
 );
 
+// If DB_PORT is provided and hostname has no port, append it for mysqli
+if (getenv('DB_PORT')) {
+    $currentHost = $db['default']['hostname'];
+    if (strpos($currentHost, ':') === FALSE) {
+        $db['default']['hostname'] = $currentHost . ':' . getenv('DB_PORT');
+    }
+}
+
 // Support Railway's DATABASE_URL if present (e.g., mysql://user:pass@host:port/dbname)
 if (getenv('DATABASE_URL')) {
     $url = getenv('DATABASE_URL');
