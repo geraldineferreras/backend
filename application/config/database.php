@@ -80,6 +80,7 @@ $envPass = getenv('DB_PASS') ? getenv('DB_PASS') : getenv('MYSQLPASSWORD');
 $envName = getenv('DB_NAME') ? getenv('DB_NAME') : getenv('MYSQLDATABASE');
 $envPort = getenv('DB_PORT') ? getenv('DB_PORT') : getenv('MYSQLPORT');
 
+
 $db['default'] = array(
 	'dsn'	=> '',
 	// Use 127.0.0.1 to force TCP and avoid socket issues
@@ -87,6 +88,8 @@ $db['default'] = array(
 	'username' => $envUser ? $envUser : 'root',
 	'password' => $envPass ? $envPass : '',
 	'database' => $envName ? $envName : 'scms_db',
+	// Pass port explicitly to mysqli
+	'port' => $envPort ? (int) $envPort : null,
 	'dbdriver' => 'mysqli',
 	'dbprefix' => '',
 	'pconnect' => FALSE,
@@ -103,12 +106,10 @@ $db['default'] = array(
 	'save_queries' => TRUE
 );
 
-// If port is provided and hostname has no port, append it for mysqli
-if ($envPort) {
-    $currentHost = $db['default']['hostname'];
-    if (strpos($currentHost, ':') === FALSE) {
-        $db['default']['hostname'] = $currentHost . ':' . $envPort;
-    }
+// If previously set, ensure hostname remains clean (no :port) when 'port' is used
+if (strpos($db['default']['hostname'], ':') !== FALSE) {
+    $hostParts = explode(':', $db['default']['hostname'], 2);
+    $db['default']['hostname'] = $hostParts[0];
 }
 
 // Support Railway's DATABASE_URL if present (e.g., mysql://user:pass@host:port/dbname)
