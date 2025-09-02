@@ -344,7 +344,9 @@ $config['cache_query_string'] = FALSE;
 | https://codeigniter.com/userguide3/libraries/encryption.html
 |
 */
-$config['encryption_key'] = '';
+// Read encryption key from environment for production deployments (e.g., Railway)
+// Generate a strong, random 32+ char key and set as ENCRYPTION_KEY env var
+$config['encryption_key'] = getenv('ENCRYPTION_KEY') ? getenv('ENCRYPTION_KEY') : '';
 
 /*
 |--------------------------------------------------------------------------
