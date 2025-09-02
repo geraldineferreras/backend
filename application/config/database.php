@@ -75,10 +75,10 @@ $query_builder = TRUE;
 
 $db['default'] = array(
 	'dsn'	=> '',
-	'hostname' => 'localhost:3308',
-	'username' => 'root',
-	'password' => '',
-	'database' => 'scms_db',
+	'hostname' => getenv('DB_HOST') ? getenv('DB_HOST') : 'localhost',
+	'username' => getenv('DB_USER') ? getenv('DB_USER') : 'root',
+	'password' => getenv('DB_PASS') ? getenv('DB_PASS') : '',
+	'database' => getenv('DB_NAME') ? getenv('DB_NAME') : 'scms_db',
 	'dbdriver' => 'mysqli',
 	'dbprefix' => '',
 	'pconnect' => FALSE,
@@ -94,3 +94,24 @@ $db['default'] = array(
 	'failover' => array(),
 	'save_queries' => TRUE
 );
+
+// Support Railway's DATABASE_URL if present (e.g., mysql://user:pass@host:port/dbname)
+if (getenv('DATABASE_URL')) {
+    $url = getenv('DATABASE_URL');
+    $parts = parse_url($url);
+    if ($parts !== false) {
+        $db['default']['hostname'] = isset($parts['host']) ? $parts['host'] : $db['default']['hostname'];
+        if (isset($parts['port'])) {
+            $db['default']['hostname'] .= ':' . $parts['port'];
+        }
+        if (isset($parts['user'])) {
+            $db['default']['username'] = $parts['user'];
+        }
+        if (isset($parts['pass'])) {
+            $db['default']['password'] = $parts['pass'];
+        }
+        if (isset($parts['path'])) {
+            $db['default']['database'] = ltrim($parts['path'], '/');
+        }
+    }
+}
