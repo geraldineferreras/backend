@@ -73,12 +73,19 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 $active_group = 'default';
 $query_builder = TRUE;
 
-// Resolve environment variables from multiple providers (Railway, local, etc.)
-$envHost = getenv('DB_HOST') ? getenv('DB_HOST') : getenv('MYSQLHOST');
-$envUser = getenv('DB_USER') ? getenv('DB_USER') : getenv('MYSQLUSER');
-$envPass = getenv('DB_PASS') ? getenv('DB_PASS') : getenv('MYSQLPASSWORD');
-$envName = getenv('DB_NAME') ? getenv('DB_NAME') : getenv('MYSQLDATABASE');
-$envPort = getenv('DB_PORT') ? getenv('DB_PORT') : getenv('MYSQLPORT');
+// Resolve environment variables from multiple providers (supports getenv, $_SERVER, $_ENV)
+$get = function($key) {
+    if (getenv($key) !== false) return getenv($key);
+    if (isset($_SERVER[$key])) return $_SERVER[$key];
+    if (isset($_ENV[$key])) return $_ENV[$key];
+    return null;
+};
+
+$envHost = $get('DB_HOST'); if (!$envHost) $envHost = $get('MYSQLHOST');
+$envUser = $get('DB_USER'); if (!$envUser) $envUser = $get('MYSQLUSER');
+$envPass = $get('DB_PASS'); if (!$envPass) $envPass = $get('MYSQLPASSWORD');
+$envName = $get('DB_NAME'); if (!$envName) $envName = $get('MYSQLDATABASE');
+$envPort = $get('DB_PORT'); if (!$envPort) $envPort = $get('MYSQLPORT');
 
 
 $db['default'] = array(
@@ -112,9 +119,10 @@ if (strpos($db['default']['hostname'], ':') !== FALSE) {
     $db['default']['hostname'] = $hostParts[0];
 }
 
-// Support Railway's DATABASE_URL if present (e.g., mysql://user:pass@host:port/dbname)
-if (getenv('DATABASE_URL')) {
-    $url = getenv('DATABASE_URL');
+// Support DATABASE_URL if present (e.g., mysql://user:pass@host:port/dbname)
+$dbUrl = $get('DATABASE_URL');
+if ($dbUrl) {
+    $url = $dbUrl;
     $parts = parse_url($url);
     if ($parts !== false) {
         $db['default']['hostname'] = isset($parts['host']) ? $parts['host'] : $db['default']['hostname'];
@@ -135,7 +143,7 @@ if (getenv('DATABASE_URL')) {
 
 // Also support Railway's MYSQL_URL/MYSQL_PUBLIC_URL formats
 foreach (['MYSQL_URL', 'MYSQL_PUBLIC_URL'] as $urlVar) {
-    $url = getenv($urlVar);
+    $url = $get($urlVar);
     if ($url) {
         $parts = parse_url($url);
         if ($parts !== false) {

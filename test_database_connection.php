@@ -4,14 +4,22 @@
  */
 
 // Resolve DB settings from environment (supports DB_* and Railway MYSQL* and *_URL)
-$envHost = getenv('DB_HOST') ? getenv('DB_HOST') : getenv('MYSQLHOST');
-$envUser = getenv('DB_USER') ? getenv('DB_USER') : getenv('MYSQLUSER');
-$envPass = getenv('DB_PASS') ? getenv('DB_PASS') : getenv('MYSQLPASSWORD');
-$envName = getenv('DB_NAME') ? getenv('DB_NAME') : getenv('MYSQLDATABASE');
-$envPort = getenv('DB_PORT') ? getenv('DB_PORT') : getenv('MYSQLPORT');
+// Helper to read env from getenv/$_SERVER/$_ENV
+$get = function($k) {
+    if (getenv($k) !== false) return getenv($k);
+    if (isset($_SERVER[$k])) return $_SERVER[$k];
+    if (isset($_ENV[$k])) return $_ENV[$k];
+    return null;
+};
+
+$envHost = $get('DB_HOST'); if (!$envHost) $envHost = $get('MYSQLHOST');
+$envUser = $get('DB_USER'); if (!$envUser) $envUser = $get('MYSQLUSER');
+$envPass = $get('DB_PASS'); if (!$envPass) $envPass = $get('MYSQLPASSWORD');
+$envName = $get('DB_NAME'); if (!$envName) $envName = $get('MYSQLDATABASE');
+$envPort = $get('DB_PORT'); if (!$envPort) $envPort = $get('MYSQLPORT');
 
 // Fallback to URL forms
-$urlCandidates = [getenv('DATABASE_URL'), getenv('MYSQL_URL'), getenv('MYSQL_PUBLIC_URL')];
+$urlCandidates = [$get('DATABASE_URL'), $get('MYSQL_URL'), $get('MYSQL_PUBLIC_URL')];
 foreach ($urlCandidates as $candidate) {
     if ($candidate) {
         $parts = parse_url($candidate);
