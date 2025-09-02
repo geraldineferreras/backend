@@ -3,17 +3,42 @@
  * Test Database Connection and Classroom Stream Table
  */
 
-// Database configuration
-$host = 'localhost:3308';
-$username = 'root';
-$password = '';
-$database = 'scms_db';
+// Resolve DB settings from environment (supports DB_* and Railway MYSQL* and *_URL)
+$envHost = getenv('DB_HOST') ? getenv('DB_HOST') : getenv('MYSQLHOST');
+$envUser = getenv('DB_USER') ? getenv('DB_USER') : getenv('MYSQLUSER');
+$envPass = getenv('DB_PASS') ? getenv('DB_PASS') : getenv('MYSQLPASSWORD');
+$envName = getenv('DB_NAME') ? getenv('DB_NAME') : getenv('MYSQLDATABASE');
+$envPort = getenv('DB_PORT') ? getenv('DB_PORT') : getenv('MYSQLPORT');
+
+// Fallback to URL forms
+$urlCandidates = [getenv('DATABASE_URL'), getenv('MYSQL_URL'), getenv('MYSQL_PUBLIC_URL')];
+foreach ($urlCandidates as $candidate) {
+    if ($candidate) {
+        $parts = parse_url($candidate);
+        if ($parts !== false) {
+            if (isset($parts['host'])) { $envHost = $parts['host']; }
+            if (isset($parts['port'])) { $envPort = $parts['port']; }
+            if (isset($parts['user'])) { $envUser = $parts['user']; }
+            if (isset($parts['pass'])) { $envPass = $parts['pass']; }
+            if (isset($parts['path'])) { $envName = ltrim($parts['path'], '/'); }
+            break;
+        }
+    }
+}
+
+// Defaults for local dev if nothing provided
+$host = $envHost ? $envHost : '127.0.0.1';
+$username = $envUser ? $envUser : 'root';
+$password = $envPass ? $envPass : '';
+$database = $envName ? $envName : 'scms_db';
+$port = $envPort ? (int)$envPort : 3306;
 
 echo "🔍 Testing Database Connection and Table Structure...\n\n";
 
 try {
     // Test connection
-    $pdo = new PDO("mysql:host=$host;dbname=$database", $username, $password);
+    $dsn = "mysql:host=$host;port=$port;dbname=$database";
+    $pdo = new PDO($dsn, $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
     echo "✅ Database connection successful!\n\n";
