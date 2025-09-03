@@ -45,6 +45,8 @@ echo "✅ SendGrid API key found\n";
 
 try {
     echo "Creating SendGrid email...\n";
+    echo "From Email: {$sender_email}\n";
+    echo "From Name: {$sender_name}\n";
     
     $email = new Mail();
     $email->setFrom($sender_email, $sender_name);
@@ -69,6 +71,19 @@ try {
         echo "✅ Email sent successfully via SendGrid!\n";
     } else {
         echo "❌ Email failed to send via SendGrid\n";
+        
+        // Try with just the email address (no name)
+        echo "\nTrying with just email address (no name)...\n";
+        $email2 = new Mail();
+        $email2->setFrom($sender_email);
+        $email2->setSubject('SCMS Test 2 - ' . date('H:i:s'));
+        $email2->addTo('grldnferreras@gmail.com');
+        $email2->addContent("text/html", '<h1>SCMS Email Test 2</h1><p>This is a test email from SCMS System using SendGrid (no name).</p>');
+        $email2->addContent("text/plain", 'This is a test email from SCMS System using SendGrid (no name).');
+        
+        $response2 = $sendgrid->send($email2);
+        echo "Response 2 Status Code: " . $response2->statusCode() . "\n";
+        echo "Response 2 Body: " . $response2->body() . "\n";
     }
     
 } catch (Exception $e) {
