@@ -50,7 +50,7 @@ function send_email_notification($user_id, $type, $title, $message, $related_id 
     $CI->load->library('email');
     
     // Configure email
-    $CI->email->from('grldnferreras@gmail.com', 'SCMS System');
+    $CI->email->from($CI->config->item('smtp_user'), 'SCMS System');
     $CI->email->to($user_email);
     $CI->email->subject($title);
     
@@ -296,7 +296,7 @@ function test_email_configuration($to_email) {
     $CI =& get_instance();
     $CI->load->library('email');
     
-    $CI->email->from('grldnferreras@gmail.com', 'SCMS System');
+    $CI->email->from($CI->config->item('smtp_user'), 'SCMS System');
     $CI->email->to($to_email);
     $CI->email->subject('SCMS Email Test');
     $CI->email->message('This is a test email from SCMS System. If you receive this, email configuration is working correctly.');
