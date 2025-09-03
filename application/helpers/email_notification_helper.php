@@ -35,15 +35,39 @@ if (!function_exists('get_notification_type_display')) {
 }
 
 /**
- * Send email notification using SendGrid
+ * Send email notification
  */
 function send_email_notification($user_id, $type, $title, $message, $related_id = null, $related_type = null, $class_code = null) {
-    // Load SendGrid helper
     $CI =& get_instance();
-    $CI->load->helper('sendgrid');
     
-    // Use SendGrid function
-    return send_email_notification_sendgrid($user_id, $type, $title, $message, $related_id, $related_type, $class_code);
+    // Get user email
+    $user_email = get_user_email($user_id);
+    if (!$user_email) {
+        return false;
+    }
+    
+    // Load email library
+    $CI->load->library('email');
+    
+    // Configure email
+    $from_email = getenv('SMTP_USER') ? getenv('SMTP_USER') : 'scmswebsitee@gmail.com';
+    $from_name = getenv('SMTP_FROM_NAME') ? getenv('SMTP_FROM_NAME') : 'SCMS System';
+    $CI->email->from($from_email, $from_name);
+    $CI->email->to($user_email);
+    $CI->email->subject($title);
+    
+    // Create HTML email content
+    $html_content = create_email_html($type, $title, $message, $related_id, $related_type, $class_code);
+    $CI->email->message($html_content);
+    $CI->email->set_mailtype('html');
+    
+    // Send email
+    $result = $CI->email->send();
+    
+    // Log email sending
+    log_email_notification($user_id, $type, $title, $result);
+    
+    return $result;
 }
 
 /**
@@ -268,26 +292,42 @@ function log_email_notification($user_id, $type, $title, $success) {
 }
 
 /**
- * Test email configuration using SendGrid
+ * Test email configuration
  */
 function test_email_configuration($to_email) {
-    // Load SendGrid helper
     $CI =& get_instance();
-    $CI->load->helper('sendgrid');
+    $CI->load->library('email');
     
-    // Use SendGrid test function
-    $result = test_email_configuration_sendgrid($to_email);
-    return $result['success'];
+    $from_email = getenv('SMTP_USER') ? getenv('SMTP_USER') : 'scmswebsitee@gmail.com';
+    $from_name = getenv('SMTP_FROM_NAME') ? getenv('SMTP_FROM_NAME') : 'SCMS System';
+    $CI->email->from($from_email, $from_name);
+    $CI->email->to($to_email);
+    $CI->email->subject('SCMS Email Test');
+    $CI->email->message('This is a test email from SCMS System. If you receive this, email configuration is working correctly.');
+    
+    return $CI->email->send();
 }
 
 /**
- * Send bulk email notifications using SendGrid
+ * Send bulk email notifications
  */
 function send_bulk_email_notifications($user_ids, $type, $title, $message, $related_id = null, $related_type = null, $class_code = null) {
-    // Load SendGrid helper
-    $CI =& get_instance();
-    $CI->load->helper('sendgrid');
+    $success_count = 0;
+    $failure_count = 0;
     
-    // Use SendGrid bulk function
-    return send_bulk_email_notifications_sendgrid($user_ids, $type, $title, $message, $related_id, $related_type, $class_code);
+    foreach ($user_ids as $user_id) {
+        $result = send_email_notification($user_id, $type, $title, $message, $related_id, $related_type, $class_code);
+        
+        if ($result) {
+            $success_count++;
+        } else {
+            $failure_count++;
+        }
+    }
+    
+    return array(
+        'success_count' => $success_count,
+        'failure_count' => $failure_count,
+        'total_count' => count($user_ids)
+    );
 } 
