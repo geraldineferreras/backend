@@ -1,8 +1,8 @@
 <?php
-// Email Debug Test
+// Email Debug Test with PHPMailer
 header('Content-Type: text/plain');
 
-echo "=== Email Configuration Debug ===\n\n";
+echo "=== Email Configuration Debug (PHPMailer) ===\n\n";
 
 // Test environment variables
 $env_vars = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_CRYPTO'];
@@ -12,47 +12,79 @@ foreach ($env_vars as $var) {
     echo sprintf("%-12s = %s\n", $var, $value ? $value : '(not set)');
 }
 
-echo "\n=== Direct SMTP Test ===\n";
+echo "\n=== PHPMailer Test ===\n";
 
-// Test SMTP connection directly
+// Load PHPMailer
+require_once('vendor/autoload.php');
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\SMTP;
+use PHPMailer\PHPMailer\Exception;
+
+// Get SMTP configuration
 $smtp_host = getenv('SMTP_HOST') ? getenv('SMTP_HOST') : 'smtp.gmail.com';
 $smtp_port = getenv('SMTP_PORT') ? getenv('SMTP_PORT') : 465;
 $smtp_user = getenv('SMTP_USER') ? getenv('SMTP_USER') : 'scmswebsitee@gmail.com';
 $smtp_pass = getenv('SMTP_PASS') ? getenv('SMTP_PASS') : 'zhrk blgg sukj wbbs';
+$smtp_crypto = getenv('SMTP_CRYPTO') ? getenv('SMTP_CRYPTO') : 'ssl';
 
-echo "Testing SMTP connection to {$smtp_host}:{$smtp_port}\n";
-echo "Username: {$smtp_user}\n";
+echo "Testing PHPMailer with:\n";
+echo "Host: {$smtp_host}\n";
+echo "Port: {$smtp_port}\n";
+echo "User: {$smtp_user}\n";
+echo "Crypto: {$smtp_crypto}\n\n";
 
-// Test 1: Check if we can connect to SMTP server
-$socket = fsockopen('ssl://' . $smtp_host, $smtp_port, $errno, $errstr, 10);
-if ($socket) {
-    echo "✅ SMTP connection successful\n";
-    fclose($socket);
-} else {
-    echo "❌ SMTP connection failed: {$errstr} ({$errno})\n";
+$mail = new PHPMailer(true);
+
+try {
+    // Server settings
+    $mail->isSMTP();
+    $mail->Host       = $smtp_host;
+    $mail->SMTPAuth   = true;
+    $mail->Username   = $smtp_user;
+    $mail->Password   = $smtp_pass;
+    $mail->SMTPSecure = $smtp_crypto === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+    $mail->Port       = $smtp_port;
+    
+    // Enable verbose debug output
+    $mail->SMTPDebug = 2;
+    
+    // Recipients
+    $mail->setFrom($smtp_user, 'SCMS System');
+    $mail->addAddress('grldnferreras@gmail.com');
+    
+    // Content
+    $mail->isHTML(true);
+    $mail->Subject = 'SCMS Email Test - ' . date('Y-m-d H:i:s');
+    $mail->Body = '<h1>SCMS Email Test</h1><p>This is a test email from SCMS System using PHPMailer. If you receive this, email is working correctly!</p>';
+    $mail->AltBody = 'This is a test email from SCMS System using PHPMailer. If you receive this, email is working correctly!';
+    
+    echo "Attempting to send email...\n";
+    echo "SMTP Debug Output:\n";
+    echo "==================\n";
+    
+    // Capture debug output
+    ob_start();
+    $result = $mail->send();
+    $debug_output = ob_get_clean();
+    
+    echo $debug_output;
+    echo "==================\n";
+    
+    if ($result) {
+        echo "✅ Email sent successfully via PHPMailer!\n";
+    } else {
+        echo "❌ Email failed to send via PHPMailer\n";
+    }
+    
+} catch (Exception $e) {
+    echo "❌ PHPMailer Exception: " . $e->getMessage() . "\n";
+    echo "Debug Info: " . $mail->ErrorInfo . "\n";
 }
 
-echo "\n=== Test Email Send (Simple) ===\n";
-
-// Test with basic mail() function
-$to = 'grldnferreras@gmail.com';
-$subject = 'SCMS Email Test - ' . date('Y-m-d H:i:s');
-$message = 'This is a test email from SCMS. If you receive this, email is working!';
-$headers = "From: {$smtp_user}\r\n";
-$headers .= "Reply-To: {$smtp_user}\r\n";
-$headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-
-$result = mail($to, $subject, $message, $headers);
-
-if ($result) {
-    echo "✅ Email sent successfully via mail() function!\n";
-} else {
-    echo "❌ Email failed to send via mail() function\n";
-}
-
-echo "\n=== PHP Mail Configuration ===\n";
-echo "sendmail_path: " . ini_get('sendmail_path') . "\n";
-echo "SMTP: " . ini_get('SMTP') . "\n";
-echo "smtp_port: " . ini_get('smtp_port') . "\n";
-echo "sendmail_from: " . ini_get('sendmail_from') . "\n";
+echo "\n=== PHP Configuration ===\n";
+echo "PHP Version: " . phpversion() . "\n";
+echo "OpenSSL: " . (extension_loaded('openssl') ? 'Enabled' : 'Disabled') . "\n";
+echo "cURL: " . (extension_loaded('curl') ? 'Enabled' : 'Disabled') . "\n";
+echo "Socket: " . (extension_loaded('sockets') ? 'Enabled' : 'Disabled') . "\n";
 ?>
