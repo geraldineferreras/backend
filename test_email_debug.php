@@ -12,38 +12,47 @@ foreach ($env_vars as $var) {
     echo sprintf("%-12s = %s\n", $var, $value ? $value : '(not set)');
 }
 
-echo "\n=== CodeIgniter Email Config ===\n";
+echo "\n=== Direct SMTP Test ===\n";
 
-// Load CodeIgniter
-require_once('index.php');
+// Test SMTP connection directly
+$smtp_host = getenv('SMTP_HOST') ? getenv('SMTP_HOST') : 'smtp.gmail.com';
+$smtp_port = getenv('SMTP_PORT') ? getenv('SMTP_PORT') : 465;
+$smtp_user = getenv('SMTP_USER') ? getenv('SMTP_USER') : 'scmswebsitee@gmail.com';
+$smtp_pass = getenv('SMTP_PASS') ? getenv('SMTP_PASS') : 'zhrk blgg sukj wbbs';
 
-$CI =& get_instance();
-$CI->load->library('email');
+echo "Testing SMTP connection to {$smtp_host}:{$smtp_port}\n";
+echo "Username: {$smtp_user}\n";
 
-// Show current email config
-echo "SMTP Host: " . $CI->config->item('smtp_host') . "\n";
-echo "SMTP Port: " . $CI->config->item('smtp_port') . "\n";
-echo "SMTP User: " . $CI->config->item('smtp_user') . "\n";
-echo "SMTP Pass: " . (strlen($CI->config->item('smtp_pass')) > 0 ? '[SET]' : '[NOT SET]') . "\n";
-echo "SMTP Crypto: " . $CI->config->item('smtp_crypto') . "\n";
-
-echo "\n=== Test Email Send ===\n";
-
-// Test email sending
-$CI->email->from($CI->config->item('smtp_user'), 'SCMS Test');
-$CI->email->to('grldnferreras@gmail.com'); // Send to yourself for testing
-$CI->email->subject('SCMS Email Test - ' . date('Y-m-d H:i:s'));
-$CI->email->message('This is a test email from SCMS. If you receive this, email is working!');
-
-$result = $CI->email->send();
-
-if ($result) {
-    echo "✅ Email sent successfully!\n";
+// Test 1: Check if we can connect to SMTP server
+$socket = fsockopen('ssl://' . $smtp_host, $smtp_port, $errno, $errstr, 10);
+if ($socket) {
+    echo "✅ SMTP connection successful\n";
+    fclose($socket);
 } else {
-    echo "❌ Email failed to send\n";
-    echo "Error: " . $CI->email->print_debugger() . "\n";
+    echo "❌ SMTP connection failed: {$errstr} ({$errno})\n";
 }
 
-echo "\n=== Email Debug Info ===\n";
-echo $CI->email->print_debugger();
+echo "\n=== Test Email Send (Simple) ===\n";
+
+// Test with basic mail() function
+$to = 'grldnferreras@gmail.com';
+$subject = 'SCMS Email Test - ' . date('Y-m-d H:i:s');
+$message = 'This is a test email from SCMS. If you receive this, email is working!';
+$headers = "From: {$smtp_user}\r\n";
+$headers .= "Reply-To: {$smtp_user}\r\n";
+$headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+
+$result = mail($to, $subject, $message, $headers);
+
+if ($result) {
+    echo "✅ Email sent successfully via mail() function!\n";
+} else {
+    echo "❌ Email failed to send via mail() function\n";
+}
+
+echo "\n=== PHP Mail Configuration ===\n";
+echo "sendmail_path: " . ini_get('sendmail_path') . "\n";
+echo "SMTP: " . ini_get('SMTP') . "\n";
+echo "smtp_port: " . ini_get('smtp_port') . "\n";
+echo "sendmail_from: " . ini_get('sendmail_from') . "\n";
 ?>
