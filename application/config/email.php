@@ -12,11 +12,11 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 */
 
 $config['protocol'] = 'smtp';
-$config['smtp_host'] = 'smtp.gmail.com';
-$config['smtp_port'] = 465;
-$config['smtp_user'] = 'scmswebsitee@gmail.com';
-$config['smtp_pass'] = 'zhrk blgg sukj wbbs';
-$config['smtp_crypto'] = 'ssl';
+$config['smtp_host'] = getenv('SMTP_HOST') ? getenv('SMTP_HOST') : 'smtp.gmail.com';
+$config['smtp_port'] = getenv('SMTP_PORT') ? getenv('SMTP_PORT') : 465;
+$config['smtp_user'] = getenv('SMTP_USER') ? getenv('SMTP_USER') : 'scmswebsitee@gmail.com';
+$config['smtp_pass'] = getenv('SMTP_PASS') ? getenv('SMTP_PASS') : 'zhrk blgg sukj wbbs';
+$config['smtp_crypto'] = getenv('SMTP_CRYPTO') ? getenv('SMTP_CRYPTO') : 'ssl';
 $config['smtp_timeout'] = 30;
 $config['mailtype'] = 'html';
 $config['charset'] = 'utf-8';
