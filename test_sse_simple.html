@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SSE Notification Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+        .info { background: #e3f2fd; color: #1565c0; }
+        button { padding: 10px 20px; margin: 5px; background: #2196f3; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #1976d2; }
+        input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>SSE Notification Test</h1>
+    
+    <div>
+        <input type="text" id="baseUrl" placeholder="Base URL" value="http://localhost/scms_new_backup/index.php/api" style="width: 300px;">
+        <input type="text" id="token" placeholder="JWT Token" style="width: 200px;">
+        <input type="text" id="userId" placeholder="User ID" value="STU001">
+        <input type="text" id="role" placeholder="Role" value="student">
+    </div>
+    
+    <div>
+        <button onclick="testNotificationStreamController()">Test NotificationStreamController</button>
+        <button onclick="testNotificationsController()">Test Notifications Controller</button>
+        <button onclick="testRegularNotifications()">Test Regular Notifications API</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+    
+    <div id="log"></div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            logDiv.appendChild(div);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function testNotificationStreamController() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const token = document.getElementById('token').value;
+            const userId = document.getElementById('userId').value;
+            const role = document.getElementById('role').value;
+            
+            if (!token) {
+                log('Please enter a JWT token', 'error');
+                return;
+            }
+            
+            log('Testing NotificationStreamController SSE...', 'info');
+            
+            const url = `${baseUrl}/notifications/stream?userId=${userId}&role=${role}`;
+            log(`Connecting to: ${url}`, 'info');
+            
+            const eventSource = new EventSource(url);
+            
+            eventSource.onopen = function(event) {
+                log('SSE Connection opened', 'success');
+            };
+            
+            eventSource.onmessage = function(event) {
+                log(`SSE Message: ${event.data}`, 'success');
+            };
+            
+            eventSource.addEventListener('connected', function(event) {
+                log(`Connected event: ${event.data}`, 'success');
+            });
+            
+            eventSource.addEventListener('notification', function(event) {
+                log(`Notification event: ${event.data}`, 'success');
+            });
+            
+            eventSource.addEventListener('test_message', function(event) {
+                log(`Test message: ${event.data}`, 'info');
+            });
+            
+            eventSource.addEventListener('error', function(event) {
+                log(`Error event: ${event.data}`, 'error');
+            });
+            
+            eventSource.onerror = function(event) {
+                log('SSE Connection error', 'error');
+                eventSource.close();
+            };
+            
+            // Close connection after 30 seconds
+            setTimeout(() => {
+                eventSource.close();
+                log('SSE Connection closed after 30 seconds', 'info');
+            }, 30000);
+        }
+
+        function testNotificationsController() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const token = document.getElementById('token').value;
+            const userId = document.getElementById('userId').value;
+            const role = document.getElementById('role').value;
+            
+            if (!token) {
+                log('Please enter a JWT token', 'error');
+                return;
+            }
+            
+            log('Testing Notifications Controller SSE...', 'info');
+            
+            const url = `${baseUrl}/notifications/stream/${token}?userId=${userId}&role=${role}`;
+            log(`Connecting to: ${url}`, 'info');
+            
+            const eventSource = new EventSource(url);
+            
+            eventSource.onopen = function(event) {
+                log('SSE Connection opened', 'success');
+            };
+            
+            eventSource.onmessage = function(event) {
+                log(`SSE Message: ${event.data}`, 'success');
+            };
+            
+            eventSource.addEventListener('connected', function(event) {
+                log(`Connected event: ${event.data}`, 'success');
+            });
+            
+            eventSource.addEventListener('notification', function(event) {
+                log(`Notification event: ${event.data}`, 'success');
+            });
+            
+            eventSource.addEventListener('heartbeat', function(event) {
+                log(`Heartbeat: ${event.data}`, 'info');
+            });
+            
+            eventSource.addEventListener('error', function(event) {
+                log(`Error event: ${event.data}`, 'error');
+            });
+            
+            eventSource.onerror = function(event) {
+                log('SSE Connection error', 'error');
+                eventSource.close();
+            };
+            
+            // Close connection after 30 seconds
+            setTimeout(() => {
+                eventSource.close();
+                log('SSE Connection closed after 30 seconds', 'info');
+            }, 30000);
+        }
+
+        function testRegularNotifications() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const token = document.getElementById('token').value;
+            
+            if (!token) {
+                log('Please enter a JWT token', 'error');
+                return;
+            }
+            
+            log('Testing Regular Notifications API...', 'info');
+            
+            fetch(`${baseUrl}/notifications`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                log(`HTTP Status: ${response.status}`, response.ok ? 'success' : 'error');
+                return response.json();
+            })
+            .then(data => {
+                log(`Response: ${JSON.stringify(data, null, 2)}`, 'success');
+            })
+            .catch(error => {
+                log(`Error: ${error.message}`, 'error');
+            });
+        }
+    </script>
+</body>
+</html>

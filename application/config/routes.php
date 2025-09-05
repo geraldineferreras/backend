@@ -72,15 +72,15 @@ $route['api/auth/unlink-google']['post'] = 'api/auth/unlink_google_account';
 $route['api/auth/account-status']['post'] = 'api/auth/get_account_status';
 
 // Two-Factor Authentication Routes
-$route['api/2fa/setup']['post'] = 'api/TwoFactor/setup';
-$route['api/2fa/verify']['post'] = 'api/TwoFactor/verify';
-$route['api/2fa/disable']['post'] = 'api/TwoFactor/disable';
-$route['api/2fa/status']['get'] = 'api/TwoFactor/status';
-$route['api/2fa/login-verify']['post'] = 'api/TwoFactor/login_verify';
-$route['api/2fa/backup-code']['post'] = 'api/TwoFactor/backup_code';
-$route['api/2fa/backup-codes']['get'] = 'api/TwoFactor/get_backup_codes';
-$route['api/2fa/backup-codes/count']['get'] = 'api/TwoFactor/count_backup_codes';
-$route['api/2fa/(.*)']['options'] = 'api/TwoFactor/options';
+$route['api/2fa/setup']['post'] = 'api/twofactor/setup';
+$route['api/2fa/verify']['post'] = 'api/twofactor/verify';
+$route['api/2fa/disable']['post'] = 'api/twofactor/disable';
+$route['api/2fa/status']['get'] = 'api/twofactor/status';
+$route['api/2fa/login-verify']['post'] = 'api/twofactor/login_verify';
+$route['api/2fa/backup-code']['post'] = 'api/twofactor/backup_code';
+$route['api/2fa/backup-codes']['get'] = 'api/twofactor/get_backup_codes';
+$route['api/2fa/backup-codes/count']['get'] = 'api/twofactor/count_backup_codes';
+$route['api/2fa/(.*)']['options'] = 'api/twofactor/options';
 
 // Test endpoints
 $route['api/test']['get'] = 'api/testcontroller/test';
@@ -365,9 +365,6 @@ $route['api/notifications/stream']['get'] = 'api/NotificationStreamController/st
 $route['api/notifications/status']['get'] = 'api/NotificationStreamController/status';
 // Token as URI segment, routed to simple Notifications controller per request
 $route['api/notifications/stream/(:any)']['get'] = 'api/Notifications/stream/$1';
-
-// Alternative SSE endpoint for frontend compatibility
-$route['api/sse/notifications']['get'] = 'api/Notifications/stream';
 
 // QR Grading API - Perfect for face-to-face classroom activities
 $route['api/qr-grading/quick-grade']['post'] = 'api/QRGradingController/quick_grade_post';
