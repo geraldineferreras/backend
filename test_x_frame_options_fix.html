@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-Frame-Options Fix Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <h1>X-Frame-Options Fix Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Instructions</h2>
+        <div class="info">
+            <p><strong>Before the fix:</strong> You would see "Refused to display" errors in the console and the iframes would not load.</p>
+            <p><strong>After the fix:</strong> The iframes should load successfully and display the content.</p>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 1: Direct PDF File Access (uploads/tasks/)</h2>
+        <p>Testing iframe embedding of a PDF file accessed directly from uploads directory:</p>
+        <iframe id="pdfFrame1" src="https://scms-backend.up.railway.app/uploads/tasks/6435b861d67e6fc25c3a6f8781735ad0.pdf"></iframe>
+        <div id="pdfStatus1" class="status info">Loading PDF (direct access)...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: PDF via API Endpoint</h2>
+        <p>Testing iframe embedding of a PDF file via the API endpoint:</p>
+        <iframe id="pdfFrame2" src="https://scms-backend.up.railway.app/api/tasks/files/6435b861d67e6fc25c3a6f8781735ad0.pdf"></iframe>
+        <div id="pdfStatus2" class="status info">Loading PDF (via API)...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: PDF via File Controller</h2>
+        <p>Testing iframe embedding of a PDF file via the File controller:</p>
+        <iframe id="pdfFrame3" src="https://scms-backend.up.railway.app/file/tasks/6435b861d67e6fc25c3a6f8781735ad0.pdf"></iframe>
+        <div id="pdfStatus3" class="status info">Loading PDF (via File controller)...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 4: PDF via Task Attachment Endpoint</h2>
+        <p>Testing iframe embedding of a PDF file via the task attachment endpoint:</p>
+        <iframe id="pdfFrame4" src="https://scms-backend.up.railway.app/api/tasks/attachments/6435b861d67e6fc25c3a6f8781735ad0.pdf"></iframe>
+        <div id="pdfStatus4" class="status info">Loading PDF (via attachment endpoint)...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 5: API Endpoint Response</h2>
+        <p>Testing iframe embedding of an API response:</p>
+        <iframe id="apiFrame" src="https://scms-backend.up.railway.app/api/auth/me"></iframe>
+        <div id="apiStatus" class="status info">Loading API response...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>Console Output</h2>
+        <p>Check the browser console (F12) for any X-Frame-Options errors. You should see no "Refused to display" errors after the fix.</p>
+    </div>
+
+    <script>
+        // Monitor iframe loading for all test cases
+        function setupIframeTest(iframeId, statusId, testName) {
+            const iframe = document.getElementById(iframeId);
+            const status = document.getElementById(statusId);
+            
+            iframe.onload = function() {
+                status.innerHTML = `<div class="success">✅ ${testName} loaded successfully! X-Frame-Options fix is working.</div>`;
+            };
+            
+            iframe.onerror = function() {
+                status.innerHTML = `<div class="error">❌ ${testName} failed to load. Check console for errors.</div>`;
+            };
+            
+            // Set a timeout to detect if iframe doesn't load within 10 seconds
+            setTimeout(() => {
+                if (status.innerHTML.includes('Loading')) {
+                    status.innerHTML = `<div class="error">⏰ ${testName} timed out. This might indicate the file doesn't exist or there are other issues.</div>`;
+                }
+            }, 10000);
+        }
+
+        // Setup tests for all iframes
+        setupIframeTest('pdfFrame1', 'pdfStatus1', 'PDF (direct access)');
+        setupIframeTest('pdfFrame2', 'pdfStatus2', 'PDF (via API)');
+        setupIframeTest('pdfFrame3', 'pdfStatus3', 'PDF (via File controller)');
+        setupIframeTest('pdfFrame4', 'pdfStatus4', 'PDF (via attachment endpoint)');
+        setupIframeTest('apiFrame', 'apiStatus', 'API response');
+
+        // Log any console errors
+        window.addEventListener('error', function(e) {
+            console.log('Error detected:', e.message);
+        });
+
+        // Log X-Frame-Options specific errors
+        const originalConsoleError = console.error;
+        console.error = function(...args) {
+            const message = args.join(' ');
+            if (message.includes('X-Frame-Options') || message.includes('Refused to display')) {
+                document.body.insertAdjacentHTML('beforeend', 
+                    `<div class="test-section"><div class="error">🚨 X-Frame-Options Error Detected: ${message}</div></div>`
+                );
+            }
+            originalConsoleError.apply(console, args);
+        };
+    </script>
+</body>
+</html>

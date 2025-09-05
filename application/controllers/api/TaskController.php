@@ -1046,6 +1046,7 @@ class TaskController extends BaseController
             header('Content-Length: ' . $file_size);
             header('Content-Disposition: inline; filename="' . $attachment['original_name'] . '"');
             header('Cache-Control: public, max-age=3600');
+            header('X-Frame-Options: ALLOWALL');
 
             // Output file
             readfile($file_path);
@@ -1087,6 +1088,7 @@ class TaskController extends BaseController
             $this->output->set_content_type($this->get_mime_type($extension));
             $this->output->set_header('Content-Disposition: inline; filename="' . $filename . '"');
             $this->output->set_header('Cache-Control: public, max-age=3600');
+            $this->output->set_header('X-Frame-Options: ALLOWALL');
 
             // Output file content
             readfile($file_path);
@@ -1127,6 +1129,7 @@ class TaskController extends BaseController
             $this->output->set_content_type($this->get_mime_type($extension));
             $this->output->set_header('Content-Disposition: inline; filename="' . $filename . '"');
             $this->output->set_header('Cache-Control: public, max-age=3600');
+            $this->output->set_header('X-Frame-Options: ALLOWALL');
 
             // Output file content
             readfile($file_path);

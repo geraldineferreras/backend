@@ -68,7 +68,15 @@ class BaseController extends CI_Controller {
         
         // Additional headers for better axios compatibility
         header('X-Content-Type-Options: nosniff');
-        header('X-Frame-Options: DENY');
+        
+        // Set X-Frame-Options to allow embedding from allowed origins
+        if (in_array($origin, $allowed_origins)) {
+            header('X-Frame-Options: ALLOW-FROM ' . $origin);
+        } else {
+            // For development, allow all origins to embed
+            header('X-Frame-Options: ALLOWALL');
+        }
+        
         header('X-XSS-Protection: 1; mode=block');
     }
 

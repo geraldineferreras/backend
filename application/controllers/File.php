@@ -12,6 +12,9 @@ class File extends CI_Controller {
             header('Access-Control-Allow-Methods: GET, OPTIONS');
             header('Access-Control-Allow-Headers: Content-Type');
             
+            // Allow iframe embedding for file preview
+            header('X-Frame-Options: ALLOWALL');
+            
             // Determine content type based on file extension
             $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
             $content_type = $this->get_content_type($extension);

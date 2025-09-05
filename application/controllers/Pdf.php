@@ -11,6 +11,10 @@ class Pdf extends CI_Controller {
             header('Access-Control-Allow-Origin: *');
             header('Access-Control-Allow-Methods: GET, OPTIONS');
             header('Access-Control-Allow-Headers: Content-Type');
+            
+            // Allow iframe embedding for PDF preview
+            header('X-Frame-Options: ALLOWALL');
+            
             // Set content type for PDF
             header('Content-Type: application/pdf');
             header('Content-Disposition: inline; filename="' . basename($file_path) . '"');
