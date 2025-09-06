@@ -13,6 +13,81 @@ class NotificationController extends BaseController {
     }
     
     /**
+     * Send notification
+     * POST /api/notifications
+     */
+    public function send_notification() {
+        // Verify JWT token
+        $user_id = $this->verify_token();
+        if (!$user_id) {
+            $this->output->set_status_header(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        // Validate required fields
+        if (!isset($input['type']) || !isset($input['title']) || !isset($input['message'])) {
+            $this->output->set_status_header(400);
+            echo json_encode(['error' => 'Missing required fields: type, title, message']);
+            return;
+        }
+        
+        // Optional fields
+        $related_id = isset($input['related_id']) ? $input['related_id'] : null;
+        $related_type = isset($input['related_type']) ? $input['related_type'] : null;
+        $class_code = isset($input['class_code']) ? $input['class_code'] : null;
+        $is_urgent = isset($input['is_urgent']) ? (bool)$input['is_urgent'] : false;
+        $target_user_id = isset($input['target_user_id']) ? $input['target_user_id'] : $user_id;
+        
+        // Create notification
+        $notification_data = array(
+            'user_id' => $target_user_id,
+            'type' => $input['type'],
+            'title' => $input['title'],
+            'message' => $input['message'],
+            'related_id' => $related_id,
+            'related_type' => $related_type,
+            'class_code' => $class_code,
+            'is_urgent' => $is_urgent ? 1 : 0
+        );
+        
+        $notification_id = $this->Notification_model->create_notification($notification_data);
+        
+        if ($notification_id) {
+            // Send email notification if enabled
+            try {
+                $this->load->helper('email_notification');
+                send_email_notification(
+                    $target_user_id, 
+                    $input['type'], 
+                    $input['title'], 
+                    $input['message'], 
+                    $related_id, 
+                    $related_type, 
+                    $class_code
+                );
+            } catch (Exception $e) {
+                // Log email error but don't fail the notification creation
+                error_log("Email notification failed: " . $e->getMessage());
+            }
+            
+            $response = [
+                'success' => true,
+                'message' => 'Notification sent successfully',
+                'data' => ['notification_id' => $notification_id]
+            ];
+        } else {
+            $this->output->set_status_header(500);
+            $response = ['error' => 'Failed to create notification'];
+        }
+        
+        $this->output->set_content_type('application/json');
+        echo json_encode($response);
+    }
+    
+    /**
      * Get user notifications
      * GET /api/notifications
      */

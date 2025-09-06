@@ -350,15 +350,18 @@ $route['file/(:any)/(:any)'] = 'file/serve/$1/$2';
 // Test route
 $route['api/test/upload'] = 'api/Test/upload_test';
 
-// Notification Management
-$route['api/notifications']['get'] = 'api/NotificationController/get_notifications';
+// Notification Management - Frontend API
+$route['api/notifications']['get'] = 'api/Notifications_api/index';
+$route['api/notifications']['post'] = 'api/Notifications_api/create';
+$route['api/notifications/recent']['get'] = 'api/Notifications_api/recent';
+$route['api/notifications/unread-count']['get'] = 'api/Notifications_api/unread_count';
+
+// Legacy Notification Management (keeping for backward compatibility)
 $route['api/notifications/(:num)/read']['put'] = 'api/NotificationController/mark_as_read/$1';
 $route['api/notifications/mark-all-read']['put'] = 'api/NotificationController/mark_all_as_read';
 $route['api/notifications/(:num)']['delete'] = 'api/NotificationController/delete_notification/$1';
 $route['api/notifications/settings']['get'] = 'api/NotificationController/get_settings';
 $route['api/notifications/settings']['put'] = 'api/NotificationController/update_settings';
-$route['api/notifications/unread-count']['get'] = 'api/NotificationController/get_unread_count';
-$route['api/notifications/recent']['get'] = 'api/NotificationController/get_recent';
 $route['api/notifications/urgent']['get'] = 'api/NotificationController/get_urgent';
 
 // Real-time Notification Stream (SSE)

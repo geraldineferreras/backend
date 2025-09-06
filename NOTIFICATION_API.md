@@ -16,7 +16,56 @@ Authorization: Bearer <your-jwt-token>
 
 ## API Endpoints
 
-### 1. Get User Notifications
+### 1. Send Notification
+
+Send a new notification to a user.
+
+**Endpoint**: `POST /api/notifications`
+
+**Headers**:
+```
+Authorization: Bearer <jwt-token>
+Content-Type: application/json
+```
+
+**Request Body**:
+```json
+{
+  "type": "announcement",
+  "title": "New Class Announcement",
+  "message": "There will be a class meeting tomorrow at 2 PM.",
+  "related_id": 123,
+  "related_type": "announcement",
+  "class_code": "CS101",
+  "is_urgent": false,
+  "target_user_id": "STU001"
+}
+```
+
+**Required Fields**:
+- `type`: Notification type (announcement, task, submission, etc.)
+- `title`: Notification title
+- `message`: Notification message
+
+**Optional Fields**:
+- `related_id`: ID of related object
+- `related_type`: Type of related object
+- `class_code`: Class code
+- `is_urgent`: Boolean for urgent notifications
+- `target_user_id`: Target user ID (defaults to authenticated user)
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Notification sent successfully",
+  "data": {
+    "notification_id": 123
+  }
+}
+```
+
+### 2. Get User Notifications
 
 Retrieve notifications for the authenticated user.
 
