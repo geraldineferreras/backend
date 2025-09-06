@@ -42,7 +42,7 @@ class Notification_model extends CI_Model {
         $this->db->limit($limit, $offset);
         
         $query = $this->db->get();
-        return $query->result();
+        return $query->result_array();
     }
     
     /**
@@ -87,7 +87,7 @@ class Notification_model extends CI_Model {
     public function get_notification_settings($user_id) {
         $this->db->where('user_id', $user_id);
         $query = $this->db->get('notification_settings');
-        return $query->row();
+        return $query->row_array();
     }
     
     /**
@@ -139,7 +139,7 @@ class Notification_model extends CI_Model {
         $this->db->limit($limit);
         
         $query = $this->db->get();
-        return $query->result();
+        return $query->result_array();
     }
     
     /**
@@ -153,7 +153,7 @@ class Notification_model extends CI_Model {
         $this->db->limit($limit);
         
         $query = $this->db->get();
-        return $query->result();
+        return $query->result_array();
     }
     
     /**
@@ -168,6 +168,6 @@ class Notification_model extends CI_Model {
         $this->db->order_by('created_at', 'DESC');
         
         $query = $this->db->get();
-        return $query->result();
+        return $query->result_array();
     }
 }
