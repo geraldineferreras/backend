@@ -6,9 +6,9 @@ class Notifications_api extends CI_Controller {
     public function __construct() {
         parent::__construct();
         
-        // Load necessary models
+        // Load necessary models and libraries
         $this->load->model('user_model');
-        $this->load->library('jwt');
+        $this->load->library('Token_lib');
         $this->load->model('Notification_model');
         
         // Set CORS headers
@@ -37,15 +37,20 @@ class Notifications_api extends CI_Controller {
             }
             
             // Validate JWT token
-            $token = $this->getAuthToken();
+            $token = $this->token_lib->get_token_from_header();
             if (!$token) {
                 $this->sendError('Authorization token required', 401);
                 return;
             }
             
-            $decoded = $this->jwt->decode($token, $this->config->item('jwt_secret'));
-            if ($decoded->user_id !== $userId) {
-                $this->sendError('Token mismatch', 401);
+            try {
+                $payload = $this->token_lib->validate_token($token);
+                if (!$payload || $payload['user_id'] !== $userId) {
+                    $this->sendError('Token mismatch', 401);
+                    return;
+                }
+            } catch (Exception $e) {
+                $this->sendError('Invalid token', 401);
                 return;
             }
             
@@ -73,15 +78,20 @@ class Notifications_api extends CI_Controller {
             }
             
             // Validate JWT token
-            $token = $this->getAuthToken();
+            $token = $this->token_lib->get_token_from_header();
             if (!$token) {
                 $this->sendError('Authorization token required', 401);
                 return;
             }
             
-            $decoded = $this->jwt->decode($token, $this->config->item('jwt_secret'));
-            if ($decoded->user_id !== $userId) {
-                $this->sendError('Token mismatch', 401);
+            try {
+                $payload = $this->token_lib->validate_token($token);
+                if (!$payload || $payload['user_id'] !== $userId) {
+                    $this->sendError('Token mismatch', 401);
+                    return;
+                }
+            } catch (Exception $e) {
+                $this->sendError('Invalid token', 401);
                 return;
             }
             
@@ -108,15 +118,20 @@ class Notifications_api extends CI_Controller {
             }
             
             // Validate JWT token
-            $token = $this->getAuthToken();
+            $token = $this->token_lib->get_token_from_header();
             if (!$token) {
                 $this->sendError('Authorization token required', 401);
                 return;
             }
             
-            $decoded = $this->jwt->decode($token, $this->config->item('jwt_secret'));
-            if ($decoded->user_id !== $userId) {
-                $this->sendError('Token mismatch', 401);
+            try {
+                $payload = $this->token_lib->validate_token($token);
+                if (!$payload || $payload['user_id'] !== $userId) {
+                    $this->sendError('Token mismatch', 401);
+                    return;
+                }
+            } catch (Exception $e) {
+                $this->sendError('Invalid token', 401);
                 return;
             }
             
@@ -153,13 +168,22 @@ class Notifications_api extends CI_Controller {
             }
             
             // Validate JWT token
-            $token = $this->getAuthToken();
+            $token = $this->token_lib->get_token_from_header();
             if (!$token) {
                 $this->sendError('Authorization token required', 401);
                 return;
             }
             
-            $decoded = $this->jwt->decode($token, $this->config->item('jwt_secret'));
+            try {
+                $payload = $this->token_lib->validate_token($token);
+                if (!$payload) {
+                    $this->sendError('Invalid token', 401);
+                    return;
+                }
+            } catch (Exception $e) {
+                $this->sendError('Invalid token', 401);
+                return;
+            }
             
             // Create notification in database
             $notificationId = $this->createNotificationInDB($input);
@@ -176,20 +200,6 @@ class Notifications_api extends CI_Controller {
         } catch (Exception $e) {
             $this->sendError('Failed to create notification: ' . $e->getMessage(), 500);
         }
-    }
-    
-    /**
-     * Helper method to get authorization token
-     */
-    private function getAuthToken() {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $auth = $headers['Authorization'];
-            if (strpos($auth, 'Bearer ') === 0) {
-                return substr($auth, 7);
-            }
-        }
-        return null;
     }
     
     /**
