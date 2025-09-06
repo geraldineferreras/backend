@@ -214,10 +214,10 @@ class Notifications_api extends CI_Controller {
         foreach ($notifications as $notification) {
             $transformed[] = [
                 'id' => $notification['id'],
+                'title' => $notification['title'], // Include title field directly
                 'message' => $notification['message'],
                 'type' => $notification['type'],
                 'data' => [
-                    'title' => $notification['title'],
                     'related_id' => $notification['related_id'],
                     'related_type' => $notification['related_type'],
                     'class_code' => $notification['class_code'],
@@ -243,10 +243,10 @@ class Notifications_api extends CI_Controller {
         foreach ($notifications as $notification) {
             $transformed[] = [
                 'id' => $notification['id'],
+                'title' => $notification['title'], // Include title field directly
                 'message' => $notification['message'],
                 'type' => $notification['type'],
                 'data' => [
-                    'title' => $notification['title'],
                     'related_id' => $notification['related_id'],
                     'related_type' => $notification['related_type'],
                     'class_code' => $notification['class_code'],
@@ -275,7 +275,7 @@ class Notifications_api extends CI_Controller {
         // Transform the data to match the existing notification structure
         $notificationData = [
             'user_id' => $data['recipient_id'],
-            'type' => $data['type'] ?? 'general',
+            'type' => $data['type'] ?? 'system',
             'title' => $data['title'] ?? 'Notification',
             'message' => $data['message'],
             'related_id' => $data['related_id'] ?? null,
