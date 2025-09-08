@@ -77,71 +77,109 @@ class Notifications extends CI_Controller {
      * Stream notifications to the client
      */
     private function streamNotifications($userId, $role) {
-        // Send initial connection event
-        $this->sendEvent('connected', [
-            'message' => 'SSE connection established',
-            'timestamp' => date('c'),
-            'user_id' => $userId,
-            'role' => $role
-        ]);
-        
-        // Debug logging
-        error_log("SSE Stream: User {$userId} connected with role {$role}");
-        
-        // Send any existing unread notifications immediately
-        $notifications = $this->getNewNotifications($userId, $role);
-        error_log("SSE Stream: Found " . count($notifications) . " notifications for user {$userId}");
-        
-        if (!empty($notifications)) {
-            foreach ($notifications as $notification) {
-                error_log("SSE Stream: Sending notification ID " . $notification['id'] . " to user {$userId}");
-                $this->sendEvent('notification', $notification);
+        try {
+            // Send initial connection event
+            $this->sendEvent('connected', [
+                'message' => 'SSE connection established',
+                'timestamp' => date('c'),
+                'user_id' => $userId,
+                'role' => $role
+            ]);
+            
+            // Debug logging
+            error_log("SSE Stream: User {$userId} connected with role {$role}");
+            
+            // Test database connection first
+            try {
+                $this->load->database();
+                error_log("SSE Stream: Database connection established");
+            } catch (Exception $e) {
+                error_log("SSE Stream: Database connection failed: " . $e->getMessage());
+                $this->sendEvent('error', [
+                    'message' => 'Database connection failed',
+                    'error' => $e->getMessage()
+                ]);
+                return;
             }
-        } else {
-            error_log("SSE Stream: No notifications found for user {$userId} - this might be the issue!");
-        }
-        
-        $lastCheck = time();
-        
-        while (true) {
-            // Check for new notifications every 5 seconds
-            if (time() - $lastCheck >= 5) {
+            
+            // Send any existing unread notifications immediately
+            try {
                 $notifications = $this->getNewNotifications($userId, $role);
+                error_log("SSE Stream: Found " . count($notifications) . " notifications for user {$userId}");
                 
                 if (!empty($notifications)) {
-                    error_log("SSE Stream: Found " . count($notifications) . " new notifications for user {$userId}");
                     foreach ($notifications as $notification) {
-                        error_log("SSE Stream: Sending new notification ID " . $notification['id'] . " to user {$userId}");
+                        error_log("SSE Stream: Sending notification ID " . $notification['id'] . " to user {$userId}");
                         $this->sendEvent('notification', $notification);
                     }
                 } else {
-                    error_log("SSE Stream: No new notifications found for user {$userId} in this check");
+                    error_log("SSE Stream: No notifications found for user {$userId} - this might be the issue!");
                 }
-                
-                $lastCheck = time();
-            }
-            
-            // Send heartbeat every 30 seconds
-            if (time() % 30 === 0) {
-                $this->sendEvent('heartbeat', [
-                    'timestamp' => date('c')
+            } catch (Exception $e) {
+                error_log("SSE Stream: Error getting notifications: " . $e->getMessage());
+                $this->sendEvent('error', [
+                    'message' => 'Error getting notifications',
+                    'error' => $e->getMessage()
                 ]);
             }
             
-            // Flush output buffer
-            if (ob_get_level()) {
-                ob_end_flush();
-            }
-            flush();
+            $lastCheck = time();
             
-            // Sleep for 1 second
-            sleep(1);
-            
-            // Check if client is still connected
-            if (connection_aborted()) {
-                error_log("SSE Stream: Client disconnected for user {$userId}");
-                break;
+            while (true) {
+                try {
+                    // Check for new notifications every 5 seconds
+                    if (time() - $lastCheck >= 5) {
+                        $notifications = $this->getNewNotifications($userId, $role);
+                        
+                        if (!empty($notifications)) {
+                            error_log("SSE Stream: Found " . count($notifications) . " new notifications for user {$userId}");
+                            foreach ($notifications as $notification) {
+                                error_log("SSE Stream: Sending new notification ID " . $notification['id'] . " to user {$userId}");
+                                $this->sendEvent('notification', $notification);
+                            }
+                        } else {
+                            error_log("SSE Stream: No new notifications found for user {$userId} in this check");
+                        }
+                        
+                        $lastCheck = time();
+                    }
+                    
+                    // Send heartbeat every 30 seconds
+                    if (time() % 30 === 0) {
+                        $this->sendEvent('heartbeat', [
+                            'timestamp' => date('c')
+                        ]);
+                    }
+                    
+                    // Flush output buffer
+                    if (ob_get_level()) {
+                        ob_end_flush();
+                    }
+                    flush();
+                    
+                    // Sleep for 1 second
+                    sleep(1);
+                    
+                    // Check if client is still connected
+                    if (connection_aborted()) {
+                        error_log("SSE Stream: Client disconnected for user {$userId}");
+                        break;
+                    }
+                } catch (Exception $e) {
+                    error_log("SSE Stream: Error in main loop: " . $e->getMessage());
+                    $this->sendEvent('error', [
+                        'message' => 'Error in SSE stream',
+                        'error' => $e->getMessage()
+                    ]);
+                    break;
+                }
             }
+        } catch (Exception $e) {
+            error_log("SSE Stream: Fatal error: " . $e->getMessage());
+            $this->sendEvent('error', [
+                'message' => 'Fatal error in SSE stream',
+                'error' => $e->getMessage()
+            ]);
         }
     }
     
@@ -384,12 +422,23 @@ class Notifications extends CI_Controller {
         }
         
         try {
+            // Test database connection first
+            $this->load->database();
+            
+            // Simple test query
+            $testQuery = $this->db->query("SELECT COUNT(*) as count FROM notifications WHERE user_id = ?", [$userId]);
+            $testResult = $testQuery->row_array();
+            
             // Test the getNewNotifications method
             $notifications = $this->getNewNotifications($userId, 'teacher');
             
             $response = [
                 'success' => true,
                 'user_id' => $userId,
+                'database_test' => [
+                    'connection' => 'ok',
+                    'total_notifications' => $testResult['count']
+                ],
                 'notifications_found' => count($notifications),
                 'notifications' => $notifications,
                 'last_sent_at_by_user' => $this->lastSentAtByUser
@@ -398,7 +447,8 @@ class Notifications extends CI_Controller {
         } catch (Exception $e) {
             $response = [
                 'success' => false,
-                'error' => 'Error testing SSE method: ' . $e->getMessage()
+                'error' => 'Error testing SSE method: ' . $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ];
         }
         
