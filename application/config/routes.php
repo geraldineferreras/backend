@@ -368,10 +368,11 @@ $route['api/notifications/settings']['put'] = 'api/NotificationController/update
 $route['api/notifications/urgent']['get'] = 'api/NotificationController/get_urgent';
 
 // Real-time Notification Stream (SSE)
-$route['api/notifications/stream']['get'] = 'api/NotificationStreamController/stream';
-$route['api/notifications/status']['get'] = 'api/NotificationStreamController/status';
-// Token as URI segment, routed to simple Notifications controller per request
+// Token as URI segment, routed to Notifications controller (the working one)
 $route['api/notifications/stream/(:any)']['get'] = 'api/Notifications/stream/$1';
+// Legacy SSE endpoint (without token in URL) - DISABLED TO PREVENT CONFLICT
+// $route['api/notifications/stream-legacy']['get'] = 'api/NotificationStreamController/stream';
+// $route['api/notifications/status']['get'] = 'api/NotificationStreamController/status';
 
 // QR Grading API - Perfect for face-to-face classroom activities
 $route['api/qr-grading/quick-grade']['post'] = 'api/QRGradingController/quick_grade_post';

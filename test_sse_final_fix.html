@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SSE Final Fix Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .log { 
+            background: #f0f0f0; 
+            padding: 10px; 
+            margin: 5px 0; 
+            border-radius: 3px; 
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .warning { background: #fff3cd; color: #856404; }
+        input, button { 
+            padding: 8px; 
+            margin: 5px; 
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            font-weight: bold;
+        }
+        button:hover { background: #0056b3; }
+        .input-group {
+            margin: 10px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .fix-info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 SSE Final Fix Test</h1>
+        
+        <div class="fix-info">
+            <h3>🔧 What Was Fixed:</h3>
+            <ul>
+                <li><strong>Problem:</strong> The SSE system was using timestamp-based tracking that wasn't working correctly</li>
+                <li><strong>Solution:</strong> Changed to notification ID-based tracking to prevent duplicate sends</li>
+                <li><strong>Result:</strong> Now tracks which specific notifications have been sent to each user</li>
+            </ul>
+        </div>
+        
+        <div class="input-group">
+            <label for="baseUrl">Deployed Application URL:</label>
+            <input type="text" id="baseUrl" placeholder="https://scms-backend.up.railway.app" value="https://scms-backend.up.railway.app" style="width: 100%;">
+        </div>
+        
+        <div class="input-group">
+            <label for="token">JWT Token:</label>
+            <input type="text" id="token" placeholder="Enter your JWT token from login" style="width: 100%;">
+        </div>
+        
+        <div class="input-group">
+            <label for="userId">User ID:</label>
+            <input type="text" id="userId" placeholder="TEA68B79B40CDC7B244" value="TEA68B79B40CDC7B244" style="width: 200px;">
+        </div>
+        
+        <div class="input-group">
+            <label for="userRole">User Role:</label>
+            <select id="userRole" style="width: 200px;">
+                <option value="teacher">Teacher</option>
+                <option value="student">Student</option>
+                <option value="admin">Admin</option>
+            </select>
+        </div>
+        
+        <div>
+            <button onclick="testSSEFinalFix()">🚀 Test SSE Final Fix</button>
+            <button onclick="createMultipleNotifications()">📝 Create 3 Test Notifications</button>
+            <button onclick="clearLog()">🗑️ Clear Log</button>
+        </div>
+        
+        <div id="log" class="log">Ready to test the final SSE fix...</div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let notificationCount = 0;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            logDiv.appendChild(div);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = 'Ready to test the final SSE fix...';
+            notificationCount = 0;
+        }
+
+        function testSSEFinalFix() {
+            const baseUrl = document.getElementById('baseUrl').value.trim();
+            const token = document.getElementById('token').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+            const userRole = document.getElementById('userRole').value;
+            
+            if (!baseUrl || !token || !userId) {
+                log('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            log('🔧 Testing SSE with the FINAL fix applied...', 'info');
+            log('🔧 Fix: Changed from timestamp-based to notification ID-based tracking', 'info');
+            log('🔧 This should now properly send existing and new notifications!', 'info');
+            
+            const url = `${baseUrl}/api/notifications/stream/${token}?userId=${userId}&role=${userRole}`;
+            log(`🔧 SSE URL: ${url}`, 'info');
+            
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/event-stream',
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache'
+                }
+            })
+            .then(response => {
+                log(`📡 SSE Response status: ${response.status} ${response.statusText}`, 'info');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                log('✅ SSE Connection established!', 'success');
+                log('🔍 Now monitoring for notifications (existing and new)...', 'info');
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                function readStream() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) {
+                            log('📡 Stream ended', 'info');
+                            return;
+                        }
+                        
+                        const chunk = decoder.decode(value);
+                        const lines = chunk.split('\n');
+                        
+                        lines.forEach(line => {
+                            if (line.trim()) {
+                                if (line.startsWith('event: ')) {
+                                    const eventType = line.substring(7);
+                                    if (eventType === 'notification') {
+                                        log(`🔔 NOTIFICATION EVENT RECEIVED!`, 'success');
+                                    } else {
+                                        log(`📡 Event: ${eventType}`, 'info');
+                                    }
+                                } else if (line.startsWith('data: ')) {
+                                    try {
+                                        const data = JSON.parse(line.substring(6));
+                                        if (data.id && data.title) {
+                                            notificationCount++;
+                                            log(`🔔 NOTIFICATION #${notificationCount} RECEIVED!`, 'success');
+                                            log(`📨 ID: ${data.id}, Title: ${data.title}`, 'success');
+                                            log(`📨 Message: ${data.message}`, 'success');
+                                            log(`📨 Type: ${data.type}, Urgent: ${data.is_urgent}`, 'success');
+                                        } else {
+                                            log(`📨 Data: ${JSON.stringify(data, null, 2)}`, 'info');
+                                        }
+                                    } catch (e) {
+                                        log(`📨 Raw Data: ${line.substring(6)}`, 'info');
+                                    }
+                                }
+                            }
+                        });
+                        
+                        readStream();
+                    }).catch(error => {
+                        log(`❌ Stream error: ${error.message}`, 'error');
+                    });
+                }
+                
+                readStream();
+                
+            })
+            .catch(error => {
+                log(`❌ Connection failed: ${error.message}`, 'error');
+            });
+        }
+
+        function createMultipleNotifications() {
+            const baseUrl = document.getElementById('baseUrl').value.trim();
+            const token = document.getElementById('token').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+            
+            if (!baseUrl || !token || !userId) {
+                log('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            log('📝 Creating 3 test notifications with 2-second intervals...', 'info');
+            
+            for (let i = 1; i <= 3; i++) {
+                setTimeout(() => {
+                    const notificationData = {
+                        recipient_id: userId,
+                        title: `Final Fix Test Notification ${i}`,
+                        message: `This is test notification ${i} created at ${new Date().toLocaleTimeString()}`,
+                        type: 'test',
+                        is_urgent: i === 2 // Make the second one urgent
+                    };
+                    
+                    log(`📝 Creating notification ${i}/3...`, 'info');
+                    
+                    fetch(`${baseUrl}/api/notifications`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(notificationData)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            const notificationId = data.data?.id || 'Unknown';
+                            log(`✅ Notification ${i} created! ID: ${notificationId}`, 'success');
+                            log(`🔍 SSE should receive this notification in real-time!`, 'info');
+                        } else {
+                            log(`❌ Failed to create notification ${i}: ${data.error}`, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        log(`❌ Error creating notification ${i}: ${error.message}`, 'error');
+                    });
+                }, (i - 1) * 2000); // 2-second intervals
+            }
+        }
+
+        // Auto-fill common deployment URLs
+        window.addEventListener('load', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('baseUrl')) {
+                document.getElementById('baseUrl').value = urlParams.get('baseUrl');
+            }
+            if (urlParams.get('token')) {
+                document.getElementById('token').value = urlParams.get('token');
+            }
+        });
+    </script>
+</body>
+</html>

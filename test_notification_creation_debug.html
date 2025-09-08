@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Notification Creation Debug Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .log { 
+            background: #f0f0f0; 
+            padding: 10px; 
+            margin: 5px 0; 
+            border-radius: 3px; 
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        input, button { 
+            padding: 8px; 
+            margin: 5px; 
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            font-weight: bold;
+        }
+        button:hover { background: #0056b3; }
+        .input-group {
+            margin: 10px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Notification Creation Debug Test</h1>
+        <p>This test will help us verify that notifications are being created with the correct user ID.</p>
+        
+        <div class="input-group">
+            <label for="baseUrl">Deployed Application URL:</label>
+            <input type="text" id="baseUrl" placeholder="https://scms-backend.up.railway.app" value="https://scms-backend.up.railway.app" style="width: 100%;">
+        </div>
+        
+        <div class="input-group">
+            <label for="token">JWT Token:</label>
+            <input type="text" id="token" placeholder="Enter your JWT token from login" style="width: 100%;">
+        </div>
+        
+        <div class="input-group">
+            <label for="userId">User ID:</label>
+            <input type="text" id="userId" placeholder="TEA68B79B40CDC7B244" value="TEA68B79B40CDC7B244" style="width: 200px;">
+        </div>
+        
+        <div>
+            <button onclick="testNotificationCreation()">📝 Test Notification Creation</button>
+            <button onclick="checkNotifications()">📋 Check All Notifications</button>
+            <button onclick="clearLog()">🗑️ Clear Log</button>
+        </div>
+        
+        <div id="log" class="log">Ready to test notification creation...</div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            logDiv.appendChild(div);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = 'Ready to test notification creation...';
+        }
+
+        function testNotificationCreation() {
+            const baseUrl = document.getElementById('baseUrl').value.trim();
+            const token = document.getElementById('token').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+            
+            if (!baseUrl || !token || !userId) {
+                log('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            const notificationData = {
+                recipient_id: userId,
+                title: 'Debug Test Notification',
+                message: `Testing notification creation at ${new Date().toLocaleTimeString()}`,
+                type: 'test',
+                is_urgent: false
+            };
+            
+            log('📝 Creating test notification...', 'info');
+            log('📝 Notification data: ' + JSON.stringify(notificationData, null, 2), 'info');
+            
+            fetch(`${baseUrl}/api/notifications`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(notificationData)
+            })
+            .then(response => {
+                log(`📡 Response status: ${response.status} ${response.statusText}`, 'info');
+                return response.json();
+            })
+            .then(data => {
+                log('📋 Full notification creation response:', 'info');
+                log(JSON.stringify(data, null, 2), 'info');
+                
+                if (data.success) {
+                    const notificationId = data.data?.id || 'Unknown';
+                    log(`✅ Notification created successfully! ID: ${notificationId}`, 'success');
+                    
+                    // Wait a moment and then check if it appears in the notifications list
+                    setTimeout(() => {
+                        log('🔍 Checking if notification appears in notifications list...', 'info');
+                        checkNotifications();
+                    }, 2000);
+                } else {
+                    log(`❌ Failed to create notification: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                log(`❌ Error creating notification: ${error.message}`, 'error');
+            });
+        }
+
+        function checkNotifications() {
+            const baseUrl = document.getElementById('baseUrl').value.trim();
+            const token = document.getElementById('token').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+            
+            if (!baseUrl || !token || !userId) {
+                log('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            log('🔍 Checking all notifications for user: ' + userId, 'info');
+            
+            fetch(`${baseUrl}/api/notifications?userId=${userId}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => {
+                log(`📡 Response status: ${response.status} ${response.statusText}`, 'info');
+                return response.json();
+            })
+            .then(data => {
+                log('📋 Full notifications API response:', 'info');
+                log(JSON.stringify(data, null, 2), 'info');
+                
+                if (data.success && data.data && data.data.notifications) {
+                    const notifications = data.data.notifications;
+                    log(`✅ Found ${notifications.length} total notifications`, 'success');
+                    
+                    const unreadNotifications = notifications.filter(n => !n.is_read);
+                    log(`📋 Unread notifications: ${unreadNotifications.length}`, 'info');
+                    
+                    if (unreadNotifications.length > 0) {
+                        log('📋 Recent unread notifications:', 'info');
+                        unreadNotifications.slice(0, 5).forEach((n, index) => {
+                            log(`  ${index + 1}. ID: ${n.id}, Title: ${n.title}, Created: ${n.created_at}, User ID: ${n.user_id}`, 'info');
+                        });
+                    }
+                    
+                    // Check if any notifications have the wrong user_id
+                    const wrongUserNotifications = notifications.filter(n => n.user_id !== userId);
+                    if (wrongUserNotifications.length > 0) {
+                        log(`⚠️ Found ${wrongUserNotifications.length} notifications with different user_id:`, 'error');
+                        wrongUserNotifications.slice(0, 3).forEach((n, index) => {
+                            log(`  ${index + 1}. ID: ${n.id}, Expected: ${userId}, Actual: ${n.user_id}`, 'error');
+                        });
+                    }
+                } else {
+                    log('❌ No notifications found or API error', 'error');
+                }
+            })
+            .catch(error => {
+                log(`❌ Error fetching notifications: ${error.message}`, 'error');
+            });
+        }
+
+        // Auto-fill common deployment URLs
+        window.addEventListener('load', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('baseUrl')) {
+                document.getElementById('baseUrl').value = urlParams.get('baseUrl');
+            }
+            if (urlParams.get('token')) {
+                document.getElementById('token').value = urlParams.get('token');
+            }
+        });
+    </script>
+</body>
+</html>

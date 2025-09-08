@@ -2,21 +2,35 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Notifications extends CI_Controller {
-    private $lastSentAtByUser = [];
+    private $lastSentAtByUser = []; // Stores last check timestamp per user
     
     public function __construct() {
         parent::__construct();
+        
+        // Disable output buffering for SSE
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
         
         // Set headers for SSE
         header('Content-Type: text/event-stream');
         header('Cache-Control: no-cache');
         header('Connection: keep-alive');
         header('Access-Control-Allow-Origin: *');
-        header('Access-Control-Allow-Headers: Content-Type');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization');
         header('Access-Control-Allow-Methods: GET');
+        header('X-Accel-Buffering: no'); // Disable nginx buffering
 
         $this->load->database();
         $this->load->model('Notification_model');
+        
+        // Debug logging
+        error_log("SSE Notifications Controller: Constructor called");
+        error_log("SSE Notifications Controller: Database config - " . json_encode([
+            'hostname' => $this->db->hostname,
+            'database' => $this->db->database,
+            'username' => $this->db->username
+        ]));
     }
     
     /**
@@ -24,8 +38,12 @@ class Notifications extends CI_Controller {
      * URL: /api/notifications/stream/{token}
      */
     public function stream($token = null) {
+        // Debug logging
+        error_log("SSE Stream: Method called with token: " . ($token ? 'provided' : 'missing'));
+        
         // Validate token from URL path
         if (!$token) {
+            error_log("SSE Stream: No token provided");
             $this->sendError('Token required', 401);
             return;
         }
@@ -34,8 +52,11 @@ class Notifications extends CI_Controller {
         $userId = $this->input->get('userId');
         $role = $this->input->get('role');
         
+        error_log("SSE Stream: userId={$userId}, role={$role}");
+        
         // Validate required parameters
         if (!$userId || !$role) {
+            error_log("SSE Stream: Missing required parameters - userId: {$userId}, role: {$role}");
             $this->sendError('userId and role required', 400);
             return;
         }
@@ -76,6 +97,8 @@ class Notifications extends CI_Controller {
                 error_log("SSE Stream: Sending notification ID " . $notification['id'] . " to user {$userId}");
                 $this->sendEvent('notification', $notification);
             }
+        } else {
+            error_log("SSE Stream: No notifications found for user {$userId} - this might be the issue!");
         }
         
         $lastCheck = time();
@@ -91,6 +114,8 @@ class Notifications extends CI_Controller {
                         error_log("SSE Stream: Sending new notification ID " . $notification['id'] . " to user {$userId}");
                         $this->sendEvent('notification', $notification);
                     }
+                } else {
+                    error_log("SSE Stream: No new notifications found for user {$userId} in this check");
                 }
                 
                 $lastCheck = time();
@@ -124,31 +149,73 @@ class Notifications extends CI_Controller {
      * Get new notifications for the user
      */
     private function getNewNotifications($userId, $role) {
-        // For first connection, get notifications from last 5 minutes
+        // Initialize last check time for this user
         if (!isset($this->lastSentAtByUser[$userId])) {
-            $this->lastSentAtByUser[$userId] = time() - 300; // 5 minutes ago
+            $this->lastSentAtByUser[$userId] = time() - 3600; // Start from 1 hour ago to catch recent notifications
         }
-
+        
         $since = $this->lastSentAtByUser[$userId];
+        
+        // On first connection, send all unread notifications
+        if ($since === (time() - 3600)) {
+            error_log("SSE Debug: First connection for user {$userId} - sending all unread notifications");
+            $since = 0; // Get all notifications
+        }
+        
+        // Debug logging
+        error_log("SSE Debug: Getting notifications for user {$userId} since " . date('Y-m-d H:i:s', $since));
         
         // Get unread notifications created after the last check time
         $this->db->select('*');
         $this->db->from('notifications');
         $this->db->where('user_id', $userId);
-        $this->db->where('is_read', 0); // Only unread notifications
-        $this->db->where('created_at >', date('Y-m-d H:i:s', $since));
+        $this->db->where('is_read', 0);
+        
+        // Only add time filter if not getting all notifications
+        if ($since > 0) {
+            $this->db->where('created_at >', date('Y-m-d H:i:s', $since));
+        }
+        
         $this->db->order_by('created_at', 'ASC');
         $this->db->limit(10);
         
+        // Debug: Log the exact SQL query being executed
+        $sql = $this->db->get_compiled_select();
+        error_log("SSE Debug: SQL Query: " . $sql);
+        
         $query = $this->db->get();
         $rows = $query->result_array();
+        
+        // Debug: Also check for ALL notifications for this user (without time filter)
+        $this->db->select('*');
+        $this->db->from('notifications');
+        $this->db->where('user_id', $userId);
+        $this->db->where('is_read', 0);
+        $this->db->order_by('created_at', 'DESC');
+        $this->db->limit(5);
+        
+        $allQuery = $this->db->get();
+        $allRows = $allQuery->result_array();
+        error_log("SSE Debug: ALL unread notifications for user {$userId}: " . count($allRows));
+        
+        if (count($allRows) > 0) {
+            foreach ($allRows as $row) {
+                error_log("SSE Debug: Found notification ID {$row['id']}, created: {$row['created_at']}, title: {$row['title']}");
+            }
+        }
+        
+        // Debug logging
+        error_log("SSE Debug: Query returned " . count($rows) . " notifications for user {$userId}");
 
         $newNotifications = [];
         $maxCreated = $since;
         
         foreach ($rows as $row) {
             $createdTs = isset($row['created_at']) ? strtotime($row['created_at']) : 0;
+            error_log("SSE Debug: Processing notification ID {$row['id']}, created: {$row['created_at']}, timestamp: {$createdTs}, since: {$since}");
+            
             if ($createdTs > $since) {
+                error_log("SSE Debug: Adding notification ID {$row['id']} to new notifications");
                 $newNotifications[] = [
                     'id' => $row['id'],
                     'type' => $row['type'] ?? 'info',
@@ -166,10 +233,16 @@ class Notifications extends CI_Controller {
                 if ($createdTs > $maxCreated) {
                     $maxCreated = $createdTs;
                 }
+            } else {
+                error_log("SSE Debug: Skipping notification ID {$row['id']} - too old");
             }
         }
 
+        // Update the last check time to the most recent notification or current time
         $this->lastSentAtByUser[$userId] = $maxCreated ?: time();
+        error_log("SSE Debug: Updated last check time to " . date('Y-m-d H:i:s', $this->lastSentAtByUser[$userId]));
+        
+        error_log("SSE Debug: Returning " . count($newNotifications) . " new notifications for user {$userId}");
         return $newNotifications;
     }
     
@@ -177,6 +250,9 @@ class Notifications extends CI_Controller {
      * Send SSE event to client
      */
     private function sendEvent($event, $data) {
+        // Debug logging
+        error_log("SSE sendEvent: Sending event '{$event}' with data: " . json_encode($data));
+        
         echo "event: {$event}\n";
         echo "data: " . json_encode($data) . "\n\n";
         
