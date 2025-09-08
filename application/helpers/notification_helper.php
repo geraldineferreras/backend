@@ -63,6 +63,9 @@ function create_notifications_for_users($user_ids, $type, $title, $message, $rel
     $CI =& get_instance();
     $CI->load->model('Notification_model');
     
+    error_log("create_notifications_for_users called with " . count($user_ids) . " users");
+    error_log("Type: " . $type . ", Title: " . $title . ", Related ID: " . $related_id);
+    
     $notification_ids = array();
     
     foreach ($user_ids as $user_id) {
@@ -77,7 +80,9 @@ function create_notifications_for_users($user_ids, $type, $title, $message, $rel
             'is_urgent' => $is_urgent ? 1 : 0
         );
         
+        error_log("Creating notification for user: " . $user_id);
         $notification_id = $CI->Notification_model->create_notification($notification_data);
+        error_log("Notification created with ID: " . $notification_id);
         $notification_ids[] = $notification_id;
         
         // Send email notification (always enabled for now)

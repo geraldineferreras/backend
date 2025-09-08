@@ -476,15 +476,22 @@ class TeacherController extends BaseController
             if (!$data['is_draft'] && (empty($data['is_scheduled']) || empty($data['scheduled_at']) || strtotime($data['scheduled_at']) <= time())) {
                 $this->load->helper('notification');
                 
+                // Debug logging
+                error_log("Creating notifications for announcement ID: " . $id);
+                error_log("Class code: " . $class_code);
+                
                 // Determine recipients: targeted students if visible_to_student_ids set, otherwise all students in class
                 $user_ids = [];
                 if (!empty($post['visible_to_student_ids'])) {
                     $target_ids = json_decode($post['visible_to_student_ids'], true) ?: [];
                     $user_ids = array_values($target_ids);
+                    error_log("Using targeted students: " . json_encode($user_ids));
                 } else {
                     $students = get_class_students($class_code);
+                    error_log("Found " . count($students) . " students in class");
                     if ($students) {
                         $user_ids = array_column($students, 'user_id');
+                        error_log("Student IDs: " . json_encode($user_ids));
                     }
                 }
                 
@@ -492,8 +499,12 @@ class TeacherController extends BaseController
                     $title = $data['title'] ?: 'New Announcement';
                     $message = $data['content'] ?? 'A new announcement has been posted.';
                     
+                    error_log("Creating notifications for " . count($user_ids) . " users");
+                    error_log("Title: " . $title);
+                    error_log("Message: " . $message);
+                    
                     // Create notifications for all students in the class
-                    create_notifications_for_users(
+                    $notification_ids = create_notifications_for_users(
                         $user_ids,
                         'announcement',
                         $title,
@@ -503,7 +514,13 @@ class TeacherController extends BaseController
                         $class_code,
                         false
                     );
+                    
+                    error_log("Created " . count($notification_ids) . " notifications");
+                } else {
+                    error_log("No students found for notifications");
                 }
+            } else {
+                error_log("Skipping notification creation - is_draft: " . ($data['is_draft'] ? 'true' : 'false'));
             }
             
             return json_response(true, 'Announcement posted successfully', $post, 201);
