@@ -87,6 +87,7 @@
             <button onclick="createTestNotification()">📝 Create Test Notification</button>
             <button onclick="checkExistingNotifications()">🔍 Check Existing Notifications</button>
             <button onclick="debugNotifications()">🐛 Debug Notifications</button>
+            <button onclick="testSSEMethod()">🧪 Test SSE Method</button>
             <button onclick="clearLog()">🗑️ Clear Log</button>
         </div>
         
@@ -257,6 +258,38 @@
                 }
             } catch (error) {
                 log(`❌ Error debugging notifications: ${error.message}`, 'error');
+            }
+        }
+
+        async function testSSEMethod() {
+            const baseUrl = document.getElementById('baseUrl').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+            
+            try {
+                log('🧪 Testing SSE getNewNotifications method...', 'info');
+                
+                const response = await fetch(`${baseUrl}/api/notifications/test-sse/${userId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`🧪 SSE Method Test Results for user ${userId}:`, 'info');
+                    log(`📊 Notifications found by SSE method: ${data.notifications_found}`, 'info');
+                    
+                    if (data.notifications && data.notifications.length > 0) {
+                        log('📋 Notifications that would be sent via SSE:', 'info');
+                        data.notifications.forEach((notif, index) => {
+                            log(`   ${index + 1}. ID: ${notif.id}, Title: ${notif.title}, Type: ${notif.type}`, 'info');
+                        });
+                    } else {
+                        log('❌ SSE method found no notifications to send', 'warning');
+                    }
+                    
+                    log(`🕐 Last sent timestamps: ${JSON.stringify(data.last_sent_at_by_user)}`, 'info');
+                } else {
+                    log(`❌ SSE method test failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Error testing SSE method: ${error.message}`, 'error');
             }
         }
 

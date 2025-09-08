@@ -149,24 +149,20 @@ class Notifications extends CI_Controller {
      * Get new notifications for the user
      */
     private function getNewNotifications($userId, $role) {
-        // Initialize last check time for this user
-        if (!isset($this->lastSentAtByUser[$userId])) {
-            $this->lastSentAtByUser[$userId] = time() - 3600; // Start from 1 hour ago to catch recent notifications
+        // Check if this is the first connection for this user
+        $isFirstConnection = !isset($this->lastSentAtByUser[$userId]);
+        
+        if ($isFirstConnection) {
+            error_log("SSE Debug: First connection for user {$userId} - sending all unread notifications");
+            $this->lastSentAtByUser[$userId] = time(); // Set current time as baseline
         }
         
         $since = $this->lastSentAtByUser[$userId];
         
-        // On first connection, send all unread notifications
-        if ($since === (time() - 3600)) {
-            error_log("SSE Debug: First connection for user {$userId} - sending all unread notifications");
-            $since = 0; // Get all notifications
-        }
-        
         // Debug logging
         error_log("SSE Debug: Getting notifications for user {$userId} since " . date('Y-m-d H:i:s', $since));
         
-        // SIMPLIFIED APPROACH: Just get all unread notifications for this user
-        // This ensures we don't miss any notifications due to timestamp issues
+        // Get unread notifications for this user
         $this->db->select('*');
         $this->db->from('notifications');
         $this->db->where('user_id', $userId);
@@ -187,9 +183,6 @@ class Notifications extends CI_Controller {
             error_log("SSE Debug: First row: " . json_encode($rows[0]));
         }
         
-        // Debug logging
-        error_log("SSE Debug: Query returned " . count($rows) . " notifications for user {$userId}");
-
         $newNotifications = [];
         $maxCreated = $since;
         
@@ -199,7 +192,7 @@ class Notifications extends CI_Controller {
             
             // For first connection, send all unread notifications
             // For subsequent checks, only send notifications newer than last check
-            if ($since === 0 || $createdTs > $since) {
+            if ($isFirstConnection || $createdTs > $since) {
                 error_log("SSE Debug: Adding notification ID {$row['id']} to new notifications");
                 $newNotifications[] = [
                     'id' => $row['id'],
@@ -369,6 +362,43 @@ class Notifications extends CI_Controller {
             $response = [
                 'success' => false,
                 'error' => 'Error checking notifications: ' . $e->getMessage()
+            ];
+        }
+        
+        echo json_encode($response);
+        exit;
+    }
+    
+    /**
+     * Test endpoint to simulate getNewNotifications method
+     * GET /api/notifications/test-sse/{userId}
+     */
+    public function test_sse($userId = null) {
+        // Override SSE headers for this method
+        header('Content-Type: application/json');
+        header('Connection: close');
+        
+        if (!$userId) {
+            echo json_encode(['error' => 'User ID required']);
+            exit;
+        }
+        
+        try {
+            // Test the getNewNotifications method
+            $notifications = $this->getNewNotifications($userId, 'teacher');
+            
+            $response = [
+                'success' => true,
+                'user_id' => $userId,
+                'notifications_found' => count($notifications),
+                'notifications' => $notifications,
+                'last_sent_at_by_user' => $this->lastSentAtByUser
+            ];
+            
+        } catch (Exception $e) {
+            $response = [
+                'success' => false,
+                'error' => 'Error testing SSE method: ' . $e->getMessage()
             ];
         }
         
