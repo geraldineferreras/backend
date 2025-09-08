@@ -56,6 +56,28 @@ class Notifications extends CI_Controller {
      * Stream notifications to the client
      */
     private function streamNotifications($userId, $role) {
+        // Send initial connection event
+        $this->sendEvent('connected', [
+            'message' => 'SSE connection established',
+            'timestamp' => date('c'),
+            'user_id' => $userId,
+            'role' => $role
+        ]);
+        
+        // Debug logging
+        error_log("SSE Stream: User {$userId} connected with role {$role}");
+        
+        // Send any existing unread notifications immediately
+        $notifications = $this->getNewNotifications($userId, $role);
+        error_log("SSE Stream: Found " . count($notifications) . " notifications for user {$userId}");
+        
+        if (!empty($notifications)) {
+            foreach ($notifications as $notification) {
+                error_log("SSE Stream: Sending notification ID " . $notification['id'] . " to user {$userId}");
+                $this->sendEvent('notification', $notification);
+            }
+        }
+        
         $lastCheck = time();
         
         while (true) {
@@ -63,8 +85,12 @@ class Notifications extends CI_Controller {
             if (time() - $lastCheck >= 5) {
                 $notifications = $this->getNewNotifications($userId, $role);
                 
-                foreach ($notifications as $notification) {
-                    $this->sendEvent('notification', $notification);
+                if (!empty($notifications)) {
+                    error_log("SSE Stream: Found " . count($notifications) . " new notifications for user {$userId}");
+                    foreach ($notifications as $notification) {
+                        error_log("SSE Stream: Sending new notification ID " . $notification['id'] . " to user {$userId}");
+                        $this->sendEvent('notification', $notification);
+                    }
                 }
                 
                 $lastCheck = time();
@@ -88,6 +114,7 @@ class Notifications extends CI_Controller {
             
             // Check if client is still connected
             if (connection_aborted()) {
+                error_log("SSE Stream: Client disconnected for user {$userId}");
                 break;
             }
         }
@@ -97,17 +124,18 @@ class Notifications extends CI_Controller {
      * Get new notifications for the user
      */
     private function getNewNotifications($userId, $role) {
+        // For first connection, get notifications from last 5 minutes
         if (!isset($this->lastSentAtByUser[$userId])) {
-            $this->lastSentAtByUser[$userId] = time();
-            return [];
+            $this->lastSentAtByUser[$userId] = time() - 300; // 5 minutes ago
         }
 
         $since = $this->lastSentAtByUser[$userId];
         
-        // Get notifications created after the last check time
+        // Get unread notifications created after the last check time
         $this->db->select('*');
         $this->db->from('notifications');
         $this->db->where('user_id', $userId);
+        $this->db->where('is_read', 0); // Only unread notifications
         $this->db->where('created_at >', date('Y-m-d H:i:s', $since));
         $this->db->order_by('created_at', 'ASC');
         $this->db->limit(10);
