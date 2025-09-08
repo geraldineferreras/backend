@@ -370,6 +370,8 @@ $route['api/notifications/urgent']['get'] = 'api/NotificationController/get_urge
 // Real-time Notification Stream (SSE)
 // Token as URI segment, routed to Notifications controller (the working one)
 $route['api/notifications/stream/(:any)']['get'] = 'api/Notifications/stream/$1';
+// Debug endpoint for notifications
+$route['api/notifications/debug/(:any)']['get'] = 'api/Notifications/debug/$1';
 // Legacy SSE endpoint (without token in URL) - DISABLED TO PREVENT CONFLICT
 // $route['api/notifications/stream-legacy']['get'] = 'api/NotificationStreamController/stream';
 // $route['api/notifications/status']['get'] = 'api/NotificationStreamController/status';

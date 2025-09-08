@@ -165,18 +165,13 @@ class Notifications extends CI_Controller {
         // Debug logging
         error_log("SSE Debug: Getting notifications for user {$userId} since " . date('Y-m-d H:i:s', $since));
         
-        // Get unread notifications created after the last check time
+        // SIMPLIFIED APPROACH: Just get all unread notifications for this user
+        // This ensures we don't miss any notifications due to timestamp issues
         $this->db->select('*');
         $this->db->from('notifications');
         $this->db->where('user_id', $userId);
         $this->db->where('is_read', 0);
-        
-        // Only add time filter if not getting all notifications
-        if ($since > 0) {
-            $this->db->where('created_at >', date('Y-m-d H:i:s', $since));
-        }
-        
-        $this->db->order_by('created_at', 'ASC');
+        $this->db->order_by('created_at', 'DESC');
         $this->db->limit(10);
         
         // Debug: Log the exact SQL query being executed
@@ -192,24 +187,6 @@ class Notifications extends CI_Controller {
             error_log("SSE Debug: First row: " . json_encode($rows[0]));
         }
         
-        // Debug: Also check for ALL notifications for this user (without time filter)
-        $this->db->select('*');
-        $this->db->from('notifications');
-        $this->db->where('user_id', $userId);
-        $this->db->where('is_read', 0);
-        $this->db->order_by('created_at', 'DESC');
-        $this->db->limit(5);
-        
-        $allQuery = $this->db->get();
-        $allRows = $allQuery->result_array();
-        error_log("SSE Debug: ALL unread notifications for user {$userId}: " . count($allRows));
-        
-        if (count($allRows) > 0) {
-            foreach ($allRows as $row) {
-                error_log("SSE Debug: Found notification ID {$row['id']}, created: {$row['created_at']}, title: {$row['title']}");
-            }
-        }
-        
         // Debug logging
         error_log("SSE Debug: Query returned " . count($rows) . " notifications for user {$userId}");
 
@@ -220,7 +197,9 @@ class Notifications extends CI_Controller {
             $createdTs = isset($row['created_at']) ? strtotime($row['created_at']) : 0;
             error_log("SSE Debug: Processing notification ID {$row['id']}, created: {$row['created_at']}, timestamp: {$createdTs}, since: {$since}");
             
-            if ($createdTs > $since) {
+            // For first connection, send all unread notifications
+            // For subsequent checks, only send notifications newer than last check
+            if ($since === 0 || $createdTs > $since) {
                 error_log("SSE Debug: Adding notification ID {$row['id']} to new notifications");
                 $newNotifications[] = [
                     'id' => $row['id'],
@@ -335,6 +314,61 @@ class Notifications extends CI_Controller {
             $response = [
                 'success' => false,
                 'error' => 'Error creating test notification: ' . $e->getMessage()
+            ];
+        }
+        
+        echo json_encode($response);
+        exit;
+    }
+    
+    /**
+     * Debug endpoint to check notifications for a user
+     * GET /api/notifications/debug/{userId}
+     */
+    public function debug($userId = null) {
+        // Override SSE headers for this method
+        header('Content-Type: application/json');
+        header('Connection: close');
+        
+        if (!$userId) {
+            echo json_encode(['error' => 'User ID required']);
+            exit;
+        }
+        
+        try {
+            // Get all notifications for this user
+            $this->db->select('*');
+            $this->db->from('notifications');
+            $this->db->where('user_id', $userId);
+            $this->db->order_by('created_at', 'DESC');
+            $this->db->limit(20);
+            
+            $query = $this->db->get();
+            $allNotifications = $query->result_array();
+            
+            // Get unread notifications
+            $this->db->select('*');
+            $this->db->from('notifications');
+            $this->db->where('user_id', $userId);
+            $this->db->where('is_read', 0);
+            $this->db->order_by('created_at', 'DESC');
+            
+            $query = $this->db->get();
+            $unreadNotifications = $query->result_array();
+            
+            $response = [
+                'success' => true,
+                'user_id' => $userId,
+                'total_notifications' => count($allNotifications),
+                'unread_notifications' => count($unreadNotifications),
+                'all_notifications' => $allNotifications,
+                'unread_notifications_data' => $unreadNotifications
+            ];
+            
+        } catch (Exception $e) {
+            $response = [
+                'success' => false,
+                'error' => 'Error checking notifications: ' . $e->getMessage()
             ];
         }
         
