@@ -186,6 +186,12 @@ class Notifications extends CI_Controller {
         $query = $this->db->get();
         $rows = $query->result_array();
         
+        // Debug: Log the actual query results
+        error_log("SSE Debug: Query executed, returned " . count($rows) . " rows");
+        if (count($rows) > 0) {
+            error_log("SSE Debug: First row: " . json_encode($rows[0]));
+        }
+        
         // Debug: Also check for ALL notifications for this user (without time filter)
         $this->db->select('*');
         $this->db->from('notifications');
