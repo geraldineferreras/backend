@@ -104,13 +104,18 @@ class NotificationStreamController extends BaseController {
             if (!empty($notifications)) {
                 foreach ($notifications as $notification) {
                     $this->send_sse_message('notification', [
-                        'id' => $notification['notification_id'],
+                        'id' => $notification['id'], // Use 'id' instead of 'notification_id'
                         'type' => $notification['type'],
                         'title' => $notification['title'],
                         'message' => $notification['message'],
                         'is_urgent' => (bool)$notification['is_urgent'],
                         'created_at' => $notification['created_at'],
-                        'user_role' => $user_role
+                        'user_role' => $user_role,
+                        'data' => [
+                            'related_id' => $notification['related_id'] ?? null,
+                            'related_type' => $notification['related_type'] ?? null,
+                            'class_code' => $notification['class_code'] ?? null
+                        ]
                     ]);
                 }
             }

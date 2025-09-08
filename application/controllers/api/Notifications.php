@@ -103,25 +103,35 @@ class Notifications extends CI_Controller {
         }
 
         $since = $this->lastSentAtByUser[$userId];
-        $rows = $this->Notification_model->get_user_notifications($userId, 50, 0, false);
+        
+        // Get notifications created after the last check time
+        $this->db->select('*');
+        $this->db->from('notifications');
+        $this->db->where('user_id', $userId);
+        $this->db->where('created_at >', date('Y-m-d H:i:s', $since));
+        $this->db->order_by('created_at', 'ASC');
+        $this->db->limit(10);
+        
+        $query = $this->db->get();
+        $rows = $query->result_array();
 
         $newNotifications = [];
         $maxCreated = $since;
+        
         foreach ($rows as $row) {
-            $createdTs = isset($row->created_at) ? strtotime($row->created_at) : 0;
+            $createdTs = isset($row['created_at']) ? strtotime($row['created_at']) : 0;
             if ($createdTs > $since) {
-                $id = isset($row->id) ? $row->id : (isset($row->notification_id) ? $row->notification_id : uniqid());
                 $newNotifications[] = [
-                    'id' => $id,
-                    'type' => isset($row->type) ? $row->type : 'info',
-                    'title' => isset($row->title) ? $row->title : 'Notification',
-                    'message' => isset($row->message) ? $row->message : '',
+                    'id' => $row['id'],
+                    'type' => $row['type'] ?? 'info',
+                    'title' => $row['title'] ?? 'Notification',
+                    'message' => $row['message'] ?? '',
                     'timestamp' => $createdTs ? date('c', $createdTs) : date('c'),
-                    'is_urgent' => isset($row->is_urgent) ? (bool)$row->is_urgent : false,
+                    'is_urgent' => (bool)($row['is_urgent'] ?? false),
                     'data' => [
-                        'related_id' => isset($row->related_id) ? $row->related_id : null,
-                        'related_type' => isset($row->related_type) ? $row->related_type : null,
-                        'class_code' => isset($row->class_code) ? $row->class_code : null,
+                        'related_id' => $row['related_id'] ?? null,
+                        'related_type' => $row['related_type'] ?? null,
+                        'class_code' => $row['class_code'] ?? null,
                         'role' => $role
                     ]
                 ];
@@ -157,6 +167,69 @@ class Notifications extends CI_Controller {
             'code' => $code,
             'timestamp' => date('c')
         ]);
+    }
+    
+    /**
+     * Create a test notification for testing SSE
+     * POST /api/notifications/create-test
+     */
+    public function create_test() {
+        // Override SSE headers for this method
+        header('Content-Type: application/json');
+        header('Connection: close');
+        
+        try {
+            // Get JSON input
+            $input = json_decode($this->input->raw_input_stream, true);
+            
+            if (!$input) {
+                $input = $this->input->post();
+            }
+            
+            // Default values for testing
+            $userId = $input['user_id'] ?? 'STU001';
+            $message = $input['message'] ?? 'Test notification from SSE';
+            $type = $input['type'] ?? 'test';
+            $title = $input['title'] ?? 'SSE Test Notification';
+            
+            // Create notification data
+            $notificationData = [
+                'user_id' => $userId,
+                'type' => $type,
+                'title' => $title,
+                'message' => $message,
+                'related_id' => $input['related_id'] ?? null,
+                'related_type' => $input['related_type'] ?? 'test',
+                'class_code' => $input['class_code'] ?? null,
+                'is_urgent' => isset($input['is_urgent']) ? ($input['is_urgent'] ? 1 : 0) : 0
+            ];
+            
+            // Create notification in database
+            $notificationId = $this->Notification_model->create_notification($notificationData);
+            
+            if ($notificationId) {
+                $response = [
+                    'success' => true,
+                    'message' => 'Test notification created successfully',
+                    'notification_id' => $notificationId,
+                    'data' => $notificationData
+                ];
+            } else {
+                $response = [
+                    'success' => false,
+                    'error' => 'Failed to create test notification'
+                ];
+            }
+            
+        } catch (Exception $e) {
+            $response = [
+                'success' => false,
+                'error' => 'Error creating test notification: ' . $e->getMessage()
+            ];
+        }
+        
+        echo json_encode($response);
+        exit;
     }
 }
 

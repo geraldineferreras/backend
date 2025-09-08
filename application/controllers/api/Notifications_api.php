@@ -309,4 +309,87 @@ class Notifications_api extends CI_Controller {
             'error' => $message
         ]);
     }
+    
+    /**
+     * POST /api/notifications/create-test - Create a test notification for SSE testing
+     */
+    public function create_test() {
+        try {
+            // Get JSON input
+            $input = json_decode($this->input->raw_input_stream, true);
+            
+            if (!$input) {
+                $input = $this->input->post();
+            }
+            
+            // Default values for testing
+            $userId = $input['user_id'] ?? 'STU001';
+            $message = $input['message'] ?? 'Test notification from SSE';
+            $type = $input['type'] ?? 'test';
+            $title = $input['title'] ?? 'SSE Test Notification';
+            
+            // Create notification data
+            $notificationData = [
+                'user_id' => $userId,
+                'type' => $type,
+                'title' => $title,
+                'message' => $message,
+                'related_id' => $input['related_id'] ?? null,
+                'related_type' => $input['related_type'] ?? 'test',
+                'class_code' => $input['class_code'] ?? null,
+                'is_urgent' => isset($input['is_urgent']) ? ($input['is_urgent'] ? 1 : 0) : 0
+            ];
+            
+            // Create notification in database
+            $notificationId = $this->Notification_model->create_notification($notificationData);
+            
+            if ($notificationId) {
+                $this->sendSuccess([
+                    'notification_id' => $notificationId,
+                    'message' => 'Test notification created successfully',
+                    'data' => $notificationData
+                ]);
+            } else {
+                $this->sendError('Failed to create test notification', 500);
+            }
+            
+        } catch (Exception $e) {
+            $this->sendError('Error creating test notification: ' . $e->getMessage(), 500);
+        }
+    }
+    
+    /**
+     * GET /api/notifications/simple-test - Simple test endpoint without complex validation
+     */
+    public function simple_test() {
+        try {
+            // Simple test data
+            $notificationData = [
+                'user_id' => 'STU001',
+                'type' => 'test',
+                'title' => 'Simple Test Notification',
+                'message' => 'This is a simple test notification created at ' . date('Y-m-d H:i:s'),
+                'related_id' => null,
+                'related_type' => 'test',
+                'class_code' => null,
+                'is_urgent' => 0
+            ];
+            
+            // Create notification in database
+            $notificationId = $this->Notification_model->create_notification($notificationData);
+            
+            if ($notificationId) {
+                $this->sendSuccess([
+                    'notification_id' => $notificationId,
+                    'message' => 'Simple test notification created successfully',
+                    'data' => $notificationData
+                ]);
+            } else {
+                $this->sendError('Failed to create simple test notification', 500);
+            }
+            
+        } catch (Exception $e) {
+            $this->sendError('Error creating simple test notification: ' . $e->getMessage(), 500);
+        }
+    }
 }

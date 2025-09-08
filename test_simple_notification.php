@@ -1,86 +1,91 @@
 <?php
 /**
- * Simple test to check if notification endpoint is accessible
+ * Simple Notification Test - Direct Database Insert
+ * This script creates a notification directly in the database for testing
  */
 
-// Test the notification endpoint directly
-echo "=== Testing Notification Endpoint Access ===\n\n";
+echo "🔔 Simple Notification Test\n";
+echo "==========================\n\n";
 
-// Test 1: Check if the file exists
-echo "1. Checking NotificationController file...\n";
-$controller_file = 'application/controllers/api/NotificationController.php';
-if (file_exists($controller_file)) {
-    echo "✅ NotificationController file exists\n";
-} else {
-    echo "❌ NotificationController file not found\n";
+// Configuration
+$base_url = 'https://scms-backend.up.railway.app';
+$jwt_token = ''; // Add your JWT token here
+
+if (empty($jwt_token)) {
+    echo "❌ Please add your JWT token to the script first!\n";
+    echo "Edit the file and set \$jwt_token = 'your_token_here';\n\n";
     exit;
 }
 
-// Test 2: Check if the model exists
-echo "\n2. Checking Notification_model file...\n";
-$model_file = 'application/models/Notification_model.php';
-if (file_exists($model_file)) {
-    echo "✅ Notification_model file exists\n";
-} else {
-    echo "❌ Notification_model file not found\n";
-    exit;
-}
+echo "📡 Base URL: {$base_url}\n";
+echo "🔑 Token: " . substr($jwt_token, 0, 20) . "...\n\n";
 
-// Test 3: Check if helpers exist
-echo "\n3. Checking helper files...\n";
-$helper_files = [
-    'application/helpers/notification_helper.php',
-    'application/helpers/email_notification_helper.php'
+// Test data - using the exact format expected by the existing API
+$notificationData = [
+    'recipient_id' => 'STU001',
+    'title' => 'Direct Test Notification',
+    'message' => 'This notification was created directly for SSE testing at ' . date('Y-m-d H:i:s'),
+    'type' => 'test',
+    'is_urgent' => false
 ];
 
-foreach ($helper_files as $helper_file) {
-    if (file_exists($helper_file)) {
-        echo "✅ " . basename($helper_file) . " exists\n";
-    } else {
-        echo "❌ " . basename($helper_file) . " not found\n";
-    }
-}
+echo "📝 Test Data:\n";
+echo json_encode($notificationData, JSON_PRETTY_PRINT) . "\n\n";
 
-// Test 4: Check if routes are configured
-echo "\n4. Checking routes configuration...\n";
-$routes_file = 'application/config/routes.php';
-if (file_exists($routes_file)) {
-    $routes_content = file_get_contents($routes_file);
-    if (strpos($routes_content, 'api/notifications') !== false) {
-        echo "✅ Notification routes are configured\n";
-        
-        // Show the notification routes
-        preg_match_all('/\$route\[.*?notifications.*?\]/', $routes_content, $matches);
-        if (!empty($matches[0])) {
-            echo "   Found routes:\n";
-            foreach ($matches[0] as $route) {
-                echo "   - " . trim($route) . "\n";
-            }
+// Make the request
+$ch = curl_init();
+
+curl_setopt_array($ch, [
+    CURLOPT_URL => $base_url . '/api/notifications',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => json_encode($notificationData),
+    CURLOPT_HTTPHEADER => [
+        'Content-Type: application/json',
+        'Authorization: Bearer ' . $jwt_token
+    ],
+    CURLOPT_TIMEOUT => 30,
+    CURLOPT_VERBOSE => true
+]);
+
+echo "🔄 Sending request...\n";
+
+$response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$error = curl_error($ch);
+
+// Get more detailed error info
+$info = curl_getinfo($ch);
+
+curl_close($ch);
+
+echo "📊 HTTP Status: " . $httpCode . "\n";
+echo "📊 Content Type: " . ($info['content_type'] ?? 'Not set') . "\n";
+echo "📊 Total Time: " . ($info['total_time'] ?? 'Unknown') . " seconds\n\n";
+
+if ($error) {
+    echo "❌ cURL Error: " . $error . "\n";
+} else {
+    echo "📋 Raw Response:\n";
+    echo $response . "\n\n";
+    
+    if ($httpCode === 200) {
+        $data = json_decode($response, true);
+        if ($data && isset($data['success']) && $data['success']) {
+            echo "✅ SUCCESS! Notification created with ID: " . ($data['data']['id'] ?? 'Unknown') . "\n";
+        } else {
+            echo "❌ API returned error: " . ($data['error'] ?? 'Unknown error') . "\n";
         }
     } else {
-        echo "❌ Notification routes not found in routes.php\n";
+        echo "❌ Request failed with HTTP " . $httpCode . "\n";
+        
+        // Try to parse error response
+        $errorData = json_decode($response, true);
+        if ($errorData && isset($errorData['error'])) {
+            echo "📋 Error details: " . $errorData['error'] . "\n";
+        }
     }
-} else {
-    echo "❌ Routes file not found\n";
 }
 
-// Test 5: Check if database table exists (basic check)
-echo "\n5. Checking database connection...\n";
-try {
-    $db_config = include 'application/config/database.php';
-    if (isset($db_config['default'])) {
-        echo "✅ Database configuration found\n";
-        echo "   Host: " . $db_config['default']['hostname'] . "\n";
-        echo "   Database: " . $db_config['default']['database'] . "\n";
-    } else {
-        echo "❌ Database configuration not found\n";
-    }
-} catch (Exception $e) {
-    echo "❌ Error reading database config: " . $e->getMessage() . "\n";
-}
-
-echo "\n=== Test Complete ===\n";
-echo "\nTo test the actual endpoint, try:\n";
-echo "GET http://localhost/scms_new_backup/index.php/api/notifications\n";
-echo "\nNote: You'll need a valid JWT token in the Authorization header.\n";
+echo "\n🏁 Test completed!\n";
 ?>
