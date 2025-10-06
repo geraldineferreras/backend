@@ -89,42 +89,6 @@ function create_phpmailer(): PHPMailer {
  */
 function send_email(string $to, string $subject, string $htmlMessage, ?string $toName = null): bool {
     try {
-        // Prefer HTTP API provider (works on platforms that block SMTP)
-        $sendgridApiKey = getenv('SENDGRID_API_KEY');
-        if ($sendgridApiKey) {
-            $fromEmail = getenv('SENDGRID_FROM') ?: (getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com');
-            $fromName = getenv('SMTP_FROM_NAME') ?: 'SCMS System';
-
-            $payload = [
-                'personalizations' => [[
-                    'to' => [[ 'email' => $to, 'name' => $toName ?: $to ]],
-                    'subject' => $subject
-                ]],
-                'from' => [ 'email' => $fromEmail, 'name' => $fromName ],
-                'content' => [[ 'type' => 'text/html', 'value' => $htmlMessage ]]
-            ];
-
-            $ch = curl_init('https://api.sendgrid.com/v3/mail/send');
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Authorization: Bearer ' . $sendgridApiKey,
-                'Content-Type: application/json'
-            ]);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 20);
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlErr = curl_error($ch);
-            curl_close($ch);
-
-            if ($httpCode >= 200 && $httpCode < 300) {
-                return true;
-            }
-            log_message('error', 'SendGrid API failed: HTTP ' . $httpCode . ' Response: ' . $response . ' CurlErr: ' . $curlErr);
-            // Fall through to PHPMailer as secondary attempt
-        }
-
         if (!class_exists('PHPMailer\\PHPMailer\\PHPMailer')) {
             log_message('error', 'PHPMailer not available. Please install via Composer or place in third_party.');
             return false;
