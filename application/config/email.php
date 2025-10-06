@@ -15,10 +15,10 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 // Use environment variables for Railway deployment, fallback to defaults for local
 $config['protocol'] = 'smtp';
 $config['smtp_host'] = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
-$config['smtp_port'] = getenv('SMTP_PORT') ?: 587;
+$config['smtp_port'] = getenv('SMTP_PORT') ?: 465;
 $config['smtp_user'] = getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com';
 $config['smtp_pass'] = getenv('SMTP_PASS') ?: 'zhrk blgg sukj wbbs';
-$config['smtp_crypto'] = getenv('SMTP_CRYPTO') ?: 'tls';
+$config['smtp_crypto'] = getenv('SMTP_CRYPTO') ?: 'ssl';
 $config['smtp_timeout'] = 60; // Increased timeout for Railway
 $config['mailtype'] = 'html';
 $config['charset'] = 'utf-8';

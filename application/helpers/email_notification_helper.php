@@ -59,20 +59,20 @@ if (!function_exists('get_notification_type_display')) {
 function create_phpmailer(): PHPMailer {
     $mail = new PHPMailer(true);
 
-    // SMTP configuration - defaults to Gmail TLS:587, can be overridden by env
+    // SMTP configuration - defaults align with application/config/email.php (SSL:465)
     $smtpHost = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
-    $smtpPort = getenv('SMTP_PORT') ?: 587;
+    $smtpPort = getenv('SMTP_PORT') ?: 465;
     $smtpUser = getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com';
     $smtpPass = getenv('SMTP_PASS') ?: 'zhrk blgg sukj wbbs';
-    $smtpSecure = getenv('SMTP_CRYPTO') ?: 'tls';
+    $smtpSecure = getenv('SMTP_CRYPTO') ?: 'ssl';
 
     $mail->isSMTP();
     $mail->Host = $smtpHost;
     $mail->SMTPAuth = true;
     $mail->Username = $smtpUser;
     $mail->Password = $smtpPass;
-    $mail->SMTPSecure = $smtpSecure; // tls
-    $mail->Port = (int)$smtpPort;    // 587
+    $mail->SMTPSecure = $smtpSecure;
+    $mail->Port = (int)$smtpPort;
     $mail->Timeout = 30;
 
     // From defaults
@@ -85,29 +85,56 @@ function create_phpmailer(): PHPMailer {
 }
 
 /**
- * Unified helper to send an email using PHPMailer
+ * Unified helper to send an email using PHPMailer with CI Email fallback
  */
 function send_email(string $to, string $subject, string $htmlMessage, ?string $toName = null): bool {
+    // Try PHPMailer first
     try {
-        if (!class_exists('PHPMailer\\PHPMailer\\PHPMailer')) {
-            log_message('error', 'PHPMailer not available. Please install via Composer or place in third_party.');
-            return false;
-        }
+        if (class_exists('PHPMailer\\PHPMailer\\PHPMailer')) {
+            $mail = create_phpmailer();
+            $mail->clearAddresses();
+            $mail->addAddress($to, $toName ?: $to);
+            $mail->Subject = $subject;
+            $mail->Body = $htmlMessage;
+            $mail->AltBody = strip_tags($htmlMessage);
 
-        $mail = create_phpmailer();
-        $mail->clearAddresses();
-        $mail->addAddress($to, $toName ?: $to);
-        $mail->Subject = $subject;
-        $mail->Body = $htmlMessage;
-        $mail->AltBody = strip_tags($htmlMessage);
+            $sent = $mail->send();
+            if ($sent) {
+                return true;
+            }
 
-        $sent = $mail->send();
-        if (!$sent) {
             log_message('error', 'PHPMailer send failed: ' . $mail->ErrorInfo);
+        } else {
+            log_message('error', 'PHPMailer not available. Falling back to CodeIgniter Email library.');
         }
-        return $sent;
     } catch (Exception $e) {
         log_message('error', 'PHPMailer exception: ' . $e->getMessage());
+    }
+
+    // Fallback to CodeIgniter Email library
+    try {
+        $CI =& get_instance();
+        $CI->load->library('email');
+
+        $fromEmail = getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com';
+        $fromName = getenv('SMTP_FROM_NAME') ?: 'SCMS System';
+
+        $CI->email->from($fromEmail, $fromName);
+        $CI->email->to($to);
+        $CI->email->subject($subject);
+        $CI->email->message($htmlMessage);
+        $CI->email->set_mailtype('html');
+
+        $ciSent = $CI->email->send();
+        if (!$ciSent) {
+            $debug = method_exists($CI->email, 'print_debugger') ? $CI->email->print_debugger(array('headers')) : '';
+            // Avoid logging sensitive credentials
+            $envSummary = sprintf('host=%s port=%s crypto=%s user=%s', getenv('SMTP_HOST') ?: 'smtp.gmail.com', getenv('SMTP_PORT') ?: '465', getenv('SMTP_CRYPTO') ?: 'ssl', getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com');
+            log_message('error', 'CI Email send failed. Env: ' . $envSummary . ' Debug: ' . $debug);
+        }
+        return (bool)$ciSent;
+    } catch (Exception $e) {
+        log_message('error', 'CI Email exception: ' . $e->getMessage());
         return false;
     }
 }
