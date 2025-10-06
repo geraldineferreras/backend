@@ -1637,6 +1637,45 @@ class Auth extends BaseController {
     }
 
     /**
+     * Check database status for forgot password functionality
+     */
+    public function check_forgot_password_status() {
+        try {
+            $status = [
+                'phpmailer_available' => class_exists('PHPMailer\PHPMailer\PHPMailer'),
+                'email_config_loaded' => false,
+                'password_reset_table_exists' => false,
+                'email_config' => []
+            ];
+            
+            // Check email configuration
+            $this->config->load('email');
+            $status['email_config_loaded'] = true;
+            $status['email_config'] = [
+                'smtp_host' => $this->config->item('smtp_host'),
+                'smtp_port' => $this->config->item('smtp_port'),
+                'smtp_user' => $this->config->item('smtp_user'),
+                'smtp_crypto' => $this->config->item('smtp_crypto')
+            ];
+            
+            // Check if password reset table exists
+            $query = $this->db->query("SHOW TABLES LIKE 'password_reset_tokens'");
+            $status['password_reset_table_exists'] = ($query->num_rows() > 0);
+            
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'data' => $status]));
+                
+        } catch (Exception $e) {
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => $e->getMessage()]));
+        }
+    }
+
+    /**
      * Forgot Password - Send reset email
      */
     public function forgot_password() {
@@ -1687,51 +1726,76 @@ class Auth extends BaseController {
             // Store token in database
             $this->db->trans_start();
             
-            // Delete any existing tokens for this email
-            $this->db->where('email', $email)->delete('password_reset_tokens');
-            
-            // Insert new token
-            $token_data = [
-                'email' => $email,
-                'token' => $token,
-                'expires_at' => $expires_at,
-                'used' => 0
-            ];
-            $this->db->insert('password_reset_tokens', $token_data);
-            
-            $this->db->trans_complete();
+            try {
+                // Delete any existing tokens for this email
+                $this->db->where('email', $email)->delete('password_reset_tokens');
+                
+                // Insert new token
+                $token_data = [
+                    'email' => $email,
+                    'token' => $token,
+                    'expires_at' => $expires_at,
+                    'used' => 0
+                ];
+                $this->db->insert('password_reset_tokens', $token_data);
+                
+                $this->db->trans_complete();
 
-            if ($this->db->trans_status() === FALSE) {
-                log_message('error', 'Failed to store password reset token for email: ' . $email);
+                if ($this->db->trans_status() === FALSE) {
+                    log_message('error', 'Failed to store password reset token for email: ' . $email . ' - Transaction failed');
+                    $this->output
+                        ->set_status_header(500)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Failed to process request. Please try again.']));
+                    return;
+                }
+            } catch (Exception $e) {
+                $this->db->trans_rollback();
+                log_message('error', 'Database error in forgot password: ' . $e->getMessage());
+                
+                // Check if it's a table not found error
+                if (strpos($e->getMessage(), 'password_reset_tokens') !== false) {
+                    log_message('error', 'Password reset tokens table does not exist. Please run the database setup script.');
+                }
+                
                 $this->output
                     ->set_status_header(500)
                     ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to process request. Please try again.']));
+                    ->set_output(json_encode(['status' => false, 'message' => 'Database error. Please contact support.']));
                 return;
             }
 
             // Send email
             $frontend_url = $this->config->item('frontend_url') ?: 'http://localhost:3000';
             $reset_link = $frontend_url . "/auth/reset-password?token=" . $token;
+            
+            log_message('info', "Attempting to send password reset email to: {$email} with token: " . substr($token, 0, 8) . "...");
+            
             $email_sent = $this->send_password_reset_email($email, $user['full_name'], $reset_link);
 
             if ($email_sent) {
                 // Log the request
-                log_audit_event(
-                    'PASSWORD_RESET_REQUESTED',
-                    'AUTHENTICATION',
-                    "Password reset requested for email: {$email}",
-                    [
-                        'ip_address' => $this->input->ip_address(),
-                        'user_agent' => $this->input->user_agent()
-                    ]
-                );
+                log_message('info', "Password reset email sent successfully to: {$email}");
+                
+                // Try to log audit event if function exists
+                if (function_exists('log_audit_event')) {
+                    log_audit_event(
+                        'PASSWORD_RESET_REQUESTED',
+                        'AUTHENTICATION',
+                        "Password reset requested for email: {$email}",
+                        [
+                            'ip_address' => $this->input->ip_address(),
+                            'user_agent' => $this->input->user_agent()
+                        ]
+                    );
+                }
 
                 $this->output
                     ->set_status_header(200)
                     ->set_content_type('application/json')
                     ->set_output(json_encode(['status' => true, 'message' => 'Password reset link has been sent to your email']));
             } else {
+                log_message('error', "Failed to send password reset email to: {$email}");
                 $this->output
                     ->set_status_header(500)
                     ->set_content_type('application/json')

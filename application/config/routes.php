@@ -62,6 +62,7 @@ $route['api/validate-token']['get'] = 'api/auth/validate_token';
 $route['api/logout']['post'] = 'api/auth/logout';
 $route['api/auth/google']['post'] = 'api/auth/google_oauth';
 $route['api/auth/forgot-password']['post'] = 'api/auth/forgot_password';
+$route['api/auth/forgot-password-status']['get'] = 'api/auth/check_forgot_password_status';
 $route['api/auth/reset-password']['post'] = 'api/auth/reset_password';
 $route['api/auth/change-password']['post'] = 'api/auth/change_password';
 $route['api/auth/change-password']['options'] = 'api/auth/options';
