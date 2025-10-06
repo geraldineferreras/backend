@@ -1637,7 +1637,7 @@ class Auth extends BaseController {
     }
 
     /**
-     * Test email sending directly
+     * Test email sending directly - Enhanced version
      */
     public function test_email_sending() {
         try {
@@ -2274,5 +2274,94 @@ class Auth extends BaseController {
                 ->set_content_type('application/json')
                 ->set_output(json_encode(['status' => false, 'message' => 'Internal server error']));
         }
+    }
+    
+    /**
+     * Debug email configuration and test sending
+     * GET /api/auth/debug-email
+     */
+    public function debug_email() {
+        header('Content-Type: application/json');
+        header('Access-Control-Allow-Origin: *');
+        
+        $response = [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'environment' => getenv('RAILWAY_ENVIRONMENT') ?: 'local',
+            'tests' => []
+        ];
+        
+        // Test 1: Environment Variables
+        $response['tests']['environment'] = [
+            'SMTP_HOST' => getenv('SMTP_HOST') ?: 'NOT SET',
+            'SMTP_PORT' => getenv('SMTP_PORT') ?: 'NOT SET', 
+            'SMTP_USER' => getenv('SMTP_USER') ?: 'NOT SET',
+            'SMTP_PASS' => getenv('SMTP_PASS') ? 'SET' : 'NOT SET',
+            'SMTP_CRYPTO' => getenv('SMTP_CRYPTO') ?: 'NOT SET'
+        ];
+        
+        // Test 2: Email Configuration
+        $this->config->load('email');
+        $response['tests']['config'] = [
+            'protocol' => $this->config->item('protocol'),
+            'smtp_host' => $this->config->item('smtp_host'),
+            'smtp_port' => $this->config->item('smtp_port'),
+            'smtp_user' => $this->config->item('smtp_user'),
+            'smtp_crypto' => $this->config->item('smtp_crypto'),
+            'smtp_timeout' => $this->config->item('smtp_timeout')
+        ];
+        
+        // Test 3: SMTP Connection
+        try {
+            $smtp_host = $this->config->item('smtp_host');
+            $smtp_port = $this->config->item('smtp_port');
+            
+            $connection = @fsockopen($smtp_host, $smtp_port, $errno, $errstr, 10);
+            if ($connection) {
+                $response['tests']['smtp_connection'] = [
+                    'status' => 'success',
+                    'message' => "Connected to {$smtp_host}:{$smtp_port}"
+                ];
+                fclose($connection);
+            } else {
+                $response['tests']['smtp_connection'] = [
+                    'status' => 'error',
+                    'error' => "Cannot connect: {$errstr} ({$errno})"
+                ];
+            }
+        } catch (Exception $e) {
+            $response['tests']['smtp_connection'] = [
+                'status' => 'error',
+                'error' => $e->getMessage()
+            ];
+        }
+        
+        // Test 4: Direct Email Test
+        try {
+            $test_email = 'geferreras@gmail.com';
+            
+            $this->load->library('email');
+            $this->email->clear();
+            $this->email->from($this->config->item('smtp_user'), 'SCMS Debug');
+            $this->email->to($test_email);
+            $this->email->subject('SCMS Email Debug - ' . date('H:i:s'));
+            $this->email->message('<h2>Email Test</h2><p>This is a debug test email.</p>');
+            $this->email->set_mailtype('html');
+            
+            $result = $this->email->send();
+            
+            $response['tests']['email_send'] = [
+                'status' => $result ? 'success' : 'error',
+                'to' => $test_email,
+                'debug_info' => $result ? 'Email sent' : $this->email->print_debugger()
+            ];
+        } catch (Exception $e) {
+            $response['tests']['email_send'] = [
+                'status' => 'error',
+                'error' => $e->getMessage()
+            ];
+        }
+        
+        echo json_encode($response, JSON_PRETTY_PRINT);
+        exit;
     }
 }
