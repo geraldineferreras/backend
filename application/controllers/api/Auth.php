@@ -1803,8 +1803,9 @@ class Auth extends BaseController {
             }
 
             // Send email
-            $frontend_url = $this->config->item('frontend_url') ?: 'http://localhost:3000';
-            $reset_link = $frontend_url . "/auth/reset-password?token=" . $token;
+            // Prefer environment variable, then config, then safe default
+            $frontend_url = getenv('FRONTEND_BASE_URL') ?: ($this->config->item('frontend_url') ?: 'https://scmsupdatedbackup.vercel.app');
+            $reset_link = rtrim($frontend_url, '/') . '/auth/reset-password?token=' . urlencode($token);
             
             log_message('info', "Attempting to send password reset email to: {$email} with token: " . substr($token, 0, 8) . "...");
             
