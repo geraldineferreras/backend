@@ -115,35 +115,12 @@ function send_email(string $to, string $subject, string $htmlMessage, ?string $t
     if ($resendApiKey) {
         $fromName = getenv('SMTP_FROM_NAME') ?: (getenv('RESEND_FROM_NAME') ?: 'SCMS System');
         $fromEmail = getenv('RESEND_FROM_EMAIL') ?: (getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com');
-        $replyToEmail = getenv('REPLY_TO_EMAIL') ?: $fromEmail;
-        $replyToName = getenv('REPLY_TO_NAME') ?: $fromName;
-        $listUnsubUrl = getenv('LIST_UNSUBSCRIBE_URL') ?: null; // e.g., https://yourdomain.com/unsubscribe
-        $disableTracking = filter_var(getenv('EMAIL_DISABLE_TRACKING') ?: 'false', FILTER_VALIDATE_BOOLEAN);
         $payload = array(
             'from' => $fromName . ' <' . $fromEmail . '>',
             'to' => array($to),
             'subject' => $subject,
             'html' => $htmlMessage
         );
-        // Reply-To
-        if ($replyToEmail) {
-            $payload['reply_to'] = array('email' => $replyToEmail, 'name' => $replyToName);
-        }
-        // Headers (List-Unsubscribe)
-        $headers = array();
-        if ($listUnsubUrl) {
-            $headers['List-Unsubscribe'] = '<' . $listUnsubUrl . '>';
-        }
-        if (!empty($headers)) {
-            $payload['headers'] = $headers;
-        }
-        // Tracking
-        if ($disableTracking) {
-            $payload['tracking'] = array(
-                'clicks' => false,
-                'opens' => false
-            );
-        }
 
         $ch = curl_init('https://api.resend.com/emails');
         curl_setopt($ch, CURLOPT_HTTPHEADER, array(
@@ -169,34 +146,14 @@ function send_email(string $to, string $subject, string $htmlMessage, ?string $t
     if ($sendgridApiKey) {
         $fromName = getenv('SMTP_FROM_NAME') ?: (getenv('SENDGRID_FROM_NAME') ?: 'SCMS System');
         $fromEmail = getenv('SENDGRID_FROM_EMAIL') ?: (getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com');
-        $replyToEmail = getenv('REPLY_TO_EMAIL') ?: $fromEmail;
-        $replyToName = getenv('REPLY_TO_NAME') ?: $fromName;
-        $listUnsubUrl = getenv('LIST_UNSUBSCRIBE_URL') ?: null;
-        $disableTracking = filter_var(getenv('EMAIL_DISABLE_TRACKING') ?: 'false', FILTER_VALIDATE_BOOLEAN);
         $payload = array(
             'personalizations' => array(array(
-                'to' => array(array('email' => $to, 'name' => $toName ?: $to)),
-                'headers' => array()
+                'to' => array(array('email' => $to, 'name' => $toName ?: $to))
             )),
             'from' => array('email' => $fromEmail, 'name' => $fromName),
             'subject' => $subject,
             'content' => array(array('type' => 'text/html', 'value' => $htmlMessage))
         );
-        // Reply-To
-        if ($replyToEmail) {
-            $payload['reply_to'] = array('email' => $replyToEmail, 'name' => $replyToName);
-        }
-        // List-Unsubscribe header (on personalizations.headers)
-        if ($listUnsubUrl) {
-            $payload['personalizations'][0]['headers']['List-Unsubscribe'] = '<' . $listUnsubUrl . '>';
-        }
-        // Tracking settings
-        if ($disableTracking) {
-            $payload['tracking_settings'] = array(
-                'click_tracking' => array('enable' => false, 'enable_text' => false),
-                'open_tracking' => array('enable' => false)
-            );
-        }
 
         $ch = curl_init('https://api.sendgrid.com/v3/mail/send');
         curl_setopt($ch, CURLOPT_HTTPHEADER, array(
