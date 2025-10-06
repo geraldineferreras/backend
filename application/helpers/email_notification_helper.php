@@ -59,12 +59,12 @@ if (!function_exists('get_notification_type_display')) {
 function create_phpmailer(): PHPMailer {
     $mail = new PHPMailer(true);
 
-    // SMTP configuration - defaults align with application/config/email.php (SSL:465)
+    // SMTP configuration - defaults align with application/config/email.php (TLS:587)
     $smtpHost = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
-    $smtpPort = getenv('SMTP_PORT') ?: 465;
+    $smtpPort = getenv('SMTP_PORT') ?: 587;
     $smtpUser = getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com';
     $smtpPass = getenv('SMTP_PASS') ?: 'zhrk blgg sukj wbbs';
-    $smtpSecure = getenv('SMTP_CRYPTO') ?: 'ssl';
+    $smtpSecure = getenv('SMTP_CRYPTO') ?: 'tls';
 
     $mail->isSMTP();
     $mail->Host = $smtpHost;
@@ -74,6 +74,27 @@ function create_phpmailer(): PHPMailer {
     $mail->SMTPSecure = $smtpSecure;
     $mail->Port = (int)$smtpPort;
     $mail->Timeout = 30;
+    $mail->CharSet = 'UTF-8';
+    $mail->SMTPDebug = (int)(getenv('SMTP_DEBUG') ?: 0);
+    $mail->Debugoutput = function($str, $level) {
+        error_log("PHPMailer[$level]: " . trim($str));
+    };
+
+    // Optional Railway/cloud-friendly TLS options (only if explicitly allowed)
+    if (filter_var(getenv('SMTP_ALLOW_SELF_SIGNED') ?: 'false', FILTER_VALIDATE_BOOLEAN)) {
+        $mail->SMTPOptions = array(
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            )
+        );
+    }
+
+    // Optional explicit auth type if provider requires (e.g., 'LOGIN')
+    if ($authType = getenv('SMTP_AUTH_TYPE')) {
+        $mail->AuthType = $authType;
+    }
 
     // From defaults
     $fromEmail = $smtpUser;
@@ -129,7 +150,7 @@ function send_email(string $to, string $subject, string $htmlMessage, ?string $t
         if (!$ciSent) {
             $debug = method_exists($CI->email, 'print_debugger') ? $CI->email->print_debugger(array('headers')) : '';
             // Avoid logging sensitive credentials
-            $envSummary = sprintf('host=%s port=%s crypto=%s user=%s', getenv('SMTP_HOST') ?: 'smtp.gmail.com', getenv('SMTP_PORT') ?: '465', getenv('SMTP_CRYPTO') ?: 'ssl', getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com');
+            $envSummary = sprintf('host=%s port=%s crypto=%s user=%s', getenv('SMTP_HOST') ?: 'smtp.gmail.com', getenv('SMTP_PORT') ?: '587', getenv('SMTP_CRYPTO') ?: 'tls', getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com');
             log_message('error', 'CI Email send failed. Env: ' . $envSummary . ' Debug: ' . $debug);
         }
         return (bool)$ciSent;
