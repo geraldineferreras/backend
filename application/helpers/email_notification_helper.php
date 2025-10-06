@@ -1,6 +1,25 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
+// Ensure PHPMailer is available (supports both Composer and manual include)
+if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+    // Try common vendor path
+    $phpmailerBase = APPPATH . '../vendor/phpmailer/phpmailer/src/';
+    if (file_exists($phpmailerBase . 'PHPMailer.php')) {
+        require_once $phpmailerBase . 'PHPMailer.php';
+        require_once $phpmailerBase . 'SMTP.php';
+        require_once $phpmailerBase . 'Exception.php';
+    } else if (file_exists(APPPATH . 'third_party/PHPMailer/src/PHPMailer.php')) {
+        // Fallback to third_party path (non-Composer)
+        require_once APPPATH . 'third_party/PHPMailer/src/PHPMailer.php';
+        require_once APPPATH . 'third_party/PHPMailer/src/SMTP.php';
+        require_once APPPATH . 'third_party/PHPMailer/src/Exception.php';
+    }
+}
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
 // Define notification helper functions locally to avoid circular dependency
 if (!function_exists('get_notification_icon')) {
     function get_notification_icon($type) {
@@ -35,63 +54,81 @@ if (!function_exists('get_notification_type_display')) {
 }
 
 /**
- * Send email notification
+ * Create and configure PHPMailer instance for Gmail SMTP
+ */
+function create_phpmailer(): PHPMailer {
+    $mail = new PHPMailer(true);
+
+    // SMTP configuration - defaults to Gmail TLS:587, can be overridden by env
+    $smtpHost = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+    $smtpPort = getenv('SMTP_PORT') ?: 587;
+    $smtpUser = getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com';
+    $smtpPass = getenv('SMTP_PASS') ?: 'zhrk blgg sukj wbbs';
+    $smtpSecure = getenv('SMTP_CRYPTO') ?: 'tls';
+
+    $mail->isSMTP();
+    $mail->Host = $smtpHost;
+    $mail->SMTPAuth = true;
+    $mail->Username = $smtpUser;
+    $mail->Password = $smtpPass;
+    $mail->SMTPSecure = $smtpSecure; // tls
+    $mail->Port = (int)$smtpPort;    // 587
+    $mail->Timeout = 30;
+
+    // From defaults
+    $fromEmail = $smtpUser;
+    $fromName = getenv('SMTP_FROM_NAME') ?: 'SCMS System';
+    $mail->setFrom($fromEmail, $fromName);
+    $mail->isHTML(true);
+
+    return $mail;
+}
+
+/**
+ * Unified helper to send an email using PHPMailer
+ */
+function send_email(string $to, string $subject, string $htmlMessage, ?string $toName = null): bool {
+    try {
+        if (!class_exists('PHPMailer\\PHPMailer\\PHPMailer')) {
+            log_message('error', 'PHPMailer not available. Please install via Composer or place in third_party.');
+            return false;
+        }
+
+        $mail = create_phpmailer();
+        $mail->clearAddresses();
+        $mail->addAddress($to, $toName ?: $to);
+        $mail->Subject = $subject;
+        $mail->Body = $htmlMessage;
+        $mail->AltBody = strip_tags($htmlMessage);
+
+        $sent = $mail->send();
+        if (!$sent) {
+            log_message('error', 'PHPMailer send failed: ' . $mail->ErrorInfo);
+        }
+        return $sent;
+    } catch (Exception $e) {
+        log_message('error', 'PHPMailer exception: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Send email notification (rewritten to use PHPMailer)
  */
 function send_email_notification($user_id, $type, $title, $message, $related_id = null, $related_type = null, $class_code = null) {
     $CI =& get_instance();
-    
-    // Get user email
+
     $user_email = get_user_email($user_id);
     if (!$user_email) {
-        error_log("Email notification failed: No email found for user {$user_id}");
+        log_message('error', "Email notification failed: No email found for user {$user_id}");
         return false;
     }
-    
-    // Load email library and configuration
-    $CI->load->library('email');
-    $CI->config->load('email');
-    
-    // Configure email with Railway-optimized settings
-    $from_email = getenv('SMTP_USER') ? getenv('SMTP_USER') : 'scmswebsitee@gmail.com';
-    $from_name = getenv('SMTP_FROM_NAME') ? getenv('SMTP_FROM_NAME') : 'SCMS System';
-    
-    // Clear any previous email data
-    $CI->email->clear();
-    
-    // Set email configuration
-    $CI->email->from($from_email, $from_name);
-    $CI->email->to($user_email);
-    $CI->email->subject($title);
-    
-    // Create HTML email content
+
     $html_content = create_email_html($type, $title, $message, $related_id, $related_type, $class_code);
-    $CI->email->message($html_content);
-    $CI->email->set_mailtype('html');
-    
-    // Log email attempt
-    error_log("Attempting to send email notification to {$user_email} for user {$user_id}: {$title}");
-    
-    // Send email
-    $result = $CI->email->send();
-    
-    // Enhanced logging
-    if ($result) {
-        error_log("Email notification sent successfully to {$user_email} for user {$user_id}");
-    } else {
-        error_log("Email notification failed for user {$user_id}: " . $CI->email->print_debugger());
-        error_log("SMTP Debug Info: " . print_r([
-            'smtp_host' => $CI->config->item('smtp_host'),
-            'smtp_port' => $CI->config->item('smtp_port'),
-            'smtp_user' => $CI->config->item('smtp_user'),
-            'smtp_crypto' => $CI->config->item('smtp_crypto'),
-            'from_email' => $from_email,
-            'to_email' => $user_email
-        ], true));
-    }
-    
-    // Log email sending
+
+    $result = send_email($user_email, $title, $html_content);
+
     log_email_notification($user_id, $type, $title, $result);
-    
     return $result;
 }
 
@@ -320,17 +357,9 @@ function log_email_notification($user_id, $type, $title, $success) {
  * Test email configuration
  */
 function test_email_configuration($to_email) {
-    $CI =& get_instance();
-    $CI->load->library('email');
-    
-    $from_email = getenv('SMTP_USER') ? getenv('SMTP_USER') : 'scmswebsitee@gmail.com';
-    $from_name = getenv('SMTP_FROM_NAME') ? getenv('SMTP_FROM_NAME') : 'SCMS System';
-    $CI->email->from($from_email, $from_name);
-    $CI->email->to($to_email);
-    $CI->email->subject('SCMS Email Test');
-    $CI->email->message('This is a test email from SCMS System. If you receive this, email configuration is working correctly.');
-    
-    return $CI->email->send();
+    $subject = 'SCMS Email Test';
+    $body = 'This is a test email from SCMS System. If you receive this, email configuration is working correctly.';
+    return send_email($to_email, $subject, $body);
 }
 
 /**

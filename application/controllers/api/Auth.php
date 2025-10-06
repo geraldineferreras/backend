@@ -1644,53 +1644,26 @@ class Auth extends BaseController {
             $data = json_decode(file_get_contents('php://input'));
             $test_email = isset($data->email) ? trim($data->email) : 'geferreras@gmail.com';
             
-            log_message('info', "Testing email sending to: {$test_email}");
+            $this->load->helper('email_notification');
             
-            // Test with PHPMailer
-            if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-                $this->config->load('email');
-                
-                $mail = new PHPMailer\PHPMailer\PHPMailer(true);
-                
-                $mail->isSMTP();
-                $mail->Host = $this->config->item('smtp_host');
-                $mail->SMTPAuth = true;
-                $mail->Username = $this->config->item('smtp_user');
-                $mail->Password = $this->config->item('smtp_pass');
-                $mail->SMTPSecure = $this->config->item('smtp_crypto');
-                $mail->Port = $this->config->item('smtp_port');
-                $mail->Timeout = 30;
-                
-                $mail->setFrom($this->config->item('smtp_user'), 'SCMS Test');
-                $mail->addAddress($test_email);
-                $mail->isHTML(true);
-                $mail->Subject = 'SCMS Email Test - ' . date('H:i:s');
-                $mail->Body = '<h1>Email Test</h1><p>This is a test email from SCMS system.</p>';
-                $mail->AltBody = 'Email Test - This is a test email from SCMS system.';
-                
-                $result = $mail->send();
-                
-                if ($result) {
-                    log_message('info', "Test email sent successfully to: {$test_email}");
-                    $this->output
-                        ->set_status_header(200)
-                        ->set_content_type('application/json')
-                        ->set_output(json_encode(['status' => true, 'message' => 'Test email sent successfully']));
-                } else {
-                    log_message('error', "Test email failed to send to: {$test_email}");
-                    log_message('error', "PHPMailer Error Info: " . $mail->ErrorInfo);
-                    $this->output
-                        ->set_status_header(500)
-                        ->set_content_type('application/json')
-                        ->set_output(json_encode(['status' => false, 'message' => 'Failed to send test email: ' . $mail->ErrorInfo]));
-                }
+            $subject = 'SCMS Email Test - ' . date('H:i:s');
+            $body = '<h1>Email Test</h1><p>This is a test email from SCMS system.</p>';
+            
+            $result = send_email($test_email, $subject, $body);
+            
+            if ($result) {
+                log_message('info', "Test email sent successfully to: {$test_email}");
+                $this->output
+                    ->set_status_header(200)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => true, 'message' => 'Test email sent successfully']));
             } else {
+                log_message('error', "Failed to send test email to: {$test_email}");
                 $this->output
                     ->set_status_header(500)
                     ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'PHPMailer not available']));
+                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to send test email']));
             }
-            
         } catch (Exception $e) {
             log_message('error', 'Test email error: ' . $e->getMessage());
             $this->output
@@ -1979,45 +1952,8 @@ class Auth extends BaseController {
      */
     private function send_password_reset_email($email, $full_name, $reset_link) {
         try {
-            // Use PHPMailer if available, otherwise fall back to CodeIgniter email
-            if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-                return $this->send_password_reset_email_phpmailer($email, $full_name, $reset_link);
-            } else {
-                return $this->send_password_reset_email_ci($email, $full_name, $reset_link);
-            }
-        } catch (Exception $e) {
-            log_message('error', 'Email sending error: ' . $e->getMessage());
-            return false;
-        }
-    }
+            $this->load->helper('email_notification');
 
-    /**
-     * Send password reset email using PHPMailer
-     */
-    private function send_password_reset_email_phpmailer($email, $full_name, $reset_link) {
-        try {
-            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
-
-            // Load email config
-            $this->config->load('email');
-            
-            // SMTP configuration from config
-            $mail->isSMTP();
-            $mail->Host = $this->config->item('smtp_host') ?: 'smtp.gmail.com';
-            $mail->SMTPAuth = true;
-            $mail->Username = $this->config->item('smtp_user') ?: 'scmswebsitee@gmail.com';
-            $mail->Password = $this->config->item('smtp_pass') ?: 'zhrk blgg sukj wbbs';
-            $mail->SMTPSecure = $this->config->item('smtp_crypto') ?: 'ssl';
-            $mail->Port = $this->config->item('smtp_port') ?: 465;
-            $mail->Timeout = 30;
-
-            // Email content
-            $mail->setFrom($this->config->item('smtp_user') ?: 'scmswebsitee@gmail.com', 'SCMS System');
-            $mail->addAddress($email, $full_name);
-            $mail->isHTML(true);
-            $mail->Subject = 'Password Reset Request - SCMS';
-
-            // HTML message
             $html_message = "
             <html>
             <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
@@ -2039,75 +1975,31 @@ class Auth extends BaseController {
             </body>
             </html>";
 
-            $mail->Body = $html_message;
-            $mail->AltBody = "Password Reset Request\n\nHello {$full_name},\n\nYou have requested to reset your password for your SCMS account.\n\nClick this link to reset your password: {$reset_link}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this password reset, please ignore this email.\n\nBest regards,\nSCMS Team";
-
-            $result = $mail->send();
+            $subject = 'Password Reset Request - SCMS';
+            $result = send_email($email, $subject, $html_message, $full_name);
 
             if ($result) {
-                log_message('info', "Password reset email sent successfully to: {$email} using PHPMailer");
+                log_message('info', "Password reset email sent successfully to: {$email} using PHPMailer helper");
                 return true;
-            } else {
-                log_message('error', "Failed to send password reset email to: {$email} using PHPMailer");
-                log_message('error', "PHPMailer Error Info: " . $mail->ErrorInfo);
-                return false;
             }
 
+            log_message('error', "Failed to send password reset email to: {$email} using PHPMailer helper");
+            return false;
         } catch (Exception $e) {
-            log_message('error', 'PHPMailer error: ' . $e->getMessage());
+            log_message('error', 'Email sending error: ' . $e->getMessage());
             return false;
         }
     }
 
     /**
+     * Send password reset email using PHPMailer
+     */
+    private function send_password_reset_email_phpmailer($email, $full_name, $reset_link) { return $this->send_password_reset_email($email, $full_name, $reset_link); }
+
+    /**
      * Send password reset email using CodeIgniter email library (fallback)
      */
-    private function send_password_reset_email_ci($email, $full_name, $reset_link) {
-        try {
-            $this->load->library('email');
-
-            // Email configuration
-            $this->email->from('noreply@scms.com', 'SCMS System');
-            $this->email->to($email);
-            $this->email->subject('Password Reset Request - SCMS');
-
-            // Email template
-            $message = "
-            <html>
-            <body>
-                <h2>Password Reset Request</h2>
-                <p>Hello {$full_name},</p>
-                <p>You have requested to reset your password for your SCMS account.</p>
-                <p>Click the link below to reset your password:</p>
-                <p><a href='{$reset_link}' style='background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>Reset Password</a></p>
-                <p>Or copy and paste this link in your browser:</p>
-                <p>{$reset_link}</p>
-                <p><strong>This link will expire in 1 hour.</strong></p>
-                <p>If you didn't request this password reset, please ignore this email.</p>
-                <br>
-                <p>Best regards,<br>SCMS Team</p>
-            </body>
-            </html>";
-
-            $this->email->message($message);
-            $this->email->set_alt_message("Password Reset Request\n\nHello {$full_name},\n\nYou have requested to reset your password for your SCMS account.\n\nClick this link to reset your password: {$reset_link}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this password reset, please ignore this email.\n\nBest regards,\nSCMS Team");
-
-            $result = $this->email->send();
-
-            if ($result) {
-                log_message('info', "Password reset email sent successfully to: {$email} using CodeIgniter Email");
-                return true;
-            } else {
-                log_message('error', "Failed to send password reset email to: {$email} using CodeIgniter Email");
-                log_message('error', "Email debug info: " . $this->email->print_debugger());
-                return false;
-            }
-
-        } catch (Exception $e) {
-            log_message('error', 'CodeIgniter Email error: ' . $e->getMessage());
-            return false;
-        }
-    }
+    private function send_password_reset_email_ci($email, $full_name, $reset_link) { return $this->send_password_reset_email($email, $full_name, $reset_link); }
 
     /**
      * Change Password - Change password for authenticated users
@@ -2335,24 +2227,18 @@ class Auth extends BaseController {
             ];
         }
         
-        // Test 4: Direct Email Test
+        // Test 4: Direct Email Test (using unified PHPMailer helper)
         try {
+            $this->load->helper('email_notification');
             $test_email = 'geferreras@gmail.com';
-            
-            $this->load->library('email');
-            $this->email->clear();
-            $this->email->from($this->config->item('smtp_user'), 'SCMS Debug');
-            $this->email->to($test_email);
-            $this->email->subject('SCMS Email Debug - ' . date('H:i:s'));
-            $this->email->message('<h2>Email Test</h2><p>This is a debug test email.</p>');
-            $this->email->set_mailtype('html');
-            
-            $result = $this->email->send();
-            
+            $subject = 'SCMS Email Debug - ' . date('H:i:s');
+            $body = '<h2>Email Test</h2><p>This is a debug test email.</p>';
+            $result = send_email($test_email, $subject, $body);
+
             $response['tests']['email_send'] = [
                 'status' => $result ? 'success' : 'error',
                 'to' => $test_email,
-                'debug_info' => $result ? 'Email sent' : $this->email->print_debugger()
+                'debug_info' => $result ? 'Email sent' : 'Failed to send using PHPMailer helper'
             ];
         } catch (Exception $e) {
             $response['tests']['email_send'] = [
