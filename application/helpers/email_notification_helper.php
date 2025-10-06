@@ -73,7 +73,7 @@ function create_phpmailer(): PHPMailer {
     $mail->Password = $smtpPass;
     $mail->SMTPSecure = $smtpSecure;
     $mail->Port = (int)$smtpPort;
-    $mail->Timeout = 30;
+    $mail->Timeout = (int)(getenv('SMTP_TIMEOUT') ?: 60);
     $mail->CharSet = 'UTF-8';
     $mail->SMTPDebug = (int)(getenv('SMTP_DEBUG') ?: 0);
     $mail->Debugoutput = function($str, $level) {
@@ -109,7 +109,7 @@ function create_phpmailer(): PHPMailer {
  * Unified helper to send an email using PHPMailer with CI Email fallback
  */
 function send_email(string $to, string $subject, string $htmlMessage, ?string $toName = null): bool {
-    // Try PHPMailer first
+    // PHPMailer-only path (preferred and required on Railway)
     try {
         if (class_exists('PHPMailer\\PHPMailer\\PHPMailer')) {
             $mail = create_phpmailer();
@@ -124,40 +124,24 @@ function send_email(string $to, string $subject, string $htmlMessage, ?string $t
                 return true;
             }
 
-            log_message('error', 'PHPMailer send failed: ' . $mail->ErrorInfo);
+            // Detailed error logging without leaking credentials
+            $envSummary = sprintf(
+                'host=%s port=%s crypto=%s user=%s',
+                getenv('SMTP_HOST') ?: 'smtp.gmail.com',
+                getenv('SMTP_PORT') ?: '587',
+                getenv('SMTP_CRYPTO') ?: 'tls',
+                getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com'
+            );
+            log_message('error', 'PHPMailer send failed. Env: ' . $envSummary . ' Error: ' . $mail->ErrorInfo);
         } else {
-            log_message('error', 'PHPMailer not available. Falling back to CodeIgniter Email library.');
+            log_message('error', 'PHPMailer not available. Install dependency or vendor path on Railway.');
         }
     } catch (Exception $e) {
         log_message('error', 'PHPMailer exception: ' . $e->getMessage());
     }
 
-    // Fallback to CodeIgniter Email library
-    try {
-        $CI =& get_instance();
-        $CI->load->library('email');
-
-        $fromEmail = getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com';
-        $fromName = getenv('SMTP_FROM_NAME') ?: 'SCMS System';
-
-        $CI->email->from($fromEmail, $fromName);
-        $CI->email->to($to);
-        $CI->email->subject($subject);
-        $CI->email->message($htmlMessage);
-        $CI->email->set_mailtype('html');
-
-        $ciSent = $CI->email->send();
-        if (!$ciSent) {
-            $debug = method_exists($CI->email, 'print_debugger') ? $CI->email->print_debugger(array('headers')) : '';
-            // Avoid logging sensitive credentials
-            $envSummary = sprintf('host=%s port=%s crypto=%s user=%s', getenv('SMTP_HOST') ?: 'smtp.gmail.com', getenv('SMTP_PORT') ?: '587', getenv('SMTP_CRYPTO') ?: 'tls', getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com');
-            log_message('error', 'CI Email send failed. Env: ' . $envSummary . ' Debug: ' . $debug);
-        }
-        return (bool)$ciSent;
-    } catch (Exception $e) {
-        log_message('error', 'CI Email exception: ' . $e->getMessage());
-        return false;
-    }
+    // No fallback: return false to surface error to API client
+    return false;
 }
 
 /**
