@@ -387,5 +387,4 @@ $route['api/qr-grading/student-qr/(:num)']['get'] = 'api/QRGradingController/stu
 $route['api/qr-grading/class-qr/(:any)']['get'] = 'api/QRGradingController/class_qr_get/$1';
 
 // Email diagnostics
-$route['api/email/diagnostics'] = 'api/EmailDiagnostics/diagnostics_get';
 $route['api/email/diagnostics']['get'] = 'api/EmailDiagnostics/diagnostics_get';
