@@ -385,3 +385,7 @@ $route['api/qr-grading/quick-grade']['post'] = 'api/QRGradingController/quick_gr
 $route['api/qr-grading/bulk-quick-grade']['post'] = 'api/QRGradingController/bulk_quick_grade_post';
 $route['api/qr-grading/student-qr/(:num)']['get'] = 'api/QRGradingController/student_qr_get/$1';
 $route['api/qr-grading/class-qr/(:any)']['get'] = 'api/QRGradingController/class_qr_get/$1';
+
+// Email diagnostics
+$route['api/email/diagnostics'] = 'api/EmailDiagnostics/diagnostics_get';
+$route['api/email/diagnostics']['get'] = 'api/EmailDiagnostics/diagnostics_get';
