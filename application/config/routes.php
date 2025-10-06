@@ -68,6 +68,11 @@ $route['api/auth/reset-password']['post'] = 'api/auth/reset_password';
 $route['api/auth/change-password']['post'] = 'api/auth/change_password';
 $route['api/auth/change-password']['options'] = 'api/auth/options';
 
+// Backward-compatible aliases without /api prefix (for frontend calls like /auth/forgot-password)
+$route['auth/forgot-password']['post'] = 'api/auth/forgot_password';
+$route['auth/reset-password']['post'] = 'api/auth/reset_password';
+$route['auth/(.*)']['options'] = 'api/auth/options';
+
 // Unified Account System Routes
 $route['api/auth/link-google']['post'] = 'api/auth/link_google_account';
 $route['api/auth/unlink-google']['post'] = 'api/auth/unlink_google_account';
