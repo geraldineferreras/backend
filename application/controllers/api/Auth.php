@@ -1847,9 +1847,93 @@ class Auth extends BaseController {
     }
 
     /**
-     * Send password reset email
+     * Send password reset email using PHPMailer
      */
     private function send_password_reset_email($email, $full_name, $reset_link) {
+        try {
+            // Use PHPMailer if available, otherwise fall back to CodeIgniter email
+            if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+                return $this->send_password_reset_email_phpmailer($email, $full_name, $reset_link);
+            } else {
+                return $this->send_password_reset_email_ci($email, $full_name, $reset_link);
+            }
+        } catch (Exception $e) {
+            log_message('error', 'Email sending error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Send password reset email using PHPMailer
+     */
+    private function send_password_reset_email_phpmailer($email, $full_name, $reset_link) {
+        try {
+            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+
+            // Load email config
+            $this->config->load('email');
+            
+            // SMTP configuration from config
+            $mail->isSMTP();
+            $mail->Host = $this->config->item('smtp_host') ?: 'smtp.gmail.com';
+            $mail->SMTPAuth = true;
+            $mail->Username = $this->config->item('smtp_user') ?: 'scmswebsitee@gmail.com';
+            $mail->Password = $this->config->item('smtp_pass') ?: 'zhrk blgg sukj wbbs';
+            $mail->SMTPSecure = $this->config->item('smtp_crypto') ?: 'ssl';
+            $mail->Port = $this->config->item('smtp_port') ?: 465;
+            $mail->Timeout = 30;
+
+            // Email content
+            $mail->setFrom($this->config->item('smtp_user') ?: 'scmswebsitee@gmail.com', 'SCMS System');
+            $mail->addAddress($email, $full_name);
+            $mail->isHTML(true);
+            $mail->Subject = 'Password Reset Request - SCMS';
+
+            // HTML message
+            $html_message = "
+            <html>
+            <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+                <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                    <h2 style='color: #007bff; border-bottom: 2px solid #007bff; padding-bottom: 10px;'>Password Reset Request</h2>
+                    <p>Hello {$full_name},</p>
+                    <p>You have requested to reset your password for your SCMS account.</p>
+                    <p>Click the button below to reset your password:</p>
+                    <div style='text-align: center; margin: 30px 0;'>
+                        <a href='{$reset_link}' style='background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;'>Reset Password</a>
+                    </div>
+                    <p>Or copy and paste this link in your browser:</p>
+                    <p style='background-color: #f8f9fa; padding: 10px; border-radius: 5px; word-break: break-all;'>{$reset_link}</p>
+                    <p><strong style='color: #dc3545;'>This link will expire in 1 hour.</strong></p>
+                    <p>If you didn't request this password reset, please ignore this email.</p>
+                    <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0;'>
+                    <p style='color: #666; font-size: 14px;'>Best regards,<br>SCMS Team</p>
+                </div>
+            </body>
+            </html>";
+
+            $mail->Body = $html_message;
+            $mail->AltBody = "Password Reset Request\n\nHello {$full_name},\n\nYou have requested to reset your password for your SCMS account.\n\nClick this link to reset your password: {$reset_link}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this password reset, please ignore this email.\n\nBest regards,\nSCMS Team";
+
+            $result = $mail->send();
+
+            if ($result) {
+                log_message('info', "Password reset email sent successfully to: {$email} using PHPMailer");
+                return true;
+            } else {
+                log_message('error', "Failed to send password reset email to: {$email} using PHPMailer");
+                return false;
+            }
+
+        } catch (Exception $e) {
+            log_message('error', 'PHPMailer error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Send password reset email using CodeIgniter email library (fallback)
+     */
+    private function send_password_reset_email_ci($email, $full_name, $reset_link) {
         try {
             $this->load->library('email');
 
@@ -1882,15 +1966,16 @@ class Auth extends BaseController {
             $result = $this->email->send();
 
             if ($result) {
-                log_message('info', "Password reset email sent successfully to: {$email}");
+                log_message('info', "Password reset email sent successfully to: {$email} using CodeIgniter Email");
                 return true;
             } else {
-                log_message('error', "Failed to send password reset email to: {$email}");
+                log_message('error', "Failed to send password reset email to: {$email} using CodeIgniter Email");
+                log_message('error', "Email debug info: " . $this->email->print_debugger());
                 return false;
             }
 
         } catch (Exception $e) {
-            log_message('error', 'Email sending error: ' . $e->getMessage());
+            log_message('error', 'CodeIgniter Email error: ' . $e->getMessage());
             return false;
         }
     }
