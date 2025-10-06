@@ -43,15 +43,22 @@ function send_email_notification($user_id, $type, $title, $message, $related_id 
     // Get user email
     $user_email = get_user_email($user_id);
     if (!$user_email) {
+        error_log("Email notification failed: No email found for user {$user_id}");
         return false;
     }
     
-    // Load email library
+    // Load email library and configuration
     $CI->load->library('email');
+    $CI->config->load('email');
     
-    // Configure email
+    // Configure email with Railway-optimized settings
     $from_email = getenv('SMTP_USER') ? getenv('SMTP_USER') : 'scmswebsitee@gmail.com';
     $from_name = getenv('SMTP_FROM_NAME') ? getenv('SMTP_FROM_NAME') : 'SCMS System';
+    
+    // Clear any previous email data
+    $CI->email->clear();
+    
+    // Set email configuration
     $CI->email->from($from_email, $from_name);
     $CI->email->to($user_email);
     $CI->email->subject($title);
@@ -61,8 +68,26 @@ function send_email_notification($user_id, $type, $title, $message, $related_id 
     $CI->email->message($html_content);
     $CI->email->set_mailtype('html');
     
+    // Log email attempt
+    error_log("Attempting to send email notification to {$user_email} for user {$user_id}: {$title}");
+    
     // Send email
     $result = $CI->email->send();
+    
+    // Enhanced logging
+    if ($result) {
+        error_log("Email notification sent successfully to {$user_email} for user {$user_id}");
+    } else {
+        error_log("Email notification failed for user {$user_id}: " . $CI->email->print_debugger());
+        error_log("SMTP Debug Info: " . print_r([
+            'smtp_host' => $CI->config->item('smtp_host'),
+            'smtp_port' => $CI->config->item('smtp_port'),
+            'smtp_user' => $CI->config->item('smtp_user'),
+            'smtp_crypto' => $CI->config->item('smtp_crypto'),
+            'from_email' => $from_email,
+            'to_email' => $user_email
+        ], true));
+    }
     
     // Log email sending
     log_email_notification($user_id, $type, $title, $result);
