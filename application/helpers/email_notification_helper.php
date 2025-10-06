@@ -109,7 +109,74 @@ function create_phpmailer(): PHPMailer {
  * Unified helper to send an email using PHPMailer with CI Email fallback
  */
 function send_email(string $to, string $subject, string $htmlMessage, ?string $toName = null): bool {
-    // PHPMailer-only path (preferred and required on Railway)
+    // 1) HTTPS API providers first (works on platforms that block SMTP)
+    // Resend API
+    $resendApiKey = getenv('RESEND_API_KEY');
+    if ($resendApiKey) {
+        $fromName = getenv('SMTP_FROM_NAME') ?: (getenv('RESEND_FROM_NAME') ?: 'SCMS System');
+        $fromEmail = getenv('RESEND_FROM_EMAIL') ?: (getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com');
+        $payload = array(
+            'from' => $fromName . ' <' . $fromEmail . '>',
+            'to' => array($to),
+            'subject' => $subject,
+            'html' => $htmlMessage
+        );
+
+        $ch = curl_init('https://api.resend.com/emails');
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Authorization: Bearer ' . $resendApiKey,
+            'Content-Type: application/json'
+        ));
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $response = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
+        curl_close($ch);
+
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return true;
+        }
+        log_message('error', 'Resend API send failed (HTTP ' . $httpCode . '): ' . ($response ?: $curlErr));
+    }
+
+    // SendGrid API
+    $sendgridApiKey = getenv('SENDGRID_API_KEY');
+    if ($sendgridApiKey) {
+        $fromName = getenv('SMTP_FROM_NAME') ?: (getenv('SENDGRID_FROM_NAME') ?: 'SCMS System');
+        $fromEmail = getenv('SENDGRID_FROM_EMAIL') ?: (getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com');
+        $payload = array(
+            'personalizations' => array(array(
+                'to' => array(array('email' => $to, 'name' => $toName ?: $to))
+            )),
+            'from' => array('email' => $fromEmail, 'name' => $fromName),
+            'subject' => $subject,
+            'content' => array(array('type' => 'text/html', 'value' => $htmlMessage))
+        );
+
+        $ch = curl_init('https://api.sendgrid.com/v3/mail/send');
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Authorization: Bearer ' . $sendgridApiKey,
+            'Content-Type: application/json'
+        ));
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        // SendGrid returns 202 on success with empty body
+        curl_setopt($ch, CURLOPT_HEADER, true);
+        $response = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
+        curl_close($ch);
+
+        if ($httpCode === 202) {
+            return true;
+        }
+        log_message('error', 'SendGrid API send failed (HTTP ' . $httpCode . '): ' . ($response ?: $curlErr));
+    }
+
+    // 2) PHPMailer SMTP path (works locally; may be blocked on some PaaS)
     try {
         if (class_exists('PHPMailer\\PHPMailer\\PHPMailer')) {
             $mail = create_phpmailer();
@@ -124,7 +191,6 @@ function send_email(string $to, string $subject, string $htmlMessage, ?string $t
                 return true;
             }
 
-            // Detailed error logging without leaking credentials
             $envSummary = sprintf(
                 'host=%s port=%s crypto=%s user=%s',
                 getenv('SMTP_HOST') ?: 'smtp.gmail.com',
@@ -140,7 +206,6 @@ function send_email(string $to, string $subject, string $htmlMessage, ?string $t
         log_message('error', 'PHPMailer exception: ' . $e->getMessage());
     }
 
-    // No fallback: return false to surface error to API client
     return false;
 }
 
