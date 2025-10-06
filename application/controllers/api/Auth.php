@@ -1637,6 +1637,70 @@ class Auth extends BaseController {
     }
 
     /**
+     * Test email sending directly
+     */
+    public function test_email_sending() {
+        try {
+            $data = json_decode(file_get_contents('php://input'));
+            $test_email = isset($data->email) ? trim($data->email) : 'geferreras@gmail.com';
+            
+            log_message('info', "Testing email sending to: {$test_email}");
+            
+            // Test with PHPMailer
+            if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+                $this->config->load('email');
+                
+                $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+                
+                $mail->isSMTP();
+                $mail->Host = $this->config->item('smtp_host');
+                $mail->SMTPAuth = true;
+                $mail->Username = $this->config->item('smtp_user');
+                $mail->Password = $this->config->item('smtp_pass');
+                $mail->SMTPSecure = $this->config->item('smtp_crypto');
+                $mail->Port = $this->config->item('smtp_port');
+                $mail->Timeout = 30;
+                
+                $mail->setFrom($this->config->item('smtp_user'), 'SCMS Test');
+                $mail->addAddress($test_email);
+                $mail->isHTML(true);
+                $mail->Subject = 'SCMS Email Test - ' . date('H:i:s');
+                $mail->Body = '<h1>Email Test</h1><p>This is a test email from SCMS system.</p>';
+                $mail->AltBody = 'Email Test - This is a test email from SCMS system.';
+                
+                $result = $mail->send();
+                
+                if ($result) {
+                    log_message('info', "Test email sent successfully to: {$test_email}");
+                    $this->output
+                        ->set_status_header(200)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => true, 'message' => 'Test email sent successfully']));
+                } else {
+                    log_message('error', "Test email failed to send to: {$test_email}");
+                    log_message('error', "PHPMailer Error Info: " . $mail->ErrorInfo);
+                    $this->output
+                        ->set_status_header(500)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Failed to send test email: ' . $mail->ErrorInfo]));
+                }
+            } else {
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'PHPMailer not available']));
+            }
+            
+        } catch (Exception $e) {
+            log_message('error', 'Test email error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Email test error: ' . $e->getMessage()]));
+        }
+    }
+
+    /**
      * Check database status for forgot password functionality
      */
     public function check_forgot_password_status() {
@@ -1985,6 +2049,7 @@ class Auth extends BaseController {
                 return true;
             } else {
                 log_message('error', "Failed to send password reset email to: {$email} using PHPMailer");
+                log_message('error', "PHPMailer Error Info: " . $mail->ErrorInfo);
                 return false;
             }
 
