@@ -158,13 +158,16 @@ class Notifications_api extends CI_Controller {
                 return;
             }
             
-            // Validate required fields
-            $requiredFields = ['recipient_id', 'message'];
-            foreach ($requiredFields as $field) {
-                if (!isset($input[$field]) || empty($input[$field])) {
-                    $this->sendError("Field '{$field}' is required", 400);
-                    return;
-                }
+            // Validate required fields - support both user_id and recipient_id
+            $recipientId = $input['recipient_id'] ?? $input['user_id'] ?? null;
+            if (!$recipientId) {
+                $this->sendError("Field 'recipient_id' or 'user_id' is required", 400);
+                return;
+            }
+            
+            if (!isset($input['message']) || empty($input['message'])) {
+                $this->sendError("Field 'message' is required", 400);
+                return;
             }
             
             // Validate JWT token
@@ -184,6 +187,9 @@ class Notifications_api extends CI_Controller {
                 $this->sendError('Invalid token', 401);
                 return;
             }
+            
+            // Add recipient_id to input for the createNotificationInDB method
+            $input['recipient_id'] = $recipientId;
             
             // Create notification in database
             $notificationId = $this->createNotificationInDB($input);

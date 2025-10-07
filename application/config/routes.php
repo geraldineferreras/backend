@@ -366,6 +366,7 @@ $route['api/test/upload'] = 'api/Test/upload_test';
 // Notification Management - Frontend API
 $route['api/notifications']['get'] = 'api/Notifications_api/index';
 $route['api/notifications']['post'] = 'api/Notifications_api/create';
+$route['api/notifications/create']['post'] = 'api/Notifications_api/create';
 $route['api/notifications/recent']['get'] = 'api/Notifications_api/recent';
 $route['api/notifications/unread-count']['get'] = 'api/Notifications_api/unread_count';
 $route['api/notifications/create-test']['post'] = 'api/Notifications_api/create_test';
