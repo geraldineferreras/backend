@@ -290,8 +290,30 @@ class Notifications_api extends CI_Controller {
             'is_urgent' => isset($data['is_urgent']) ? ($data['is_urgent'] ? 1 : 0) : 0
         ];
         
-        // Use the existing Notification_model
-        return $this->Notification_model->create_notification($notificationData);
+        // Create notification in database
+        $notificationId = $this->Notification_model->create_notification($notificationData);
+        
+        // Send email notification if notification was created successfully
+        if ($notificationId) {
+            try {
+                $this->load->helper('email_notification');
+                send_email_notification(
+                    $data['recipient_id'],
+                    $notificationData['type'],
+                    $notificationData['title'],
+                    $notificationData['message'],
+                    $notificationData['related_id'],
+                    $notificationData['related_type'],
+                    $notificationData['class_code']
+                );
+                error_log("Email notification sent for notification ID: {$notificationId}");
+            } catch (Exception $e) {
+                // Log email error but don't fail the notification creation
+                error_log("Email notification failed for notification ID {$notificationId}: " . $e->getMessage());
+            }
+        }
+        
+        return $notificationId;
     }
     
     /**
@@ -364,6 +386,64 @@ class Notifications_api extends CI_Controller {
         }
     }
     
+    /**
+     * Test email notification for a specific user
+     * GET /api/notifications/test-email/{user_id}
+     */
+    public function test_email($user_id = null) {
+        // Override SSE headers for this method
+        header('Content-Type: application/json');
+        header('Connection: close');
+        
+        if (!$user_id) {
+            $this->sendError('User ID is required', 400);
+            return;
+        }
+        
+        try {
+            // Load required helpers
+            $this->load->helper('email_notification');
+            $this->load->model('User_model');
+            
+            // Get user information
+            $user = $this->User_model->get_by_id($user_id);
+            if (!$user) {
+                $this->sendError('User not found', 404);
+                return;
+            }
+            
+            if (empty($user['email'])) {
+                $this->sendError('User does not have an email address', 400);
+                return;
+            }
+            
+            // Test email sending
+            $testResult = send_email_notification(
+                $user_id,
+                'test',
+                'SCMS Email Test',
+                'This is a test email to verify email notifications are working.',
+                null,
+                'test',
+                null
+            );
+            
+            if ($testResult) {
+                $this->sendSuccess([
+                    'message' => 'Test email sent successfully',
+                    'user_id' => $user_id,
+                    'user_email' => $user['email'],
+                    'user_name' => $user['full_name']
+                ]);
+            } else {
+                $this->sendError('Failed to send test email', 500);
+            }
+            
+        } catch (Exception $e) {
+            $this->sendError('Test email error: ' . $e->getMessage(), 500);
+        }
+    }
+
     /**
      * GET /api/notifications/simple-test - Simple test endpoint without complex validation
      */

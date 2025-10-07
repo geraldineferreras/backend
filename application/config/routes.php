@@ -371,6 +371,7 @@ $route['api/notifications/recent']['get'] = 'api/Notifications_api/recent';
 $route['api/notifications/unread-count']['get'] = 'api/Notifications_api/unread_count';
 $route['api/notifications/create-test']['post'] = 'api/Notifications_api/create_test';
 $route['api/notifications/create-test']['get'] = 'api/Notifications_api/create_test';
+$route['api/notifications/test-email/(:any)']['get'] = 'api/Notifications_api/test_email/$1';
 $route['api/notifications/simple-test']['get'] = 'api/Notifications_api/simple_test';
 
 // Legacy Notification Management (keeping for backward compatibility)
