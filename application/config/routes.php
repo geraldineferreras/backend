@@ -80,6 +80,7 @@ $route['api/auth/unlink-google']['post'] = 'api/auth/unlink_google_account';
 $route['api/auth/account-status']['post'] = 'api/auth/get_account_status';
 
 // Two-Factor Authentication Routes
+$route['api/2fa/test']['get'] = 'api/twofactor/test';
 $route['api/2fa/setup']['post'] = 'api/twofactor/setup';
 $route['api/2fa/verify']['post'] = 'api/twofactor/verify';
 $route['api/2fa/disable']['post'] = 'api/twofactor/disable';

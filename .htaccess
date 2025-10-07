@@ -10,8 +10,8 @@
 	RewriteCond %{REQUEST_FILENAME} -d
 	RewriteRule ^ - [L]
 
-	# Route all other requests to index.php
-	RewriteRule ^ index.php [L]
+	# Route all other requests to index.php (Railway compatible)
+	RewriteRule ^(.*)$ index.php/$1 [L]
 </IfModule>
 
 <IfModule mod_headers.c>

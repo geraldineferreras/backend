@@ -13,6 +13,29 @@ class TwoFactor extends BaseController {
     }
     
     /**
+     * Test endpoint to verify 2FA controller is accessible
+     * GET /api/2fa/test
+     */
+    public function test() {
+        $this->output
+            ->set_status_header(200)
+            ->set_content_type('application/json')
+            ->set_output(json_encode([
+                'status' => true,
+                'message' => '2FA controller is working',
+                'timestamp' => date('Y-m-d H:i:s'),
+                'environment' => getenv('RAILWAY_ENVIRONMENT') ? 'railway' : 'local'
+            ]));
+    }
+    
+    /**
+     * Handle OPTIONS preflight requests (CORS)
+     */
+    public function options() {
+        // The BaseController constructor handles CORS and exits for OPTIONS requests.
+    }
+    
+    /**
      * Setup 2FA for a user
      * POST /api/2fa/setup
      */
