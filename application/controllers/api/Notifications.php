@@ -617,55 +617,6 @@ class Notifications extends CI_Controller {
         echo json_encode($response);
         exit;
     }
-    
-    /**
-     * Test endpoint to simulate getNewNotifications method
-     * GET /api/notifications/test-sse/{userId}
-     */
-    public function test_sse($userId = null) {
-        // Override SSE headers for this method
-        header('Content-Type: application/json');
-        header('Connection: close');
-        
-        if (!$userId) {
-            echo json_encode(['error' => 'User ID required']);
-            exit;
-        }
-        
-        try {
-            // Test database connection first
-            $this->load->database();
-            
-            // Simple test query
-            $testQuery = $this->db->query("SELECT COUNT(*) as count FROM notifications WHERE user_id = ?", [$userId]);
-            $testResult = $testQuery->row_array();
-            
-            // Test the getNewNotifications method
-            $notifications = $this->getNewNotifications($userId, 'teacher');
-            
-            $response = [
-                'success' => true,
-                'user_id' => $userId,
-                'database_test' => [
-                    'connection' => 'ok',
-                    'total_notifications' => $testResult['count']
-                ],
-                'notifications_found' => count($notifications),
-                'notifications' => $notifications,
-                'last_sent_at_by_user' => $this->lastSentAtByUser
-            ];
-            
-        } catch (Exception $e) {
-            $response = [
-                'success' => false,
-                'error' => 'Error testing SSE method: ' . $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ];
-        }
-        
-        echo json_encode($response);
-        exit;
-    }
 }
 
 
