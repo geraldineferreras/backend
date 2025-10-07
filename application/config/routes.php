@@ -65,6 +65,7 @@ $route['api/auth/forgot-password']['post'] = 'api/auth/forgot_password';
 $route['api/auth/forgot-password-status']['get'] = 'api/auth/check_forgot_password_status';
 $route['api/auth/test-email']['post'] = 'api/auth/test_email_sending';
 $route['api/auth/test-email']['get'] = 'api/auth/test_email_sending';
+$route['api/auth/debug-routing']['get'] = 'api/auth/debug_routing';
 $route['api/auth/reset-password']['post'] = 'api/auth/reset_password';
 $route['api/auth/change-password']['post'] = 'api/auth/change_password';
 $route['api/auth/change-password']['options'] = 'api/auth/options';
@@ -80,16 +81,19 @@ $route['api/auth/unlink-google']['post'] = 'api/auth/unlink_google_account';
 $route['api/auth/account-status']['post'] = 'api/auth/get_account_status';
 
 // Two-Factor Authentication Routes
-$route['api/2fa/test']['get'] = 'api/twofactor/test';
-$route['api/2fa/setup']['post'] = 'api/twofactor/setup';
-$route['api/2fa/verify']['post'] = 'api/twofactor/verify';
-$route['api/2fa/disable']['post'] = 'api/twofactor/disable';
-$route['api/2fa/status']['get'] = 'api/twofactor/status';
-$route['api/2fa/login-verify']['post'] = 'api/twofactor/login_verify';
-$route['api/2fa/backup-code']['post'] = 'api/twofactor/backup_code';
-$route['api/2fa/backup-codes']['get'] = 'api/twofactor/get_backup_codes';
-$route['api/2fa/backup-codes/count']['get'] = 'api/twofactor/count_backup_codes';
-$route['api/2fa/(.*)']['options'] = 'api/twofactor/options';
+$route['api/2fa/test']['get'] = 'api/TwoFactor/test';
+$route['api/2fa/setup']['post'] = 'api/TwoFactor/setup';
+$route['api/2fa/verify']['post'] = 'api/TwoFactor/verify';
+$route['api/2fa/disable']['post'] = 'api/TwoFactor/disable';
+$route['api/2fa/status']['get'] = 'api/TwoFactor/status';
+$route['api/2fa/login-verify']['post'] = 'api/TwoFactor/login_verify';
+$route['api/2fa/backup-code']['post'] = 'api/TwoFactor/backup_code';
+$route['api/2fa/backup-codes']['get'] = 'api/TwoFactor/get_backup_codes';
+$route['api/2fa/backup-codes/count']['get'] = 'api/TwoFactor/count_backup_codes';
+$route['api/2fa/(.*)']['options'] = 'api/TwoFactor/options';
+
+// Catch-all for 2FA routes (backup routing)
+$route['api/2fa/(:any)'] = 'api/TwoFactor/$1';
 
 // Test endpoints
 $route['api/test']['get'] = 'api/testcontroller/test';

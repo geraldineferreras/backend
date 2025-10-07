@@ -55,7 +55,8 @@ $config['frontend_url'] = 'https://scmsupdatedbackup.vercel.app';
 |
 */
 // For Railway deployment with mod_rewrite, index_page should be empty
-$config['index_page'] = getenv('RAILWAY_ENVIRONMENT') ? '' : 'index.php';
+// Also check if we're on Railway by checking for Railway-specific environment variables
+$config['index_page'] = (getenv('RAILWAY_ENVIRONMENT') || getenv('RAILWAY_PROJECT_ID') || strpos($_SERVER['HTTP_HOST'] ?? '', 'railway') !== false) ? '' : 'index.php';
 
 /*
 |--------------------------------------------------------------------------

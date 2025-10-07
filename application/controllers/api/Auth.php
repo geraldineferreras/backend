@@ -2170,6 +2170,32 @@ class Auth extends BaseController {
     }
     
     /**
+     * Debug routing and environment
+     * GET /api/auth/debug-routing
+     */
+    public function debug_routing() {
+        header('Content-Type: application/json');
+        header('Access-Control-Allow-Origin: *');
+        
+        $response = [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'environment' => getenv('RAILWAY_ENVIRONMENT') ?: 'local',
+            'base_url' => base_url(),
+            'index_page' => $this->config->item('index_page'),
+            'uri_protocol' => $this->config->item('uri_protocol'),
+            'request_uri' => $_SERVER['REQUEST_URI'] ?? 'not set',
+            'script_name' => $_SERVER['SCRIPT_NAME'] ?? 'not set',
+            'path_info' => $_SERVER['PATH_INFO'] ?? 'not set',
+            'query_string' => $_SERVER['QUERY_STRING'] ?? 'not set',
+            'twofactor_controller_exists' => file_exists(APPPATH . 'controllers/api/TwoFactor.php'),
+            'routes_loaded' => true
+        ];
+        
+        echo json_encode($response, JSON_PRETTY_PRINT);
+        exit;
+    }
+
+    /**
      * Debug email configuration and test sending
      * GET /api/auth/debug-email
      */
