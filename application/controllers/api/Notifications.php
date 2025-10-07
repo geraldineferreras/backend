@@ -41,36 +41,45 @@ class Notifications extends CI_Controller {
         // Debug logging
         error_log("SSE Stream: Method called with token: " . ($token ? 'provided' : 'missing'));
         
-        // Validate token from URL path
-        if (!$token) {
-            error_log("SSE Stream: No token provided");
-            $this->sendError('Token required', 401);
-            return;
+        try {
+            // Load authentication helpers
+            $this->load->library('Token_lib');
+            
+            // Validate token from URL path
+            if (!$token) {
+                error_log("SSE Stream: No token provided");
+                $this->sendError('Token required', 401);
+                return;
+            }
+            
+            // Validate token and get user data
+            $payload = $this->token_lib->validate_token($token);
+            if (!$payload) {
+                error_log("SSE Stream: Invalid or expired token");
+                $this->sendError('Invalid or expired token', 401);
+                return;
+            }
+            
+            $userId = $payload['user_id'];
+            $role = $payload['role'];
+            
+            error_log("SSE Stream: userId={$userId}, role={$role}");
+            
+            // Send initial connection success
+            $this->sendEvent('connected', [
+                'message' => 'SSE connection established',
+                'userId' => $userId,
+                'role' => $role,
+                'timestamp' => date('c')
+            ]);
+            
+            // Keep connection alive and send notifications
+            $this->streamNotifications($userId, $role);
+            
+        } catch (Exception $e) {
+            error_log("SSE Stream: Exception in stream method: " . $e->getMessage());
+            $this->sendError('Internal server error: ' . $e->getMessage(), 500);
         }
-        
-        // Get query parameters
-        $userId = $this->input->get('userId');
-        $role = $this->input->get('role');
-        
-        error_log("SSE Stream: userId={$userId}, role={$role}");
-        
-        // Validate required parameters
-        if (!$userId || !$role) {
-            error_log("SSE Stream: Missing required parameters - userId: {$userId}, role: {$role}");
-            $this->sendError('userId and role required', 400);
-            return;
-        }
-        
-        // Send initial connection success
-        $this->sendEvent('connected', [
-            'message' => 'SSE connection established',
-            'userId' => $userId,
-            'role' => $role,
-            'timestamp' => date('c')
-        ]);
-        
-        // Keep connection alive and send notifications
-        $this->streamNotifications($userId, $role);
     }
     
     /**
@@ -233,33 +242,45 @@ class Notifications extends CI_Controller {
      * Get new notifications for the user
      */
     private function getNewNotifications($userId, $role) {
-        // Check if this is the first connection for this user
-        $isFirstConnection = !isset($this->lastSentAtByUser[$userId]);
-        
-        if ($isFirstConnection) {
-            error_log("SSE Debug: First connection for user {$userId} - sending all unread notifications");
-            $this->lastSentAtByUser[$userId] = time(); // Set current time as baseline
+        try {
+            // Check if this is the first connection for this user
+            $isFirstConnection = !isset($this->lastSentAtByUser[$userId]);
+            
+            if ($isFirstConnection) {
+                error_log("SSE Debug: First connection for user {$userId} - sending all unread notifications");
+                $this->lastSentAtByUser[$userId] = time(); // Set current time as baseline
+            }
+            
+            $since = $this->lastSentAtByUser[$userId];
+            
+            // Debug logging
+            error_log("SSE Debug: Getting notifications for user {$userId} since " . date('Y-m-d H:i:s', $since));
+            
+            // Ensure database connection is established
+            if (!$this->db->conn_id) {
+                error_log("SSE Debug: Database connection not established, attempting to reconnect");
+                $this->load->database();
+            }
+            
+            // Get unread notifications for this user
+            $this->db->select('*');
+            $this->db->from('notifications');
+            $this->db->where('user_id', $userId);
+            $this->db->where('is_read', 0);
+            $this->db->order_by('created_at', 'DESC');
+            $this->db->limit(10);
+            
+            // Debug: Log the exact SQL query being executed
+            $sql = $this->db->get_compiled_select();
+            error_log("SSE Debug: SQL Query: " . $sql);
+            
+            $query = $this->db->get();
+            $rows = $query->result_array();
+            
+        } catch (Exception $e) {
+            error_log("SSE Debug: Database error in getNewNotifications: " . $e->getMessage());
+            return []; // Return empty array on database error
         }
-        
-        $since = $this->lastSentAtByUser[$userId];
-        
-        // Debug logging
-        error_log("SSE Debug: Getting notifications for user {$userId} since " . date('Y-m-d H:i:s', $since));
-        
-        // Get unread notifications for this user
-        $this->db->select('*');
-        $this->db->from('notifications');
-        $this->db->where('user_id', $userId);
-        $this->db->where('is_read', 0);
-        $this->db->order_by('created_at', 'DESC');
-        $this->db->limit(10);
-        
-        // Debug: Log the exact SQL query being executed
-        $sql = $this->db->get_compiled_select();
-        error_log("SSE Debug: SQL Query: " . $sql);
-        
-        $query = $this->db->get();
-        $rows = $query->result_array();
         
         // Debug: Log the actual query results
         error_log("SSE Debug: Query executed, returned " . count($rows) . " rows");
@@ -328,13 +349,89 @@ class Notifications extends CI_Controller {
      * Send error event
      */
     private function sendError($message, $code = 400) {
-        $this->sendEvent('error', [
-            'message' => $message,
-            'code' => $code,
-            'timestamp' => date('c')
-        ]);
+        // If this is an SSE connection, send error event
+        if ($this->input->server('HTTP_ACCEPT') === 'text/event-stream' || 
+            strpos($this->input->server('REQUEST_URI'), '/stream') !== false) {
+            $this->sendEvent('error', [
+                'message' => $message,
+                'code' => $code,
+                'timestamp' => date('c')
+            ]);
+        } else {
+            // For non-SSE requests, send JSON error response
+            header('Content-Type: application/json');
+            http_response_code($code);
+            echo json_encode([
+                'error' => true,
+                'message' => $message,
+                'code' => $code,
+                'timestamp' => date('c')
+            ]);
+            exit;
+        }
     }
     
+    /**
+     * Simple SSE test endpoint
+     * GET /api/notifications/sse-test
+     */
+    public function sse_test() {
+        // Set SSE headers
+        header('Content-Type: text/event-stream');
+        header('Cache-Control: no-cache');
+        header('Connection: keep-alive');
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization');
+        header('Access-Control-Allow-Methods: GET');
+        
+        try {
+            // Send initial connection event
+            echo "event: connected\n";
+            echo "data: " . json_encode([
+                'message' => 'SSE test connection established',
+                'timestamp' => date('c')
+            ]) . "\n\n";
+            flush();
+            
+            // Send a test notification after 2 seconds
+            sleep(2);
+            echo "event: notification\n";
+            echo "data: " . json_encode([
+                'id' => 'test-123',
+                'type' => 'test',
+                'title' => 'Test Notification',
+                'message' => 'This is a test SSE notification',
+                'timestamp' => date('c'),
+                'is_urgent' => false
+            ]) . "\n\n";
+            flush();
+            
+            // Send heartbeat after 5 seconds
+            sleep(3);
+            echo "event: heartbeat\n";
+            echo "data: " . json_encode([
+                'timestamp' => date('c')
+            ]) . "\n\n";
+            flush();
+            
+            // Close connection
+            echo "event: close\n";
+            echo "data: " . json_encode([
+                'message' => 'SSE test completed',
+                'timestamp' => date('c')
+            ]) . "\n\n";
+            flush();
+            
+        } catch (Exception $e) {
+            echo "event: error\n";
+            echo "data: " . json_encode([
+                'message' => 'SSE test error: ' . $e->getMessage(),
+                'timestamp' => date('c')
+            ]) . "\n\n";
+            flush();
+        }
+    }
+
     /**
      * Test SSE connection endpoint
      * GET /api/notifications/test-sse

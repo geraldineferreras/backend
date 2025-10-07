@@ -388,6 +388,7 @@ $route['api/notifications/stream/(:any)']['get'] = 'api/Notifications/stream/$1'
 // Token from Authorization header (new route for Postman/frontend compatibility)
 $route['api/notifications/stream']['get'] = 'api/Notifications/stream_header';
 $route['api/notifications/test-sse']['get'] = 'api/Notifications/test_sse';
+$route['api/notifications/sse-test']['get'] = 'api/Notifications/sse_test';
 // Debug endpoint for notifications
 $route['api/notifications/debug/(:any)']['get'] = 'api/Notifications/debug/$1';
 // Test endpoint for SSE method
