@@ -336,6 +336,74 @@ class Notifications extends CI_Controller {
     }
     
     /**
+     * Test SSE connection endpoint
+     * GET /api/notifications/test-sse
+     */
+    public function test_sse() {
+        // Override SSE headers for this method
+        header('Content-Type: application/json');
+        header('Connection: close');
+        
+        try {
+            // Load authentication helpers
+            $this->load->library('Token_lib');
+            
+            // Get token from Authorization header
+            $token = $this->token_lib->get_token_from_header();
+            
+            if (!$token) {
+                $this->sendError('Token required', 401);
+                return;
+            }
+            
+            // Validate token and get user data
+            $payload = $this->token_lib->validate_token($token);
+            if (!$payload) {
+                $this->sendError('Invalid or expired token', 401);
+                return;
+            }
+            
+            $userId = $payload['user_id'];
+            $role = $payload['role'];
+            
+            // Check if user has unread notifications
+            $this->load->database();
+            $this->db->select('COUNT(*) as count');
+            $this->db->from('notifications');
+            $this->db->where('user_id', $userId);
+            $this->db->where('is_read', 0);
+            $query = $this->db->get();
+            $result = $query->row_array();
+            $unreadCount = $result['count'] ?? 0;
+            
+            // Get recent notifications
+            $this->db->select('*');
+            $this->db->from('notifications');
+            $this->db->where('user_id', $userId);
+            $this->db->order_by('created_at', 'DESC');
+            $this->db->limit(5);
+            $query = $this->db->get();
+            $recentNotifications = $query->result_array();
+            
+            $response = [
+                'status' => true,
+                'message' => 'SSE test successful',
+                'user_id' => $userId,
+                'role' => $role,
+                'unread_count' => $unreadCount,
+                'recent_notifications' => $recentNotifications,
+                'sse_endpoint' => base_url('api/notifications/stream'),
+                'timestamp' => date('c')
+            ];
+            
+            echo json_encode($response, JSON_PRETTY_PRINT);
+            
+        } catch (Exception $e) {
+            $this->sendError('SSE test error: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * Create a test notification for testing SSE
      * POST /api/notifications/create-test
      */
