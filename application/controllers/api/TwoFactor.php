@@ -732,11 +732,4 @@ class TwoFactor extends BaseController {
                 ]));
         }
     }
-    
-    /**
-     * Handle OPTIONS preflight requests (CORS)
-     */
-    public function options() {
-        // The BaseController constructor handles CORS and exits for OPTIONS requests.
-    }
 }
