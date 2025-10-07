@@ -383,6 +383,8 @@ $route['api/notifications/urgent']['get'] = 'api/NotificationController/get_urge
 // Real-time Notification Stream (SSE)
 // Token as URI segment, routed to Notifications controller (the working one)
 $route['api/notifications/stream/(:any)']['get'] = 'api/Notifications/stream/$1';
+// Token from Authorization header (new route for Postman/frontend compatibility)
+$route['api/notifications/stream']['get'] = 'api/Notifications/stream_header';
 // Debug endpoint for notifications
 $route['api/notifications/debug/(:any)']['get'] = 'api/Notifications/debug/$1';
 // Test endpoint for SSE method

@@ -74,6 +74,52 @@ class Notifications extends CI_Controller {
     }
     
     /**
+     * SSE Stream endpoint for real-time notifications (token from Authorization header)
+     * URL: /api/notifications/stream
+     */
+    public function stream_header() {
+        // Load authentication helpers
+        $this->load->library('Token_lib');
+        
+        // Get token from Authorization header
+        $token = $this->token_lib->get_token_from_header();
+        
+        // Debug logging
+        error_log("SSE Stream Header: Method called with token from header: " . ($token ? 'provided' : 'missing'));
+        
+        // Validate token
+        if (!$token) {
+            error_log("SSE Stream Header: No token provided in Authorization header");
+            $this->sendError('Token required', 401);
+            return;
+        }
+        
+        // Validate token and get user data
+        $payload = $this->token_lib->validate_token($token);
+        if (!$payload) {
+            error_log("SSE Stream Header: Invalid or expired token");
+            $this->sendError('Invalid or expired token', 401);
+            return;
+        }
+        
+        $userId = $payload['user_id'];
+        $role = $payload['role'];
+        
+        error_log("SSE Stream Header: userId={$userId}, role={$role}");
+        
+        // Send initial connection success
+        $this->sendEvent('connected', [
+            'message' => 'SSE connection established',
+            'userId' => $userId,
+            'role' => $role,
+            'timestamp' => date('c')
+        ]);
+        
+        // Keep connection alive and send notifications
+        $this->streamNotifications($userId, $role);
+    }
+    
+    /**
      * Stream notifications to the client
      */
     private function streamNotifications($userId, $role) {
