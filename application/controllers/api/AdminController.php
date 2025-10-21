@@ -2104,4 +2104,47 @@ class AdminController extends BaseController {
             $this->send_error('Failed to update user: ' . $e->getMessage(), 500);
         }
     }
+
+    /**
+     * Debug endpoint to check student count for a Chairperson
+     * GET /api/admin/debug_chairperson_students/{user_id}
+     */
+    public function debug_chairperson_students($user_id) {
+        $user_data = require_main_admin($this);
+        if (!$user_data) return;
+
+        try {
+            $target_user = $this->User_model->get_by_id($user_id);
+            if (!$target_user) {
+                $this->send_error('User not found', 404);
+                return;
+            }
+
+            if ($target_user['role'] !== 'chairperson') {
+                $this->send_error('User is not a Chairperson', 400);
+                return;
+            }
+
+            // Get student count
+            $students_count = $this->User_model->count_students_by_program($target_user['program']);
+            
+            // Get actual students in that program
+            $students = $this->User_model->get_students_by_program($target_user['program']);
+
+            $this->send_success([
+                'chairperson' => [
+                    'user_id' => $target_user['user_id'],
+                    'full_name' => $target_user['full_name'],
+                    'email' => $target_user['email'],
+                    'program' => $target_user['program']
+                ],
+                'student_count' => $students_count,
+                'students' => $students,
+                'program' => $target_user['program']
+            ], 'Debug information retrieved successfully');
+
+        } catch (Exception $e) {
+            $this->send_error('Debug failed: ' . $e->getMessage(), 500);
+        }
+    }
 }
