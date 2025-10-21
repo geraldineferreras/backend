@@ -2017,12 +2017,7 @@ class AdminController extends BaseController {
                 return;
             }
 
-            // Check if Chairperson has any students assigned
-            $students_count = $this->User_model->count_students_by_program($target_user['program']);
-            if ($students_count > 0) {
-                $this->send_error("Cannot delete Chairperson. They have {$students_count} students assigned to their program. Please reassign students first.", 409);
-                return;
-            }
+            // Note: Removed student count check - Main Admin can delete Chairperson directly
 
             // Delete the Chairperson
             if ($this->User_model->delete($user_id)) {
@@ -2102,6 +2097,158 @@ class AdminController extends BaseController {
 
         } catch (Exception $e) {
             $this->send_error('Failed to update user: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Reassign students from one Chairperson's program to another
+     * POST /api/admin/reassign_students
+     */
+    public function reassign_students() {
+        $user_data = require_main_admin($this);
+        if (!$user_data) return;
+
+        try {
+            $data = json_decode(file_get_contents('php://input'), true);
+            
+            if (!$data) {
+                $this->send_error('Invalid JSON data', 400);
+                return;
+            }
+
+            $from_program = $data['from_program'] ?? null;
+            $to_program = $data['to_program'] ?? null;
+            $student_ids = $data['student_ids'] ?? [];
+
+            if (!$from_program) {
+                $this->send_error('Source program is required', 400);
+                return;
+            }
+
+            if (!$to_program && empty($student_ids)) {
+                $this->send_error('Either target program or specific student IDs are required', 400);
+                return;
+            }
+
+            // Get students from the source program
+            $students = $this->User_model->get_students_by_program($from_program);
+            
+            if (empty($students)) {
+                $this->send_error('No students found in the source program', 404);
+                return;
+            }
+
+            $updated_count = 0;
+            $errors = [];
+
+            foreach ($students as $student) {
+                // If specific student IDs are provided, only update those
+                if (!empty($student_ids) && !in_array($student['user_id'], $student_ids)) {
+                    continue;
+                }
+
+                $update_data = [];
+                
+                if ($to_program) {
+                    $update_data['program'] = $to_program;
+                } else {
+                    // Remove program assignment (set to null or empty)
+                    $update_data['program'] = null;
+                }
+
+                if ($this->User_model->update($student['user_id'], $update_data)) {
+                    $updated_count++;
+                } else {
+                    $errors[] = "Failed to update student {$student['full_name']}";
+                }
+            }
+
+            if ($updated_count > 0) {
+                $message = "Successfully reassigned {$updated_count} student(s)";
+                if ($to_program) {
+                    $message .= " from '{$from_program}' to '{$to_program}'";
+                } else {
+                    $message .= " from '{$from_program}' (removed program assignment)";
+                }
+
+                error_log("REASSIGN STUDENTS: Main Admin {$user_data['full_name']} reassigned {$updated_count} students from '{$from_program}' to '{$to_program}'");
+
+                $this->send_success([
+                    'updated_count' => $updated_count,
+                    'from_program' => $from_program,
+                    'to_program' => $to_program,
+                    'errors' => $errors
+                ], $message);
+            } else {
+                $this->send_error('No students were updated', 400);
+            }
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to reassign students: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Remove program assignment from specific students
+     * POST /api/admin/remove_student_program
+     */
+    public function remove_student_program() {
+        $user_data = require_main_admin($this);
+        if (!$user_data) return;
+
+        try {
+            $data = json_decode(file_get_contents('php://input'), true);
+            
+            if (!$data) {
+                $this->send_error('Invalid JSON data', 400);
+                return;
+            }
+
+            $student_ids = $data['student_ids'] ?? [];
+
+            if (empty($student_ids)) {
+                $this->send_error('Student IDs are required', 400);
+                return;
+            }
+
+            $updated_count = 0;
+            $errors = [];
+
+            foreach ($student_ids as $student_id) {
+                $student = $this->User_model->get_by_id($student_id);
+                
+                if (!$student) {
+                    $errors[] = "Student with ID {$student_id} not found";
+                    continue;
+                }
+
+                if ($student['role'] !== 'student') {
+                    $errors[] = "User {$student['full_name']} is not a student";
+                    continue;
+                }
+
+                $update_data = ['program' => null];
+
+                if ($this->User_model->update($student_id, $update_data)) {
+                    $updated_count++;
+                } else {
+                    $errors[] = "Failed to remove program from student {$student['full_name']}";
+                }
+            }
+
+            if ($updated_count > 0) {
+                error_log("REMOVE STUDENT PROGRAM: Main Admin {$user_data['full_name']} removed program assignment from {$updated_count} students");
+
+                $this->send_success([
+                    'updated_count' => $updated_count,
+                    'errors' => $errors
+                ], "Successfully removed program assignment from {$updated_count} student(s)");
+            } else {
+                $this->send_error('No students were updated', 400);
+            }
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to remove student program: ' . $e->getMessage(), 500);
         }
     }
 
