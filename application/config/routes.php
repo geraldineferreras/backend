@@ -236,6 +236,7 @@ $route['api/admin/get_available_programs']['get'] = 'api/AdminController/get_ava
 $route['api/admin/get_user_permissions']['get'] = 'api/AdminController/get_user_permissions';
 $route['api/admin/update_user/(:any)']['put'] = 'api/AdminController/update_user/$1';
 $route['api/admin/update_user/(:any)']['post'] = 'api/AdminController/update_user/$1';
+$route['api/admin/update_user_files/(:any)']['post'] = 'api/AdminController/update_user_files/$1';
 $route['api/admin/delete_chairperson/(:any)']['delete'] = 'api/AdminController/delete_chairperson/$1';
 $route['api/admin/debug_chairperson_students/(:any)']['get'] = 'api/AdminController/debug_chairperson_students/$1';
 $route['api/admin/reassign_students']['post'] = 'api/AdminController/reassign_students';

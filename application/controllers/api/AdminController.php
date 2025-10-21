@@ -2082,8 +2082,53 @@ class AdminController extends BaseController {
                 }
             }
 
-            if (isset($data->section_id)) {
-                $update_data['section_id'] = $data->section_id;
+            // Chairperson-specific updates
+            if ($target_user['role'] === 'chairperson') {
+                if (isset($data->program)) {
+                    // Only Main Admin can change Chairperson's program
+                    if (is_main_admin($this)) {
+                        $update_data['program'] = $data->program;
+                    } else {
+                        $this->send_error('Access denied. Only Main Admin can change Chairperson program.', 403);
+                        return;
+                    }
+                }
+                
+                // Allow updating profile and cover pictures
+                if (isset($data->profile_pic)) {
+                    $update_data['profile_pic'] = $data->profile_pic;
+                }
+                if (isset($data->cover_pic)) {
+                    $update_data['cover_pic'] = $data->cover_pic;
+                }
+            }
+
+            // Teacher-specific updates
+            if ($target_user['role'] === 'teacher') {
+                // Allow updating profile and cover pictures
+                if (isset($data->profile_pic)) {
+                    $update_data['profile_pic'] = $data->profile_pic;
+                }
+                if (isset($data->cover_pic)) {
+                    $update_data['cover_pic'] = $data->cover_pic;
+                }
+            }
+
+            // Student-specific updates
+            if ($target_user['role'] === 'student') {
+                if (isset($data->section_id)) {
+                    $update_data['section_id'] = $data->section_id;
+                }
+                if (isset($data->student_num)) {
+                    $update_data['student_num'] = $data->student_num;
+                }
+                // Allow updating profile and cover pictures
+                if (isset($data->profile_pic)) {
+                    $update_data['profile_pic'] = $data->profile_pic;
+                }
+                if (isset($data->cover_pic)) {
+                    $update_data['cover_pic'] = $data->cover_pic;
+                }
             }
 
             $update_data['updated_at'] = date('Y-m-d H:i:s');
@@ -2098,6 +2143,135 @@ class AdminController extends BaseController {
         } catch (Exception $e) {
             $this->send_error('Failed to update user: ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Update user with file uploads (FormData)
+     * POST /api/admin/update_user_files/{user_id}
+     */
+    public function update_user_files($user_id) {
+        $user_data = require_admin_or_chairperson($this);
+        if (!$user_data) return;
+
+        try {
+            // Check if current user can manage the target user
+            if (!$this->User_model->can_manage_user($user_data['user_id'], $user_id)) {
+                $this->send_error('Access denied. Cannot manage this user.', 403);
+                return;
+            }
+
+            // Get target user
+            $target_user = $this->User_model->get_by_id($user_id);
+            if (!$target_user) {
+                $this->send_error('User not found', 404);
+                return;
+            }
+
+            // Prepare update data
+            $update_data = [];
+            
+            // Basic fields
+            if (isset($_POST['full_name'])) {
+                $update_data['full_name'] = $_POST['full_name'];
+            }
+            if (isset($_POST['email'])) {
+                $update_data['email'] = $_POST['email'];
+            }
+            if (isset($_POST['status'])) {
+                $update_data['status'] = $_POST['status'];
+            }
+
+            // Role-specific updates
+            if ($target_user['role'] === 'chairperson') {
+                if (isset($_POST['program'])) {
+                    // Only Main Admin can change Chairperson's program
+                    if (is_main_admin($this)) {
+                        $update_data['program'] = $_POST['program'];
+                    } else {
+                        $this->send_error('Access denied. Only Main Admin can change Chairperson program.', 403);
+                        return;
+                    }
+                }
+                
+                // Handle file uploads
+                if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === 0) {
+                    $update_data['profile_pic'] = $this->handle_file_upload($_FILES['profile_pic'], 'profile');
+                }
+                if (isset($_FILES['cover_pic']) && $_FILES['cover_pic']['error'] === 0) {
+                    $update_data['cover_pic'] = $this->handle_file_upload($_FILES['cover_pic'], 'cover');
+                }
+            }
+
+            if ($target_user['role'] === 'student') {
+                if (isset($_POST['program'])) {
+                    // Only allow program update if user can manage this program
+                    if (can_manage_program($this, $_POST['program'])) {
+                        $update_data['program'] = $_POST['program'];
+                    } else {
+                        $this->send_error('Access denied. Cannot change program.', 403);
+                        return;
+                    }
+                }
+                if (isset($_POST['section_id'])) {
+                    $update_data['section_id'] = $_POST['section_id'];
+                }
+                if (isset($_POST['student_num'])) {
+                    $update_data['student_num'] = $_POST['student_num'];
+                }
+                
+                // Handle file uploads
+                if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === 0) {
+                    $update_data['profile_pic'] = $this->handle_file_upload($_FILES['profile_pic'], 'profile');
+                }
+                if (isset($_FILES['cover_pic']) && $_FILES['cover_pic']['error'] === 0) {
+                    $update_data['cover_pic'] = $this->handle_file_upload($_FILES['cover_pic'], 'cover');
+                }
+            }
+
+            if ($target_user['role'] === 'teacher') {
+                // Handle file uploads
+                if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === 0) {
+                    $update_data['profile_pic'] = $this->handle_file_upload($_FILES['profile_pic'], 'profile');
+                }
+                if (isset($_FILES['cover_pic']) && $_FILES['cover_pic']['error'] === 0) {
+                    $update_data['cover_pic'] = $this->handle_file_upload($_FILES['cover_pic'], 'cover');
+                }
+            }
+
+            $update_data['updated_at'] = date('Y-m-d H:i:s');
+
+            // Update user
+            if ($this->User_model->update($user_id, $update_data)) {
+                $this->send_success(null, 'User updated successfully');
+            } else {
+                $this->send_error('Failed to update user', 500);
+            }
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to update user: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Handle file upload for profile/cover pictures
+     */
+    private function handle_file_upload($file, $type) {
+        $upload_dir = "uploads/{$type}/";
+        
+        // Create directory if it doesn't exist
+        if (!is_dir($upload_dir)) {
+            mkdir($upload_dir, 0755, true);
+        }
+
+        $file_extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+        $file_name = $type . '_' . uniqid() . '.' . $file_extension;
+        $file_path = $upload_dir . $file_name;
+
+        if (move_uploaded_file($file['tmp_name'], $file_path)) {
+            return $file_path;
+        }
+
+        return null;
     }
 
     /**
