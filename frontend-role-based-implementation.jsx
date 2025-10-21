@@ -189,13 +189,42 @@ const UserManagement = () => {
   const handleCreateUser = async (userData) => {
     try {
       const token = localStorage.getItem('token');
+      
+      // Create FormData for file uploads
+      const formData = new FormData();
+      
+      // Add text fields
+      formData.append('role', userData.role);
+      formData.append('full_name', userData.full_name);
+      formData.append('email', userData.email);
+      formData.append('password', userData.password);
+      
+      // Add role-specific fields
+      if (userData.program) {
+        formData.append('program', userData.program);
+      }
+      if (userData.student_num) {
+        formData.append('student_num', userData.student_num);
+      }
+      if (userData.section_id) {
+        formData.append('section_id', userData.section_id);
+      }
+      
+      // Add files if provided
+      if (userData.profile_pic) {
+        formData.append('profile_pic', userData.profile_pic);
+      }
+      if (userData.cover_pic) {
+        formData.append('cover_pic', userData.cover_pic);
+      }
+
       const response = await fetch('/api/admin/create_user', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          // Don't set Content-Type, let browser set it for FormData
         },
-        body: JSON.stringify(userData),
+        body: formData,
       });
 
       const data = await response.json();
@@ -312,6 +341,8 @@ const CreateUserForm = ({ availablePrograms, onSubmit, onCancel, userRole, userP
     program: '',
     student_num: '',
     section_id: '',
+    profile_pic: null,
+    cover_pic: null,
   });
 
   const handleSubmit = (e) => {
@@ -417,25 +448,85 @@ const CreateUserForm = ({ availablePrograms, onSubmit, onCancel, userRole, userP
                   onChange={(e) => setFormData(prev => ({ ...prev, student_num: e.target.value }))}
                 />
               </div>
+
+              <div className="form-group">
+                <label>Profile Picture</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setFormData(prev => ({ ...prev, profile_pic: e.target.files[0] }))}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Cover Picture</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setFormData(prev => ({ ...prev, cover_pic: e.target.files[0] }))}
+                />
+              </div>
+            </>
+          )}
+
+          {formData.role === 'teacher' && (
+            <>
+              <div className="form-group">
+                <label>Profile Picture</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setFormData(prev => ({ ...prev, profile_pic: e.target.files[0] }))}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Cover Picture</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setFormData(prev => ({ ...prev, cover_pic: e.target.files[0] }))}
+                />
+              </div>
             </>
           )}
 
           {formData.role === 'chairperson' && (
-            <div className="form-group">
-              <label>Program</label>
-              <select
-                value={formData.program}
-                onChange={(e) => setFormData(prev => ({ ...prev, program: e.target.value }))}
-                required
-              >
-                <option value="">Select Program</option>
-                {availablePrograms.map((program) => (
-                  <option key={program} value={program}>
-                    {program}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <>
+              <div className="form-group">
+                <label>Program</label>
+                <select
+                  value={formData.program}
+                  onChange={(e) => setFormData(prev => ({ ...prev, program: e.target.value }))}
+                  required
+                >
+                  <option value="">Select Program</option>
+                  {availablePrograms.map((program) => (
+                    <option key={program} value={program}>
+                      {program}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Profile Picture</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setFormData(prev => ({ ...prev, profile_pic: e.target.files[0] }))}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Cover Picture</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setFormData(prev => ({ ...prev, cover_pic: e.target.files[0] }))}
+                />
+              </div>
+            </>
           )}
 
           <div className="form-actions">

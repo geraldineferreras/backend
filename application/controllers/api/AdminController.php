@@ -1800,10 +1800,20 @@ class AdminController extends BaseController {
             } elseif ($data->role === 'chairperson') {
                 $user_data_to_insert['admin_type'] = 'chairperson';
                 $user_data_to_insert['program'] = $data->program;
+                // Add default profile and cover pics for Chairperson
+                $user_data_to_insert['profile_pic'] = $data->profile_pic ?? null;
+                $user_data_to_insert['cover_pic'] = $data->cover_pic ?? null;
             } elseif ($data->role === 'student') {
                 $user_data_to_insert['program'] = $data->program;
                 $user_data_to_insert['student_num'] = $data->student_num ?? null;
                 $user_data_to_insert['section_id'] = $data->section_id ?? null;
+                // Add default profile and cover pics for Student
+                $user_data_to_insert['profile_pic'] = $data->profile_pic ?? null;
+                $user_data_to_insert['cover_pic'] = $data->cover_pic ?? null;
+            } elseif ($data->role === 'teacher') {
+                // Add default profile and cover pics for Teacher
+                $user_data_to_insert['profile_pic'] = $data->profile_pic ?? null;
+                $user_data_to_insert['cover_pic'] = $data->cover_pic ?? null;
             }
 
             // Insert user
