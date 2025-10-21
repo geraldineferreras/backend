@@ -1974,6 +1974,71 @@ class AdminController extends BaseController {
     }
 
     /**
+     * Delete Chairperson (Main Admin only)
+     * Main Admin can delete Chairpersons but not themselves or other Main Admins
+     */
+    public function delete_chairperson($user_id) {
+        $user_data = require_main_admin($this);
+        if (!$user_data) return;
+
+        try {
+            // Get target user
+            $target_user = $this->User_model->get_by_id($user_id);
+            if (!$target_user) {
+                $this->send_error('User not found', 404);
+                return;
+            }
+
+            // Validate that target is a Chairperson
+            if ($target_user['role'] !== 'chairperson') {
+                $this->send_error('Access denied. Can only delete Chairpersons.', 403);
+                return;
+            }
+
+            // Prevent deleting Main Admin
+            if ($target_user['role'] === 'admin' && $target_user['admin_type'] === 'main_admin') {
+                $this->send_error('Access denied. Cannot delete Main Admin.', 403);
+                return;
+            }
+
+            // Prevent self-deletion
+            if ($target_user['user_id'] === $user_data['user_id']) {
+                $this->send_error('Access denied. Cannot delete yourself.', 403);
+                return;
+            }
+
+            // Check if Chairperson has any students assigned
+            $students_count = $this->User_model->count_students_by_program($target_user['program']);
+            if ($students_count > 0) {
+                $this->send_error("Cannot delete Chairperson. They have {$students_count} students assigned to their program. Please reassign students first.", 409);
+                return;
+            }
+
+            // Delete the Chairperson
+            if ($this->User_model->delete($user_id)) {
+                // Log the deletion
+                log_audit_event(
+                    'DELETE CHAIRPERSON',
+                    'USER_MANAGEMENT',
+                    "Main Admin {$user_data['full_name']} deleted Chairperson {$target_user['full_name']}",
+                    [
+                        'deleted_user_id' => $user_id,
+                        'deleted_user_email' => $target_user['email'],
+                        'deleted_user_program' => $target_user['program']
+                    ]
+                );
+
+                $this->send_success(null, 'Chairperson deleted successfully');
+            } else {
+                $this->send_error('Failed to delete Chairperson', 500);
+            }
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to delete Chairperson: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * Update user with role-based validation
      */
     public function update_user($user_id) {

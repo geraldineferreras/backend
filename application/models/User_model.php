@@ -264,4 +264,20 @@ class User_model extends CI_Model {
         
         return $this->insert($user_data);
     }
+
+    /**
+     * Count students by program (for Chairperson deletion validation)
+     * @param string $program
+     * @return int
+     */
+    public function count_students_by_program($program) {
+        $result = $this->db->select('COUNT(*) as count')
+                          ->from('users')
+                          ->where('role', 'student')
+                          ->where('program', $program)
+                          ->get()
+                          ->row_array();
+        
+        return (int) $result['count'];
+    }
 } 

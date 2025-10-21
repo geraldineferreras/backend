@@ -236,6 +236,7 @@ $route['api/admin/get_available_programs']['get'] = 'api/AdminController/get_ava
 $route['api/admin/get_user_permissions']['get'] = 'api/AdminController/get_user_permissions';
 $route['api/admin/update_user/(:any)']['put'] = 'api/AdminController/update_user/$1';
 $route['api/admin/update_user/(:any)']['post'] = 'api/AdminController/update_user/$1';
+$route['api/admin/delete_chairperson/(:any)']['delete'] = 'api/AdminController/delete_chairperson/$1';
 
 // Admin Audit Log Management
 $route['api/admin/audit-logs']['get'] = 'api/AdminController/audit_logs_get';
