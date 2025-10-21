@@ -1820,7 +1820,39 @@ class AdminController extends BaseController {
 
             // Insert user
             if ($this->User_model->insert($user_data_to_insert)) {
-                $this->send_success(['user_id' => $user_id], ucfirst($data->role) . ' created successfully!', 201);
+                // Get the created user data to return complete information
+                $created_user = $this->User_model->get_by_id($user_id);
+                
+                // Format response based on user role
+                $response_data = [
+                    'user_id' => $created_user['user_id'],
+                    'full_name' => $created_user['full_name'],
+                    'email' => $created_user['email'],
+                    'role' => $created_user['role'],
+                    'status' => $created_user['status'],
+                    'created_at' => $created_user['created_at']
+                ];
+                
+                // Add role-specific fields
+                if ($created_user['role'] === 'chairperson') {
+                    $response_data['admin_type'] = $created_user['admin_type'];
+                    $response_data['program'] = $created_user['program'];
+                    $response_data['profile_pic'] = $created_user['profile_pic'];
+                    $response_data['cover_pic'] = $created_user['cover_pic'];
+                } elseif ($created_user['role'] === 'student') {
+                    $response_data['program'] = $created_user['program'];
+                    $response_data['student_num'] = $created_user['student_num'];
+                    $response_data['section_id'] = $created_user['section_id'];
+                    $response_data['profile_pic'] = $created_user['profile_pic'];
+                    $response_data['cover_pic'] = $created_user['cover_pic'];
+                } elseif ($created_user['role'] === 'teacher') {
+                    $response_data['profile_pic'] = $created_user['profile_pic'];
+                    $response_data['cover_pic'] = $created_user['cover_pic'];
+                } elseif ($created_user['role'] === 'admin') {
+                    $response_data['admin_type'] = $created_user['admin_type'];
+                }
+                
+                $this->send_success($response_data, ucfirst($data->role) . ' created successfully!', 201);
             } else {
                 $this->send_error('Failed to create user', 500);
             }
