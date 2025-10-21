@@ -74,7 +74,9 @@ class Auth extends BaseController {
                 'user_id' => $user['user_id'],
                 'role' => $user['role'],
                 'email' => $user['email'],
-                'full_name' => $user['full_name']
+                'full_name' => $user['full_name'],
+                'admin_type' => $user['admin_type'] ?? null,
+                'program' => $user['program'] ?? null
             ];
             $token = $this->token_lib->generate_token($token_payload);
 
@@ -89,6 +91,8 @@ class Auth extends BaseController {
                         'user_id' => $user['user_id'],
                         'full_name' => $user['full_name'],
                         'email' => $user['email'],
+                        'admin_type' => $user['admin_type'] ?? null,
+                        'program' => $user['program'] ?? null,
                         'status' => $user['status'],
                         'last_login' => date('Y-m-d H:i:s'),
                         'token' => $token,
@@ -1278,7 +1282,9 @@ class Auth extends BaseController {
                 'user_id' => $user['user_id'],
                 'role' => $user['role'],
                 'email' => $user['email'],
-                'full_name' => $user['full_name']
+                'full_name' => $user['full_name'],
+                'admin_type' => $user['admin_type'] ?? null,
+                'program' => $user['program'] ?? null
             ];
             $token = $this->token_lib->generate_token($token_payload);
 
