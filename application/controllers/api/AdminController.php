@@ -1715,6 +1715,8 @@ class AdminController extends BaseController {
                     'section_name' => $student['section_name'] ?? 'No Section',
                     'year_level' => $student['year_level'] ?? 'N/A',
                     'status' => $student['status'],
+                    'profile_pic' => $student['profile_pic'],
+                    'cover_pic' => $student['cover_pic'],
                     'created_at' => $student['created_at']
                 ];
             }, $students);
@@ -1845,6 +1847,8 @@ class AdminController extends BaseController {
                     'email' => $chairperson['email'],
                     'program' => $chairperson['program'],
                     'status' => $chairperson['status'],
+                    'profile_pic' => $chairperson['profile_pic'],
+                    'cover_pic' => $chairperson['cover_pic'],
                     'created_at' => $chairperson['created_at']
                 ];
             }, $chairpersons);
@@ -1897,6 +1901,8 @@ class AdminController extends BaseController {
                     'admin_type' => 'chairperson',
                     'program' => $chairperson['program'],
                     'status' => $chairperson['status'],
+                    'profile_pic' => $chairperson['profile_pic'],
+                    'cover_pic' => $chairperson['cover_pic'],
                     'created_at' => $chairperson['created_at']
                 ];
             }
