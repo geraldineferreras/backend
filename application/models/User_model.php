@@ -204,7 +204,7 @@ class User_model extends CI_Model {
         }
         
         // Main Admin can manage all users
-        if ($manager['role'] === 'admin' && $manager['admin_type'] === 'main_admin') {
+        if ($manager['role'] === 'admin' && ($manager['admin_type'] ?? 'main_admin') === 'main_admin') {
             return true;
         }
         
@@ -248,9 +248,9 @@ class User_model extends CI_Model {
      */
     public function create_user_with_validation($user_data, $creator_role, $creator_program = null) {
         // Validate based on creator's role
-        if ($creator_role === 'admin' && $user_data['admin_type'] === 'main_admin') {
+        if ($creator_role === 'admin' && ($user_data['admin_type'] ?? 'main_admin') === 'main_admin') {
             // Main Admin can create any role except another Main Admin
-            if ($user_data['role'] === 'admin' && $user_data['admin_type'] === 'main_admin') {
+            if ($user_data['role'] === 'admin' && ($user_data['admin_type'] ?? 'main_admin') === 'main_admin') {
                 return false; // Cannot create another Main Admin
             }
         } elseif ($creator_role === 'chairperson') {
