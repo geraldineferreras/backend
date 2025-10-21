@@ -18,7 +18,9 @@ class CORS_hook {
             'http://127.0.0.1:8080',
             'http://127.0.0.1:5173',
             'http://localhost',
-            'http://127.0.0.1'
+            'http://127.0.0.1',
+            'https://scmsupdatedbackup.vercel.app',
+            'https://scmssystem.vercel.app'
         ];
         
         // Check if origin is allowed or use wildcard for development

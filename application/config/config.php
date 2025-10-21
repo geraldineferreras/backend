@@ -42,7 +42,7 @@ $config['base_url'] = getenv('BASE_URL') ? rtrim(getenv('BASE_URL'), '/') . '/' 
 | Production: https://yourdomain.com
 |
 */
-$config['frontend_url'] = 'https://scmsupdatedbackup.vercel.app';
+$config['frontend_url'] = 'https://scmssystem.vercel.app';
 
 /*
 |--------------------------------------------------------------------------

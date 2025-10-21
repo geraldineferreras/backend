@@ -1678,4 +1678,278 @@ class AdminController extends BaseController {
         
         return false; // Invalid program name
     }
+
+    // ========================================
+    // ROLE-BASED ADMIN HIERARCHY METHODS
+    // ========================================
+
+    /**
+     * Get students with role-based access control
+     * Main Admin: sees all students
+     * Chairperson: sees only students in their program
+     */
+    public function get_students() {
+        $user_data = require_admin_or_chairperson($this);
+        if (!$user_data) return;
+
+        try {
+            if (is_main_admin($this)) {
+                // Main Admin can see all students
+                $students = $this->User_model->get_students_with_program_filter();
+            } elseif (is_chairperson($this)) {
+                // Chairperson can only see students in their program
+                $students = $this->User_model->get_students_by_program($user_data['program']);
+            } else {
+                $this->send_error('Access denied', 403);
+                return;
+            }
+
+            // Format students for frontend
+            $formatted_students = array_map(function($student) {
+                return [
+                    'user_id' => $student['user_id'],
+                    'full_name' => $student['full_name'],
+                    'email' => $student['email'],
+                    'student_num' => $student['student_num'],
+                    'program' => $student['program'],
+                    'section_name' => $student['section_name'] ?? 'No Section',
+                    'year_level' => $student['year_level'] ?? 'N/A',
+                    'status' => $student['status'],
+                    'created_at' => $student['created_at']
+                ];
+            }, $students);
+
+            $this->send_success($formatted_students, 'Students retrieved successfully');
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve students: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Create user with role-based validation
+     * Main Admin: can create students, teachers, chairpersons (but not another Main Admin)
+     * Chairperson: can only create students in their program
+     */
+    public function create_user() {
+        $user_data = require_admin_or_chairperson($this);
+        if (!$user_data) return;
+
+        $data = $this->get_json_input();
+        if (!$data) return;
+
+        // Validate required fields
+        $required_fields = ['role', 'full_name', 'email', 'password'];
+        if (!$this->validate_required_fields($data, $required_fields)) {
+            return;
+        }
+
+        try {
+            // Check if user can create this role
+            if (!can_create_user_role($this, $data->role)) {
+                $this->send_error('Access denied. Cannot create users with this role.', 403);
+                return;
+            }
+
+            // Additional validation based on user type
+            if (is_chairperson($this)) {
+                // Chairperson can only create students in their program
+                if ($data->role !== 'student') {
+                    $this->send_error('Access denied. Chairpersons can only create students.', 403);
+                    return;
+                }
+                
+                // Ensure student is assigned to chairperson's program
+                if (!isset($data->program) || $data->program !== $user_data['program']) {
+                    $this->send_error('Access denied. Can only create students in your program.', 403);
+                    return;
+                }
+            } elseif (is_main_admin($this)) {
+                // Main Admin cannot create another Main Admin
+                if ($data->role === 'admin' && isset($data->admin_type) && $data->admin_type === 'main_admin') {
+                    $this->send_error('Access denied. Cannot create another Main Admin.', 403);
+                    return;
+                }
+            }
+
+            // Check if email already exists
+            $existing_user = $this->User_model->get_by_email($data->email);
+            if ($existing_user) {
+                $this->send_error('User with this email already exists!', 409);
+                return;
+            }
+
+            // Prepare user data
+            $hashed_password = password_hash($data->password, PASSWORD_BCRYPT);
+            $user_id = generate_user_id(strtoupper(substr($data->role, 0, 3)));
+            
+            $user_data_to_insert = [
+                'user_id' => $user_id,
+                'role' => $data->role,
+                'full_name' => $data->full_name,
+                'email' => $data->email,
+                'password' => $hashed_password,
+                'status' => 'active',
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s')
+            ];
+
+            // Add role-specific fields
+            if ($data->role === 'admin') {
+                $user_data_to_insert['admin_type'] = $data->admin_type ?? 'main_admin';
+            } elseif ($data->role === 'chairperson') {
+                $user_data_to_insert['admin_type'] = 'chairperson';
+                $user_data_to_insert['program'] = $data->program;
+            } elseif ($data->role === 'student') {
+                $user_data_to_insert['program'] = $data->program;
+                $user_data_to_insert['student_num'] = $data->student_num ?? null;
+                $user_data_to_insert['section_id'] = $data->section_id ?? null;
+            }
+
+            // Insert user
+            if ($this->User_model->insert($user_data_to_insert)) {
+                $this->send_success(['user_id' => $user_id], ucfirst($data->role) . ' created successfully!', 201);
+            } else {
+                $this->send_error('Failed to create user', 500);
+            }
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to create user: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get chairpersons (only Main Admin can see all chairpersons)
+     */
+    public function get_chairpersons() {
+        $user_data = require_main_admin($this);
+        if (!$user_data) return;
+
+        try {
+            $chairpersons = $this->User_model->get_chairpersons();
+            
+            $formatted_chairpersons = array_map(function($chairperson) {
+                return [
+                    'user_id' => $chairperson['user_id'],
+                    'full_name' => $chairperson['full_name'],
+                    'email' => $chairperson['email'],
+                    'program' => $chairperson['program'],
+                    'status' => $chairperson['status'],
+                    'created_at' => $chairperson['created_at']
+                ];
+            }, $chairpersons);
+
+            $this->send_success($formatted_chairpersons, 'Chairpersons retrieved successfully');
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve chairpersons: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get available programs for user creation
+     */
+    public function get_available_programs() {
+        $user_data = require_admin_or_chairperson($this);
+        if (!$user_data) return;
+
+        try {
+            $programs = $this->User_model->get_available_programs($user_data['role'], $user_data['program'] ?? null);
+            $this->send_success($programs, 'Available programs retrieved successfully');
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve programs: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get user management permissions for current user
+     */
+    public function get_user_permissions() {
+        $user_data = require_admin_or_chairperson($this);
+        if (!$user_data) return;
+
+        try {
+            $permissions = [
+                'can_create_students' => can_create_user_role($this, 'student'),
+                'can_create_teachers' => can_create_user_role($this, 'teacher'),
+                'can_create_chairpersons' => can_create_user_role($this, 'chairperson'),
+                'can_create_admins' => can_create_user_role($this, 'admin'),
+                'user_role' => $user_data['role'],
+                'admin_type' => $user_data['admin_type'] ?? null,
+                'program' => $user_data['program'] ?? null
+            ];
+
+            $this->send_success($permissions, 'User permissions retrieved successfully');
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve permissions: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Update user with role-based validation
+     */
+    public function update_user($user_id) {
+        $user_data = require_admin_or_chairperson($this);
+        if (!$user_data) return;
+
+        $data = $this->get_json_input();
+        if (!$data) return;
+
+        try {
+            // Check if current user can manage the target user
+            if (!$this->User_model->can_manage_user($user_data['user_id'], $user_id)) {
+                $this->send_error('Access denied. Cannot manage this user.', 403);
+                return;
+            }
+
+            // Get target user
+            $target_user = $this->User_model->get_by_id($user_id);
+            if (!$target_user) {
+                $this->send_error('User not found', 404);
+                return;
+            }
+
+            // Prepare update data
+            $update_data = [];
+            
+            if (isset($data->full_name)) {
+                $update_data['full_name'] = $data->full_name;
+            }
+            if (isset($data->email)) {
+                $update_data['email'] = $data->email;
+            }
+            if (isset($data->status)) {
+                $update_data['status'] = $data->status;
+            }
+
+            // Role-specific updates
+            if ($target_user['role'] === 'student' && isset($data->program)) {
+                // Only allow program update if user can manage this program
+                if (can_manage_program($this, $data->program)) {
+                    $update_data['program'] = $data->program;
+                } else {
+                    $this->send_error('Access denied. Cannot change program.', 403);
+                    return;
+                }
+            }
+
+            if (isset($data->section_id)) {
+                $update_data['section_id'] = $data->section_id;
+            }
+
+            $update_data['updated_at'] = date('Y-m-d H:i:s');
+
+            // Update user
+            if ($this->User_model->update($user_id, $update_data)) {
+                $this->send_success(null, 'User updated successfully');
+            } else {
+                $this->send_error('Failed to update user', 500);
+            }
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to update user: ' . $e->getMessage(), 500);
+        }
+    }
 }

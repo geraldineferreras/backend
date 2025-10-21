@@ -44,6 +44,7 @@ class BaseController extends CI_Controller {
             'http://localhost',
             'http://127.0.0.1',
             'https://scmsupdatedbackup.vercel.app',
+            'https://scmssystem.vercel.app',
         ];
         
         // Check if origin is allowed or use wildcard for development
