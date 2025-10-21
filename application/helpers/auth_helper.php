@@ -194,7 +194,7 @@ function require_main_admin($controller) {
     $user_data = require_auth($controller);
     if (!$user_data) return;
     
-    if ($user_data['role'] !== 'admin' || $user_data['admin_type'] !== 'main_admin') {
+    if ($user_data['role'] !== 'admin' || ($user_data['admin_type'] ?? 'main_admin') !== 'main_admin') {
         $controller->output
             ->set_status_header(403)
             ->set_content_type('application/json')
@@ -240,7 +240,7 @@ function require_admin_or_chairperson($controller) {
     $user_data = require_auth($controller);
     if (!$user_data) return;
     
-    $is_main_admin = ($user_data['role'] === 'admin' && $user_data['admin_type'] === 'main_admin');
+    $is_main_admin = ($user_data['role'] === 'admin' && ($user_data['admin_type'] ?? 'main_admin') === 'main_admin');
     $is_chairperson = ($user_data['role'] === 'chairperson');
     
     if (!$is_main_admin && !$is_chairperson) {
@@ -267,10 +267,10 @@ function can_manage_program($controller, $target_program) {
     $user_data = check_auth($controller);
     if (!$user_data) return false;
     
-    // Main Admin can manage all programs
-    if ($user_data['role'] === 'admin' && $user_data['admin_type'] === 'main_admin') {
-        return true;
-    }
+        // Main Admin can manage all programs
+        if ($user_data['role'] === 'admin' && ($user_data['admin_type'] ?? 'main_admin') === 'main_admin') {
+            return true;
+        }
     
     // Chairperson can only manage their own program
     if ($user_data['role'] === 'chairperson' && $user_data['program'] === $target_program) {
@@ -290,10 +290,10 @@ function can_create_user_role($controller, $target_role) {
     $user_data = check_auth($controller);
     if (!$user_data) return false;
     
-    // Main Admin can create: students, teachers, chairpersons
-    if ($user_data['role'] === 'admin' && $user_data['admin_type'] === 'main_admin') {
-        return in_array($target_role, ['student', 'teacher', 'chairperson']);
-    }
+        // Main Admin can create: students, teachers, chairpersons
+        if ($user_data['role'] === 'admin' && ($user_data['admin_type'] ?? 'main_admin') === 'main_admin') {
+            return in_array($target_role, ['student', 'teacher', 'chairperson']);
+        }
     
     // Chairperson can only create students in their program
     if ($user_data['role'] === 'chairperson') {
@@ -320,7 +320,7 @@ function get_current_user_program($controller) {
  */
 function is_main_admin($controller) {
     $user_data = check_auth($controller);
-    return $user_data && $user_data['role'] === 'admin' && $user_data['admin_type'] === 'main_admin';
+    return $user_data && $user_data['role'] === 'admin' && ($user_data['admin_type'] ?? 'main_admin') === 'main_admin';
 }
 
 /**
