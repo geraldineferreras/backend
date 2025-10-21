@@ -1847,6 +1847,92 @@ class AdminController extends BaseController {
     }
 
     /**
+     * Get all admins (Main Admin and Chairpersons)
+     * Only Main Admin can see all admins
+     */
+    public function get_admins() {
+        $user_data = require_main_admin($this);
+        if (!$user_data) return;
+
+        try {
+            // Get Main Admin
+            $main_admin = $this->User_model->get_main_admin();
+            
+            // Get all Chairpersons
+            $chairpersons = $this->User_model->get_chairpersons();
+            
+            $formatted_admins = [];
+            
+            // Add Main Admin
+            if ($main_admin) {
+                $formatted_admins[] = [
+                    'user_id' => $main_admin['user_id'],
+                    'full_name' => $main_admin['full_name'],
+                    'email' => $main_admin['email'],
+                    'role' => 'admin',
+                    'admin_type' => 'main_admin',
+                    'program' => null,
+                    'status' => $main_admin['status'],
+                    'created_at' => $main_admin['created_at']
+                ];
+            }
+            
+            // Add Chairpersons
+            foreach ($chairpersons as $chairperson) {
+                $formatted_admins[] = [
+                    'user_id' => $chairperson['user_id'],
+                    'full_name' => $chairperson['full_name'],
+                    'email' => $chairperson['email'],
+                    'role' => 'chairperson',
+                    'admin_type' => 'chairperson',
+                    'program' => $chairperson['program'],
+                    'status' => $chairperson['status'],
+                    'created_at' => $chairperson['created_at']
+                ];
+            }
+
+            $this->send_success($formatted_admins, 'Admins retrieved successfully');
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve admins: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get Main Admin details
+     * Only Main Admin can see their own details
+     */
+    public function get_main_admin() {
+        $user_data = require_main_admin($this);
+        if (!$user_data) return;
+
+        try {
+            $main_admin = $this->User_model->get_main_admin();
+            
+            if (!$main_admin) {
+                $this->send_error('Main Admin not found', 404);
+                return;
+            }
+            
+            $formatted_admin = [
+                'user_id' => $main_admin['user_id'],
+                'full_name' => $main_admin['full_name'],
+                'email' => $main_admin['email'],
+                'role' => 'admin',
+                'admin_type' => 'main_admin',
+                'program' => null,
+                'status' => $main_admin['status'],
+                'created_at' => $main_admin['created_at']
+            ];
+
+            $this->send_success($formatted_admin, 'Main Admin retrieved successfully');
+
+        } catch (Exception $e) {
+            $this->send_error('Failed to retrieve Main Admin: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * Get available programs for user creation
      */
     public function get_available_programs() {
