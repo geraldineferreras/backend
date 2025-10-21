@@ -226,6 +226,15 @@ $route['api/excuse-letters/statistics']['get'] = 'api/ExcuseLetterController/sta
 // Admin User Management
 $route['api/change-status']['post'] = 'api/auth/change_user_status';
 
+// Role-Based Admin Hierarchy Routes
+$route['api/admin/get_students']['get'] = 'api/AdminController/get_students';
+$route['api/admin/create_user']['post'] = 'api/AdminController/create_user';
+$route['api/admin/get_chairpersons']['get'] = 'api/AdminController/get_chairpersons';
+$route['api/admin/get_available_programs']['get'] = 'api/AdminController/get_available_programs';
+$route['api/admin/get_user_permissions']['get'] = 'api/AdminController/get_user_permissions';
+$route['api/admin/update_user/(:any)']['put'] = 'api/AdminController/update_user/$1';
+$route['api/admin/update_user/(:any)']['post'] = 'api/AdminController/update_user/$1';
+
 // Admin Audit Log Management
 $route['api/admin/audit-logs']['get'] = 'api/AdminController/audit_logs_get';
 $route['api/admin/audit-logs/(:num)']['get'] = 'api/AdminController/audit_log_get/$1';
