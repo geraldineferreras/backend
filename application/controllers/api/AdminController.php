@@ -2026,17 +2026,8 @@ class AdminController extends BaseController {
 
             // Delete the Chairperson
             if ($this->User_model->delete($user_id)) {
-                // Log the deletion
-                log_audit_event(
-                    'DELETE CHAIRPERSON',
-                    'USER_MANAGEMENT',
-                    "Main Admin {$user_data['full_name']} deleted Chairperson {$target_user['full_name']}",
-                    [
-                        'deleted_user_id' => $user_id,
-                        'deleted_user_email' => $target_user['email'],
-                        'deleted_user_program' => $target_user['program']
-                    ]
-                );
+                // Log the deletion (simple logging)
+                error_log("DELETE CHAIRPERSON: Main Admin {$user_data['full_name']} deleted Chairperson {$target_user['full_name']} (ID: {$user_id}, Email: {$target_user['email']}, Program: {$target_user['program']})");
 
                 $this->send_success(null, 'Chairperson deleted successfully');
             } else {
