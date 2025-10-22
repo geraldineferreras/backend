@@ -1715,8 +1715,8 @@ class AdminController extends BaseController {
                     'section_name' => $student['section_name'] ?? 'No Section',
                     'year_level' => $student['year_level'] ?? 'N/A',
                     'status' => $student['status'],
-                    'profile_pic' => $student['profile_pic'],
-                    'cover_pic' => $student['cover_pic'],
+                    'profile_pic' => $this->build_asset_url($student['profile_pic']),
+                    'cover_pic' => $this->build_asset_url($student['cover_pic']),
                     'created_at' => $student['created_at']
                 ];
             }, $students);
@@ -1837,17 +1837,17 @@ class AdminController extends BaseController {
                 if ($created_user['role'] === 'chairperson') {
                     $response_data['admin_type'] = $created_user['admin_type'];
                     $response_data['program'] = $created_user['program'];
-                    $response_data['profile_pic'] = $created_user['profile_pic'];
-                    $response_data['cover_pic'] = $created_user['cover_pic'];
+                    $response_data['profile_pic'] = $this->build_asset_url($created_user['profile_pic']);
+                    $response_data['cover_pic'] = $this->build_asset_url($created_user['cover_pic']);
                 } elseif ($created_user['role'] === 'student') {
                     $response_data['program'] = $created_user['program'];
                     $response_data['student_num'] = $created_user['student_num'];
                     $response_data['section_id'] = $created_user['section_id'];
-                    $response_data['profile_pic'] = $created_user['profile_pic'];
-                    $response_data['cover_pic'] = $created_user['cover_pic'];
+                    $response_data['profile_pic'] = $this->build_asset_url($created_user['profile_pic']);
+                    $response_data['cover_pic'] = $this->build_asset_url($created_user['cover_pic']);
                 } elseif ($created_user['role'] === 'teacher') {
-                    $response_data['profile_pic'] = $created_user['profile_pic'];
-                    $response_data['cover_pic'] = $created_user['cover_pic'];
+                    $response_data['profile_pic'] = $this->build_asset_url($created_user['profile_pic']);
+                    $response_data['cover_pic'] = $this->build_asset_url($created_user['cover_pic']);
                 } elseif ($created_user['role'] === 'admin') {
                     $response_data['admin_type'] = $created_user['admin_type'];
                 }
@@ -1879,8 +1879,8 @@ class AdminController extends BaseController {
                     'email' => $chairperson['email'],
                     'program' => $chairperson['program'],
                     'status' => $chairperson['status'],
-                    'profile_pic' => $chairperson['profile_pic'],
-                    'cover_pic' => $chairperson['cover_pic'],
+                    'profile_pic' => $this->build_asset_url($chairperson['profile_pic']),
+                    'cover_pic' => $this->build_asset_url($chairperson['cover_pic']),
                     'created_at' => $chairperson['created_at']
                 ];
             }, $chairpersons);
@@ -1933,8 +1933,8 @@ class AdminController extends BaseController {
                     'admin_type' => 'chairperson',
                     'program' => $chairperson['program'],
                     'status' => $chairperson['status'],
-                    'profile_pic' => $chairperson['profile_pic'],
-                    'cover_pic' => $chairperson['cover_pic'],
+                    'profile_pic' => $this->build_asset_url($chairperson['profile_pic']),
+                    'cover_pic' => $this->build_asset_url($chairperson['cover_pic']),
                     'created_at' => $chairperson['created_at']
                 ];
             }
@@ -2173,7 +2173,17 @@ class AdminController extends BaseController {
 
             // Update user
             if ($this->User_model->update($user_id, $update_data)) {
-                $this->send_success(null, 'User updated successfully');
+                // Return the updated user including resolved asset URLs
+                $updated_user = $this->User_model->get_by_id($user_id);
+                if ($updated_user) {
+                    if (!empty($updated_user['profile_pic'])) {
+                        $updated_user['profile_pic'] = $this->build_asset_url($updated_user['profile_pic']);
+                    }
+                    if (!empty($updated_user['cover_pic'])) {
+                        $updated_user['cover_pic'] = $this->build_asset_url($updated_user['cover_pic']);
+                    }
+                }
+                $this->send_success($updated_user, 'User updated successfully');
             } else {
                 $this->send_error('Failed to update user', 500);
             }
@@ -2280,7 +2290,16 @@ class AdminController extends BaseController {
 
             // Update user
             if ($this->User_model->update($user_id, $update_data)) {
-                $this->send_success(null, 'User updated successfully');
+                $updated_user = $this->User_model->get_by_id($user_id);
+                if ($updated_user) {
+                    if (!empty($updated_user['profile_pic'])) {
+                        $updated_user['profile_pic'] = $this->build_asset_url($updated_user['profile_pic']);
+                    }
+                    if (!empty($updated_user['cover_pic'])) {
+                        $updated_user['cover_pic'] = $this->build_asset_url($updated_user['cover_pic']);
+                    }
+                }
+                $this->send_success($updated_user, 'User updated successfully');
             } else {
                 $this->send_error('Failed to update user', 500);
             }
@@ -2288,6 +2307,24 @@ class AdminController extends BaseController {
         } catch (Exception $e) {
             $this->send_error('Failed to update user: ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Build absolute URL for stored asset paths
+     */
+    private function build_asset_url($path) {
+        if (empty($path)) {
+            return null;
+        }
+        if (preg_match('/^https?:\/\//i', $path)) {
+            return $path;
+        }
+        // Ensure URL helper is available
+        if (!function_exists('base_url')) {
+            $this->load->helper('url');
+        }
+        $base = function_exists('base_url') ? rtrim(base_url(), '/') : rtrim($this->config->item('base_url'), '/');
+        return $base . '/' . ltrim($path, '/');
     }
 
     /**
