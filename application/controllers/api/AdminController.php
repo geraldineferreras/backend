@@ -1919,6 +1919,8 @@ class AdminController extends BaseController {
                     'admin_type' => 'main_admin',
                     'program' => null,
                     'status' => $main_admin['status'],
+                    'profile_pic' => $this->build_asset_url($main_admin['profile_pic']),
+                    'cover_pic' => $this->build_asset_url($main_admin['cover_pic']),
                     'created_at' => $main_admin['created_at']
                 ];
             }
@@ -1970,6 +1972,8 @@ class AdminController extends BaseController {
                 'admin_type' => 'main_admin',
                 'program' => null,
                 'status' => $main_admin['status'],
+                'profile_pic' => $this->build_asset_url($main_admin['profile_pic']),
+                'cover_pic' => $this->build_asset_url($main_admin['cover_pic']),
                 'created_at' => $main_admin['created_at']
             ];
 

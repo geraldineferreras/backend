@@ -1091,6 +1091,14 @@ class Auth extends BaseController {
             // Remove sensitive information
             unset($user['password']);
             
+            // Build absolute URLs for profile pictures
+            if (!empty($user['profile_pic'])) {
+                $user['profile_pic'] = $this->build_asset_url($user['profile_pic']);
+            }
+            if (!empty($user['cover_pic'])) {
+                $user['cover_pic'] = $this->build_asset_url($user['cover_pic']);
+            }
+            
             $this->output
                 ->set_status_header(200)
                 ->set_content_type('application/json')
@@ -1110,6 +1118,24 @@ class Auth extends BaseController {
     // Handle OPTIONS preflight requests (CORS)
     public function options() {
         // The BaseController constructor handles CORS and exits for OPTIONS requests.
+    }
+
+    /**
+     * Build absolute URL for stored asset paths
+     */
+    private function build_asset_url($path) {
+        if (empty($path)) {
+            return null;
+        }
+        if (preg_match('/^https?:\/\//i', $path)) {
+            return $path;
+        }
+        // Ensure URL helper is available
+        if (!function_exists('base_url')) {
+            $this->load->helper('url');
+        }
+        $base = function_exists('base_url') ? rtrim(base_url(), '/') : rtrim($this->config->item('base_url'), '/');
+        return $base . '/' . ltrim($path, '/');
     }
 
     /**
