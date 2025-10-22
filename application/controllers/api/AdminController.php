@@ -1684,47 +1684,44 @@ class AdminController extends BaseController {
     // ========================================
 
     /**
-     * Get students with role-based access control
-     * Main Admin: sees all students
-     * Chairperson: sees only students in their program
+     * Get teachers with role-based access control
+     * Main Admin: sees all teachers
+     * Chairperson: sees only teachers in their program
      */
-    public function get_students() {
+    public function get_teachers() {
         $user_data = require_admin_or_chairperson($this);
         if (!$user_data) return;
 
         try {
             if (is_main_admin($this)) {
-                // Main Admin can see all students
-                $students = $this->User_model->get_students_with_program_filter();
+                // Main Admin can see all teachers
+                $teachers = $this->User_model->get_teachers_with_program_filter();
             } elseif (is_chairperson($this)) {
-                // Chairperson can only see students in their program
-                $students = $this->User_model->get_students_by_program($user_data['program']);
+                // Chairperson can only see teachers in their program
+                $teachers = $this->User_model->get_teachers_by_program($user_data['program']);
             } else {
                 $this->send_error('Access denied', 403);
                 return;
             }
 
-            // Format students for frontend
-            $formatted_students = array_map(function($student) {
+            // Format teachers for frontend
+            $formatted_teachers = array_map(function($teacher) {
                 return [
-                    'user_id' => $student['user_id'],
-                    'full_name' => $student['full_name'],
-                    'email' => $student['email'],
-                    'student_num' => $student['student_num'],
-                    'program' => $student['program'],
-                    'section_name' => $student['section_name'] ?? 'No Section',
-                    'year_level' => $student['year_level'] ?? 'N/A',
-                    'status' => $student['status'],
-                    'profile_pic' => $this->build_asset_url($student['profile_pic']),
-                    'cover_pic' => $this->build_asset_url($student['cover_pic']),
-                    'created_at' => $student['created_at']
+                    'user_id' => $teacher['user_id'],
+                    'full_name' => $teacher['full_name'],
+                    'email' => $teacher['email'],
+                    'program' => $teacher['program'],
+                    'status' => $teacher['status'],
+                    'profile_pic' => $this->build_asset_url($teacher['profile_pic']),
+                    'cover_pic' => $this->build_asset_url($teacher['cover_pic']),
+                    'created_at' => $teacher['created_at']
                 ];
-            }, $students);
+            }, $teachers);
 
-            $this->send_success($formatted_students, 'Students retrieved successfully');
+            $this->send_success($formatted_teachers, 'Teachers retrieved successfully');
 
         } catch (Exception $e) {
-            $this->send_error('Failed to retrieve students: ' . $e->getMessage(), 500);
+            $this->send_error('Failed to retrieve teachers: ' . $e->getMessage(), 500);
         }
     }
 

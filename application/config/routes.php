@@ -228,6 +228,7 @@ $route['api/change-status']['post'] = 'api/auth/change_user_status';
 
 // Role-Based Admin Hierarchy Routes
 $route['api/admin/get_students']['get'] = 'api/AdminController/get_students';
+$route['api/admin/get_teachers']['get'] = 'api/AdminController/get_teachers';
 $route['api/admin/create_user']['post'] = 'api/AdminController/create_user';
 $route['api/admin/get_chairpersons']['get'] = 'api/AdminController/get_chairpersons';
 $route['api/admin/get_admins']['get'] = 'api/AdminController/get_admins';

@@ -101,18 +101,35 @@ class User_model extends CI_Model {
     // Role-Based Admin Hierarchy Methods
     
     /**
-     * Get students by specific program (for Chairperson access control)
+     * Get teachers by specific program (for Chairperson access control)
      * @param string $program
      * @return array
      */
-    public function get_students_by_program($program) {
-        return $this->db->select('users.*, sections.section_name, sections.year_level')
+    public function get_teachers_by_program($program) {
+        return $this->db->select('users.*')
                        ->from('users')
-                       ->join('sections', 'users.section_id = sections.section_id', 'left')
-                       ->where('users.role', 'student')
+                       ->where('users.role', 'teacher')
                        ->where('users.program', $program)
                        ->get()
                        ->result_array();
+    }
+
+    /**
+     * Get teachers with program filtering for access control
+     * @param string $user_program (optional - for Chairperson filtering)
+     * @return array
+     */
+    public function get_teachers_with_program_filter($user_program = null) {
+        $this->db->select('users.*')
+                ->from('users')
+                ->where('users.role', 'teacher');
+        
+        // If user_program is provided, filter by program (for Chairperson access)
+        if ($user_program) {
+            $this->db->where('users.program', $user_program);
+        }
+        
+        return $this->db->get()->result_array();
     }
 
     /**
