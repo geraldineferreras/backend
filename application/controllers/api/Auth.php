@@ -208,8 +208,12 @@ class Auth extends BaseController {
 
             // Validate program if provided
             if (!empty($program)) {
+                log_message('debug', 'Original program received: "' . $program . '"');
                 $program_shortcut = $this->standardize_program_name($program);
+                log_message('debug', 'Standardized program: "' . ($program_shortcut ?: 'NULL') . '"');
+                
                 if (!$program_shortcut) {
+                    log_message('error', 'Invalid program provided: "' . $program . '"');
                     $this->output
                         ->set_status_header(400)
                         ->set_content_type('application/json')
@@ -426,8 +430,12 @@ class Auth extends BaseController {
 
         // Validate program if provided
         if (!empty($program)) {
+            log_message('debug', 'JSON - Original program received: "' . $program . '"');
             $program_shortcut = $this->standardize_program_name($program);
+            log_message('debug', 'JSON - Standardized program: "' . ($program_shortcut ?: 'NULL') . '"');
+            
             if (!$program_shortcut) {
+                log_message('error', 'JSON - Invalid program provided: "' . $program . '"');
                 $this->output
                     ->set_status_header(400)
                     ->set_content_type('application/json')
@@ -519,10 +527,12 @@ class Auth extends BaseController {
      */
     private function standardize_program_name($program_name) {
         $program_name = trim($program_name);
+        log_message('debug', 'Standardizing program: "' . $program_name . '"');
         
         // Direct shortcuts
         $shortcuts = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
         if (in_array(strtoupper($program_name), $shortcuts)) {
+            log_message('debug', 'Found direct shortcut match: ' . strtoupper($program_name));
             return strtoupper($program_name);
         }
         
@@ -530,18 +540,21 @@ class Auth extends BaseController {
         $full_to_short = [
             'Bachelor of Science in Information Technology' => 'BSIT',
             'Bachelor of Science in Information Systems' => 'BSIS',
+            'Bachelor of Science in Information System' => 'BSIS', // Handle singular "System"
             'Bachelor of Science in Computer Science' => 'BSCS',
             'Associate in Computer Technology' => 'ACT'
         ];
         
         // Check exact matches
         if (isset($full_to_short[$program_name])) {
+            log_message('debug', 'Found exact full name match: ' . $full_to_short[$program_name]);
             return $full_to_short[$program_name];
         }
         
         // Check case-insensitive matches
         foreach ($full_to_short as $full_name => $shortcut) {
             if (strcasecmp($program_name, $full_name) === 0) {
+                log_message('debug', 'Found case-insensitive match: ' . $shortcut);
                 return $shortcut;
             }
         }
@@ -549,15 +562,20 @@ class Auth extends BaseController {
         // Check partial matches (for flexibility)
         $program_lower = strtolower($program_name);
         if (strpos($program_lower, 'information technology') !== false) {
+            log_message('debug', 'Found partial match for IT: BSIT');
             return 'BSIT';
-        } elseif (strpos($program_lower, 'information systems') !== false) {
-            return 'BSIS';
+        } elseif (strpos($program_lower, 'information system') !== false) {
+            log_message('debug', 'Found partial match for IS: BSIS');
+            return 'BSIS'; // Handles both "System" and "Systems"
         } elseif (strpos($program_lower, 'computer science') !== false) {
+            log_message('debug', 'Found partial match for CS: BSCS');
             return 'BSCS';
         } elseif (strpos($program_lower, 'computer technology') !== false) {
+            log_message('debug', 'Found partial match for CT: ACT');
             return 'ACT';
         }
         
+        log_message('debug', 'No match found for program: "' . $program_name . '"');
         return false; // Invalid program name
     }
 
