@@ -807,7 +807,32 @@ class Auth extends BaseController {
             if ($this->input->post('full_name')) $update_data['full_name'] = $this->input->post('full_name');
             if ($this->input->post('email')) $update_data['email'] = $this->input->post('email');
             if ($this->input->post('password')) $update_data['password'] = password_hash($this->input->post('password'), PASSWORD_BCRYPT);
-            if ($this->input->post('program')) $update_data['program'] = $this->input->post('program');
+            
+            // Handle program field with validation
+            if ($this->input->post('program')) {
+                $program = $this->input->post('program');
+                log_message('debug', 'Update - Original program received: "' . $program . '"');
+                
+                // Allow clearing program by sending empty string or "null"
+                if ($program === '' || strtolower($program) === 'null') {
+                    $update_data['program'] = null;
+                    log_message('debug', 'Update - Program cleared (set to null)');
+                } else {
+                    $program_shortcut = $this->standardize_program_name($program);
+                    log_message('debug', 'Update - Standardized program: "' . ($program_shortcut ?: 'NULL') . '"');
+                    
+                    if (!$program_shortcut) {
+                        log_message('error', 'Update - Invalid program provided: "' . $program . '"');
+                        $this->output
+                            ->set_status_header(400)
+                            ->set_content_type('application/json')
+                            ->set_output(json_encode(['status' => false, 'message' => 'Invalid program. Must be BSIT, BSIS, BSCS, or ACT']));
+                        return;
+                    }
+                    $update_data['program'] = $program_shortcut;
+                }
+            }
+            
             if ($this->input->post('contact_num')) $update_data['contact_num'] = $this->input->post('contact_num');
             if ($this->input->post('address')) $update_data['address'] = $this->input->post('address');
             
@@ -888,7 +913,32 @@ class Auth extends BaseController {
         if (isset($data->full_name)) $update_data['full_name'] = $data->full_name;
         if (isset($data->email)) $update_data['email'] = $data->email;
         if (isset($data->password)) $update_data['password'] = password_hash($data->password, PASSWORD_BCRYPT);
-        if (isset($data->program)) $update_data['program'] = $data->program;
+        
+        // Handle program field with validation
+        if (isset($data->program)) {
+            $program = $data->program;
+            log_message('debug', 'JSON Update - Original program received: "' . $program . '"');
+            
+            // Allow clearing program by sending empty string or "null"
+            if ($program === '' || strtolower($program) === 'null') {
+                $update_data['program'] = null;
+                log_message('debug', 'JSON Update - Program cleared (set to null)');
+            } else {
+                $program_shortcut = $this->standardize_program_name($program);
+                log_message('debug', 'JSON Update - Standardized program: "' . ($program_shortcut ?: 'NULL') . '"');
+                
+                if (!$program_shortcut) {
+                    log_message('error', 'JSON Update - Invalid program provided: "' . $program . '"');
+                    $this->output
+                        ->set_status_header(400)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Invalid program. Must be BSIT, BSIS, BSCS, or ACT']));
+                    return;
+                }
+                $update_data['program'] = $program_shortcut;
+            }
+        }
+        
         if (isset($data->contact_num)) $update_data['contact_num'] = $data->contact_num;
         if (isset($data->address)) $update_data['address'] = $data->address;
         if (isset($data->profile_pic)) $update_data['profile_pic'] = $data->profile_pic;
