@@ -263,8 +263,12 @@ class Auth extends BaseController {
             } elseif ($role === 'admin') {
                 // Set admin_type for admin users
                 $user_data['admin_type'] = 'main_admin';
-                // Admin users don't need a program - always set to null regardless of what frontend sends
-                $user_data['program'] = null;
+                // Admin users can have a program if specified and valid
+                if (!empty($program)) {
+                    $user_data['program'] = $program;
+                } else {
+                    $user_data['program'] = null;
+                }
             } elseif ($role === 'teacher') {
                 // Teachers can have a program if specified and valid
                 if (!empty($program)) {
@@ -483,8 +487,12 @@ class Auth extends BaseController {
         } elseif ($role === 'admin') {
             // Set admin_type for admin users
             $dataToInsert['admin_type'] = 'main_admin';
-            // Admin users don't need a program - always set to null regardless of what frontend sends
-            $dataToInsert['program'] = null;
+            // Admin users can have a program if specified and valid
+            if (!empty($program)) {
+                $dataToInsert['program'] = $program;
+            } else {
+                $dataToInsert['program'] = null;
+            }
         } elseif ($role === 'teacher') {
             // Teachers can have a program if specified and valid
             if (!empty($program)) {
