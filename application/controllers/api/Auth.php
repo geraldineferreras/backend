@@ -261,13 +261,19 @@ class Auth extends BaseController {
                 // Students must have a program - it should already be validated above
                 $user_data['program'] = $program;
             } elseif ($role === 'admin') {
-                // Set admin_type for admin users
-                $user_data['admin_type'] = 'main_admin';
-                // Admin users can have a program if specified and valid
+                // Determine admin_type based on program and existing main_admin
+                $admin_type = $this->determine_admin_type($program);
+                $user_data['admin_type'] = $admin_type;
+                
+                // Admin users must have a program
                 if (!empty($program)) {
                     $user_data['program'] = $program;
                 } else {
-                    $user_data['program'] = null;
+                    $this->output
+                        ->set_status_header(400)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Program is required for admin accounts']));
+                    return;
                 }
             } elseif ($role === 'teacher') {
                 // Teachers can have a program if specified and valid
@@ -485,13 +491,19 @@ class Auth extends BaseController {
             // Students must have a program - it should already be validated above
             $dataToInsert['program'] = $program;
         } elseif ($role === 'admin') {
-            // Set admin_type for admin users
-            $dataToInsert['admin_type'] = 'main_admin';
-            // Admin users can have a program if specified and valid
+            // Determine admin_type based on program and existing main_admin
+            $admin_type = $this->determine_admin_type($program);
+            $dataToInsert['admin_type'] = $admin_type;
+            
+            // Admin users must have a program
             if (!empty($program)) {
                 $dataToInsert['program'] = $program;
             } else {
-                $dataToInsert['program'] = null;
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Program is required for admin accounts']));
+                return;
             }
         } elseif ($role === 'teacher') {
             // Teachers can have a program if specified and valid
@@ -585,6 +597,88 @@ class Auth extends BaseController {
         
         log_message('debug', 'No match found for program: "' . $program_name . '"');
         return false; // Invalid program name
+    }
+
+    /**
+     * Determine admin type based on program and existing main_admin
+     * 
+     * @param string $program The program name
+     * @return string The admin type (main_admin or program_chairperson)
+     */
+    private function determine_admin_type($program) {
+        // Check if there's already a main_admin
+        $existing_main_admin = $this->db->select('user_id')
+            ->from('users')
+            ->where('role', 'admin')
+            ->where('admin_type', 'main_admin')
+            ->where('status', 'active')
+            ->get()
+            ->row_array();
+        
+        // If there's already a main_admin, all new admins are program_chairperson
+        if ($existing_main_admin) {
+            log_message('debug', 'Main admin already exists. New admin will be program_chairperson for program: ' . $program);
+            return 'program_chairperson';
+        }
+        
+        // If no main_admin exists, check if this is BSIT program
+        $program_shortcut = $this->standardize_program_name($program);
+        if ($program_shortcut === 'BSIT') {
+            log_message('debug', 'No main admin exists and program is BSIT. Setting as main_admin');
+            return 'main_admin';
+        }
+        
+        // For any other program when no main_admin exists, still set as program_chairperson
+        log_message('debug', 'No main admin exists but program is not BSIT. Setting as program_chairperson for program: ' . $program);
+        return 'program_chairperson';
+    }
+
+    /**
+     * Determine admin type for update operations
+     * 
+     * @param string $user_id The user ID being updated
+     * @param string $program_shortcut The program shortcut
+     * @return string The admin type (main_admin or program_chairperson)
+     */
+    private function determine_admin_type_for_update($user_id, $program_shortcut) {
+        // Get current user info
+        $current_user = $this->db->select('admin_type')
+            ->from('users')
+            ->where('user_id', $user_id)
+            ->get()
+            ->row_array();
+        
+        // If user is already main_admin, keep them as main_admin
+        if ($current_user && $current_user['admin_type'] === 'main_admin') {
+            log_message('debug', 'User is already main_admin. Keeping as main_admin');
+            return 'main_admin';
+        }
+        
+        // Check if there's already a main_admin (excluding current user)
+        $existing_main_admin = $this->db->select('user_id')
+            ->from('users')
+            ->where('role', 'admin')
+            ->where('admin_type', 'main_admin')
+            ->where('status', 'active')
+            ->where('user_id !=', $user_id)
+            ->get()
+            ->row_array();
+        
+        // If there's already a main_admin, this user stays as program_chairperson
+        if ($existing_main_admin) {
+            log_message('debug', 'Another main admin exists. User stays as program_chairperson');
+            return 'program_chairperson';
+        }
+        
+        // If no main_admin exists and program is BSIT, this user becomes main_admin
+        if ($program_shortcut === 'BSIT') {
+            log_message('debug', 'No main admin exists and program is BSIT. User becomes main_admin');
+            return 'main_admin';
+        }
+        
+        // For any other program, user stays as program_chairperson
+        log_message('debug', 'Program is not BSIT. User stays as program_chairperson');
+        return 'program_chairperson';
     }
 
     // Get all users by role
@@ -830,6 +924,12 @@ class Auth extends BaseController {
                         return;
                     }
                     $update_data['program'] = $program_shortcut;
+                    
+                    // For admin users, update admin_type based on new program
+                    if ($role === 'admin') {
+                        $new_admin_type = $this->determine_admin_type_for_update($user_id, $program_shortcut);
+                        $update_data['admin_type'] = $new_admin_type;
+                    }
                 }
             }
             
@@ -936,6 +1036,12 @@ class Auth extends BaseController {
                     return;
                 }
                 $update_data['program'] = $program_shortcut;
+                
+                // For admin users, update admin_type based on new program
+                if ($role === 'admin') {
+                    $new_admin_type = $this->determine_admin_type_for_update($user_id, $program_shortcut);
+                    $update_data['admin_type'] = $new_admin_type;
+                }
             }
         }
         
