@@ -165,6 +165,24 @@ class Auth extends BaseController {
                     ->set_output(json_encode(['status' => false, 'message' => 'Required fields are missing']));
                 return;
             }
+            
+            // Validate program based on role
+            if ($role === 'student' && empty($program)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Program is required for student accounts']));
+                return;
+            }
+
+            // Block chairperson creation
+            if (strtolower($role) === 'chairperson') {
+                $this->output
+                    ->set_status_header(403)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Chairperson creation is not allowed']));
+                return;
+            }
 
             // Check if email already exists
             $existing_user = $this->User_model->get_by_email($email);
@@ -188,6 +206,19 @@ class Auth extends BaseController {
                 $cover_pic_path = $this->upload_image($_FILES['cover_pic'], 'cover');
             }
 
+            // Validate program if provided
+            if (!empty($program)) {
+                $program_shortcut = $this->standardize_program_name($program);
+                if (!$program_shortcut) {
+                    $this->output
+                        ->set_status_header(400)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Invalid program. Must be BSIT, BSIS, BSCS, or ACT']));
+                    return;
+                }
+                $program = $program_shortcut; // Use standardized program name
+            }
+
             // Prepare user data
             $hashed_password = password_hash($password, PASSWORD_BCRYPT);
             $user_id = generate_user_id(strtoupper(substr($role, 0, 3)));
@@ -200,7 +231,6 @@ class Auth extends BaseController {
                 'password' => $hashed_password,
                 'contact_num' => $contact_num,
                 'address' => $address,
-                'program' => $program,
                 'profile_pic' => $profile_pic_path,
                 'cover_pic' => $cover_pic_path,
                 'status' => 'active',
@@ -223,10 +253,28 @@ class Auth extends BaseController {
                 if (!empty($section_id)) {
                     $user_data['section_id'] = $section_id;
                 }
+                
+                // Students must have a program - it should already be validated above
+                $user_data['program'] = $program;
+            } elseif ($role === 'admin') {
+                // Set admin_type for admin users
+                $user_data['admin_type'] = 'main_admin';
+                // Admin users don't need a program - always set to null regardless of what frontend sends
+                $user_data['program'] = null;
+            } elseif ($role === 'teacher') {
+                // Teachers can have a program if specified and valid
+                if (!empty($program)) {
+                    $user_data['program'] = $program;
+                } else {
+                    $user_data['program'] = null;
+                }
             }
 
             // Debug final data
             log_message('debug', '=== FINAL USER DATA ===');
+            log_message('debug', 'Role: ' . $role);
+            log_message('debug', 'Program after validation: ' . ($program ?: 'NULL'));
+            log_message('debug', 'Final program in user_data: ' . ($user_data['program'] ?: 'NULL'));
             log_message('debug', print_r($user_data, true));
             log_message('debug', '=====================');
 
@@ -330,6 +378,8 @@ class Auth extends BaseController {
 
         if (empty($role)) {
             $errors[] = 'Role is required.';
+        } elseif (strtolower($role) === 'chairperson') {
+            $errors[] = 'Chairperson creation is not allowed.';
         }
         if (empty($full_name)) {
             $errors[] = 'Full name is required.';
@@ -350,6 +400,11 @@ class Auth extends BaseController {
         if (empty($address)) {
             $errors[] = 'Address is required.';
         }
+        
+        // Validate program based on role
+        if ($role === 'student' && empty($program)) {
+            $errors[] = 'Program is required for student accounts.';
+        }
 
         if (!empty($errors)) {
             $this->output
@@ -369,6 +424,19 @@ class Auth extends BaseController {
             return;
         }
 
+        // Validate program if provided
+        if (!empty($program)) {
+            $program_shortcut = $this->standardize_program_name($program);
+            if (!$program_shortcut) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid program. Must be BSIT, BSIS, BSCS, or ACT']));
+                return;
+            }
+            $program = $program_shortcut; // Use standardized program name
+        }
+
         $hashed_password = password_hash($password, PASSWORD_BCRYPT);
         $user_id = generate_user_id(strtoupper(substr($role, 0, 3)));
         $dataToInsert = [
@@ -379,14 +447,13 @@ class Auth extends BaseController {
             'password' => $hashed_password,
             'contact_num' => $contact_num,
             'address' => $address,
-            'program' => $program,
             'status' => 'active',
             'last_login' => null,
             'profile_pic' => isset($data->profile_pic) ? $data->profile_pic : null,
             'cover_pic' => isset($data->cover_pic) ? $data->cover_pic : null
         ];
 
-        // Student-specific fields
+        // Role-specific fields
         if ($role === 'student') {
             if (empty($data->student_num) || empty($data->qr_code)) {
                 $this->output
@@ -402,10 +469,30 @@ class Auth extends BaseController {
             if (!empty($data->section_id)) {
                 $dataToInsert['section_id'] = $data->section_id;
             }
+            
+            // Students must have a program - it should already be validated above
+            $dataToInsert['program'] = $program;
+        } elseif ($role === 'admin') {
+            // Set admin_type for admin users
+            $dataToInsert['admin_type'] = 'main_admin';
+            // Admin users don't need a program - always set to null regardless of what frontend sends
+            $dataToInsert['program'] = null;
+        } elseif ($role === 'teacher') {
+            // Teachers can have a program if specified and valid
+            if (!empty($program)) {
+                $dataToInsert['program'] = $program;
+            } else {
+                $dataToInsert['program'] = null;
+            }
         }
 
         // Debug: Log the final data being inserted
+        log_message('debug', '=== JSON REGISTRATION DEBUG ===');
+        log_message('debug', 'Role: ' . $role);
+        log_message('debug', 'Program after validation: ' . ($program ?: 'NULL'));
+        log_message('debug', 'Final program in dataToInsert: ' . ($dataToInsert['program'] ?: 'NULL'));
         log_message('debug', 'Data to insert: ' . json_encode($dataToInsert));
+        log_message('debug', '================================');
         
         if ($this->User_model->insert($dataToInsert)) {
             $this->output
@@ -422,6 +509,56 @@ class Auth extends BaseController {
                 ->set_content_type('application/json')
                 ->set_output(json_encode(['status' => false, 'message' => ucfirst($role) . ' registration failed!']));
         }
+    }
+
+    /**
+     * Standardize program name to shortcut format
+     * 
+     * @param string $program_name The program name (can be full name or shortcut)
+     * @return string|false The standardized shortcut or false if invalid
+     */
+    private function standardize_program_name($program_name) {
+        $program_name = trim($program_name);
+        
+        // Direct shortcuts
+        $shortcuts = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
+        if (in_array(strtoupper($program_name), $shortcuts)) {
+            return strtoupper($program_name);
+        }
+        
+        // Map full names to shortcuts
+        $full_to_short = [
+            'Bachelor of Science in Information Technology' => 'BSIT',
+            'Bachelor of Science in Information Systems' => 'BSIS',
+            'Bachelor of Science in Computer Science' => 'BSCS',
+            'Associate in Computer Technology' => 'ACT'
+        ];
+        
+        // Check exact matches
+        if (isset($full_to_short[$program_name])) {
+            return $full_to_short[$program_name];
+        }
+        
+        // Check case-insensitive matches
+        foreach ($full_to_short as $full_name => $shortcut) {
+            if (strcasecmp($program_name, $full_name) === 0) {
+                return $shortcut;
+            }
+        }
+        
+        // Check partial matches (for flexibility)
+        $program_lower = strtolower($program_name);
+        if (strpos($program_lower, 'information technology') !== false) {
+            return 'BSIT';
+        } elseif (strpos($program_lower, 'information systems') !== false) {
+            return 'BSIS';
+        } elseif (strpos($program_lower, 'computer science') !== false) {
+            return 'BSCS';
+        } elseif (strpos($program_lower, 'computer technology') !== false) {
+            return 'ACT';
+        }
+        
+        return false; // Invalid program name
     }
 
     // Get all users by role
