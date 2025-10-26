@@ -86,6 +86,8 @@ class Auth extends BaseController {
                     'message' => 'Login successful',
                     'data' => [
                         'role' => $user['role'],
+                        'admin_type' => $user['admin_type'] ?? null,
+                        'program' => $user['program'] ?? null,
                         'user_id' => $user['user_id'],
                         'full_name' => $user['full_name'],
                         'email' => $user['email'],
@@ -1618,6 +1620,8 @@ class Auth extends BaseController {
                     'message' => 'Google OAuth authentication successful',
                     'data' => [
                         'role' => $user['role'],
+                        'admin_type' => $user['admin_type'] ?? null,
+                        'program' => $user['program'] ?? null,
                         'user_id' => $user['user_id'],
                         'full_name' => $user['full_name'],
                         'email' => $user['email'],
