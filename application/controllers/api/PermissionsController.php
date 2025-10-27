@@ -217,6 +217,61 @@ class PermissionsController extends BaseController {
     }
 
     /**
+     * Get current user's own permissions (no admin required)
+     * GET /api/user/permissions
+     */
+    public function get_my_permissions() {
+        // Validate user is logged in (any authenticated user)
+        $user_data = require_auth($this);
+        if (!$user_data) return;
+
+        $userId = $user_data['user_id'];
+
+        try {
+            // Check if user_permissions table exists, create if needed
+            $this->ensure_permissions_table_exists();
+            
+            $query = $this->db->where('user_id', $userId)->get('user_permissions');
+            $result = $query->row_array();
+            
+            if ($result) {
+                $permissions = json_decode($result['permissions'], true);
+                
+                $this->output
+                    ->set_status_header(200)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => true,
+                        'message' => 'User permissions retrieved successfully',
+                        'data' => [
+                            'user_id' => $userId,
+                            'permissions' => $permissions
+                        ]
+                    ]));
+            } else {
+                // No custom permissions found, return empty (will use defaults)
+                $this->output
+                    ->set_status_header(200)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => false,
+                        'message' => 'No custom permissions found for user',
+                        'data' => null
+                    ]));
+            }
+        } catch (Exception $e) {
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Error retrieving user permissions: ' . $e->getMessage(),
+                    'data' => null
+                ]));
+        }
+    }
+
+    /**
      * Test endpoint to verify permissions controller is accessible
      * GET /api/admin/permissions/test
      */
@@ -227,6 +282,22 @@ class PermissionsController extends BaseController {
             ->set_output(json_encode([
                 'status' => true,
                 'message' => 'Permissions API is working',
+                'timestamp' => date('Y-m-d H:i:s'),
+                'environment' => getenv('RAILWAY_ENVIRONMENT') ? 'railway' : 'local'
+            ]));
+    }
+
+    /**
+     * Test endpoint for user permissions (no admin required)
+     * GET /api/user/permissions/test
+     */
+    public function test_user() {
+        $this->output
+            ->set_status_header(200)
+            ->set_content_type('application/json')
+            ->set_output(json_encode([
+                'status' => true,
+                'message' => 'User permissions API is working',
                 'timestamp' => date('Y-m-d H:i:s'),
                 'environment' => getenv('RAILWAY_ENVIRONMENT') ? 'railway' : 'local'
             ]));

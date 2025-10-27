@@ -232,13 +232,18 @@ $route['api/admin/audit-logs/modules']['get'] = 'api/AdminController/audit_logs_
 $route['api/admin/audit-logs/roles']['get'] = 'api/AdminController/audit_logs_roles_get';
 $route['api/admin/audit-logs/export']['get'] = 'api/AdminController/audit_logs_export_get';
 
-// User Permissions Management
+// User Permissions Management (Admin endpoints)
 $route['api/admin/permissions']['get'] = 'api/PermissionsController/get_all_permissions';
 $route['api/admin/permissions/test']['get'] = 'api/PermissionsController/test';
 $route['api/admin/permissions/(:any)']['get'] = 'api/PermissionsController/get_user_permissions/$1';
 $route['api/admin/permissions/(:any)']['post'] = 'api/PermissionsController/save_user_permissions/$1';
 $route['api/admin/permissions']['options'] = 'api/auth/options';
 $route['api/admin/permissions/(:any)']['options'] = 'api/auth/options';
+
+// User Permissions (Self-access endpoints - no admin required)
+$route['api/user/permissions']['get'] = 'api/PermissionsController/get_my_permissions';
+$route['api/user/permissions/test']['get'] = 'api/PermissionsController/test_user';
+$route['api/user/permissions']['options'] = 'api/auth/options';
 
 // Role-specific Audit Log Endpoints
 $route['api/admin/audit-logs/admin']['get'] = 'api/AdminController/audit_logs_admin_get';
