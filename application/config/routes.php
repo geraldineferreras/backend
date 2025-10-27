@@ -129,7 +129,6 @@ $route['api/student/delete']['delete'] = 'api/auth/delete_user';
 $route['api/student/delete']['options'] = 'api/auth/options';
 
 // Admin APIs
-$route['api/admin/users/create']['post'] = 'admincontroller/create_user';
 $route['api/admin/users/count']['get'] = 'api/AdminController/users_count_get';
 $route['api/admin/dashboard/stats']['get'] = 'api/AdminController/dashboard_stats_get';
 $route['api/admin/sections']['get'] = 'api/AdminController/sections_get';
@@ -232,6 +231,14 @@ $route['api/admin/audit-logs/(:num)']['get'] = 'api/AdminController/audit_log_ge
 $route['api/admin/audit-logs/modules']['get'] = 'api/AdminController/audit_logs_modules_get';
 $route['api/admin/audit-logs/roles']['get'] = 'api/AdminController/audit_logs_roles_get';
 $route['api/admin/audit-logs/export']['get'] = 'api/AdminController/audit_logs_export_get';
+
+// User Permissions Management
+$route['api/admin/permissions']['get'] = 'api/PermissionsController/get_all_permissions';
+$route['api/admin/permissions/test']['get'] = 'api/PermissionsController/test';
+$route['api/admin/permissions/(:any)']['get'] = 'api/PermissionsController/get_user_permissions/$1';
+$route['api/admin/permissions/(:any)']['post'] = 'api/PermissionsController/save_user_permissions/$1';
+$route['api/admin/permissions']['options'] = 'api/auth/options';
+$route['api/admin/permissions/(:any)']['options'] = 'api/auth/options';
 
 // Role-specific Audit Log Endpoints
 $route['api/admin/audit-logs/admin']['get'] = 'api/AdminController/audit_logs_admin_get';
