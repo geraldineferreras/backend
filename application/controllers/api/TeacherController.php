@@ -321,8 +321,49 @@ class TeacherController extends BaseController
                 mkdir($upload_path, 0755, true);
             }
             
-            // Process file uploads
+            // Process file uploads (support single fields and array-style fields like attachments[])
             foreach ($_FILES as $field_name => $file_data) {
+                // Array-style upload
+                if (is_array($file_data['name'])) {
+                    $count = count($file_data['name']);
+                    for ($i = 0; $i < $count; $i++) {
+                        if ($file_data['error'][$i] !== UPLOAD_ERR_OK) continue;
+                        $original_name = $file_data['name'][$i];
+                        $file_extension = pathinfo($original_name, PATHINFO_EXTENSION);
+                        $file_name_without_ext = pathinfo($original_name, PATHINFO_FILENAME);
+
+                        // Sanitize filename
+                        $sanitized_name = preg_replace('/[^\p{L}\p{N}\s._-]/u', '', $file_name_without_ext);
+                        $sanitized_name = trim($sanitized_name, '._-');
+                        $sanitized_name = preg_replace('/\s+/', ' ', $sanitized_name);
+                        if (empty($sanitized_name)) { $sanitized_name = 'file'; }
+
+                        $final_filename = $sanitized_name . '.' . $file_extension;
+                        $counter = 1;
+                        while (file_exists($upload_path . $final_filename)) {
+                            $final_filename = $sanitized_name . '_' . $counter . '.' . $file_extension;
+                            $counter++;
+                        }
+
+                        $disk_path = $upload_path . $final_filename;
+                        if (move_uploaded_file($file_data['tmp_name'][$i], $disk_path)) {
+                            $rel_path = 'uploads/announcement/' . $final_filename;
+                            $uploaded_files[] = [
+                                'field_name' => $field_name,
+                                'file_path' => $rel_path,
+                                'file_name' => $final_filename,
+                                'original_name' => $original_name,
+                                'file_size' => $file_data['size'][$i],
+                                'mime_type' => $file_data['type'][$i],
+                                'attachment_type' => 'file',
+                                'attachment_url' => $rel_path
+                            ];
+                        }
+                    }
+                    continue;
+                }
+
+                // Single-file upload
                 if ($file_data['error'] === UPLOAD_ERR_OK) {
                     $config['upload_path'] = $upload_path;
                     $config['allowed_types'] = 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3';

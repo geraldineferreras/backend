@@ -1267,39 +1267,40 @@ class StudentController extends BaseController {
                     'student_ids' => $this->input->post('student_ids')
                 ];
                 
-                // Handle multiple file uploads
+                // Handle file uploads from any field name, including array-style inputs
                 $uploaded_files = [];
-                $file_inputs = ['attachment_0', 'attachment_1', 'attachment_2', 'attachment_3', 'attachment_4'];
-                
-                foreach ($file_inputs as $input_name) {
-                    if (isset($_FILES[$input_name]) && $_FILES[$input_name]['error'] === UPLOAD_ERR_OK) {
-                        $file = $_FILES[$input_name];
-                        $original_name = $file['name'];
-                        $file_size = $file['size'];
-                        $file_type = $file['type'];
-                        
-                        // Generate unique filename
-                        $extension = pathinfo($original_name, PATHINFO_EXTENSION);
-                        $file_name = uniqid('student_stream_') . '_' . time() . '.' . $extension;
-                        $upload_path = 'uploads/announcement/';
-                        
-                        // Create directory if it doesn't exist
-                        if (!is_dir($upload_path)) {
-                            mkdir($upload_path, 0755, true);
-                        }
-                        
-                        $file_path = $upload_path . $file_name;
-                        
-                        if (move_uploaded_file($file['tmp_name'], $file_path)) {
-                            $uploaded_files[] = [
-                                'file_path' => $file_path,
-                                'file_name' => $file_name,
-                                'original_name' => $original_name,
-                                'file_size' => $file_size,
-                                'mime_type' => $file_type,
-                                'attachment_type' => 'file',
-                                'attachment_url' => $file_path
-                            ];
+                if (!empty($_FILES)) {
+                    foreach ($_FILES as $field_name => $file_info) {
+                        $is_array = is_array($file_info['name']);
+                        $count = $is_array ? count($file_info['name']) : 1;
+                        for ($i = 0; $i < $count; $i++) {
+                            $error = $is_array ? $file_info['error'][$i] : $file_info['error'];
+                            if ($error !== UPLOAD_ERR_OK) continue;
+                            $tmp_name = $is_array ? $file_info['tmp_name'][$i] : $file_info['tmp_name'];
+                            $original_name = $is_array ? $file_info['name'][$i] : $file_info['name'];
+                            $file_size = $is_array ? $file_info['size'][$i] : $file_info['size'];
+                            $file_type = $is_array ? $file_info['type'][$i] : $file_info['type'];
+
+                            $extension = pathinfo($original_name, PATHINFO_EXTENSION);
+                            $file_name = uniqid('student_stream_') . '_' . time() . '.' . $extension;
+                            $relative_path = 'uploads/announcement/' . $file_name;
+                            $disk_path = FCPATH . $relative_path;
+
+                            if (!is_dir(dirname($disk_path))) {
+                                mkdir(dirname($disk_path), 0755, true);
+                            }
+
+                            if (move_uploaded_file($tmp_name, $disk_path)) {
+                                $uploaded_files[] = [
+                                    'file_path' => $relative_path,
+                                    'file_name' => $file_name,
+                                    'original_name' => $original_name,
+                                    'file_size' => $file_size,
+                                    'mime_type' => $file_type,
+                                    'attachment_type' => 'file',
+                                    'attachment_url' => $relative_path
+                                ];
+                            }
                         }
                     }
                 }
