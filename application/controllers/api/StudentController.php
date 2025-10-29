@@ -1347,7 +1347,19 @@ class StudentController extends BaseController {
                 return;
             }
 
-            // Prepare post data
+            // Prepare post data (pre-fill attachment fields when available)
+            $initial_attachment_type = null;
+            $initial_attachment_url = null;
+            if (!empty($all_attachments)) {
+                if (count($all_attachments) === 1) {
+                    $initial_attachment_type = 'file';
+                    $initial_attachment_url = $all_attachments[0]['attachment_url'] ?? $all_attachments[0]['file_path'] ?? null;
+                } else {
+                    $initial_attachment_type = 'multiple';
+                    $initial_attachment_url = null;
+                }
+            }
+
             $post_data = [
                 'class_code' => $class_code,
                 'classroom_id' => $classroom['id'],
@@ -1358,8 +1370,8 @@ class StudentController extends BaseController {
                 'is_scheduled' => isset($input['is_scheduled']) ? (int)$input['is_scheduled'] : 0,
                 'scheduled_at' => isset($input['scheduled_at']) ? $input['scheduled_at'] : null,
                 'allow_comments' => isset($input['allow_comments']) ? (int)$input['allow_comments'] : 1,
-                'attachment_type' => null,
-                'attachment_url' => null,
+                'attachment_type' => $initial_attachment_type,
+                'attachment_url' => $initial_attachment_url,
                 'status' => 'published',
                 'created_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s')
