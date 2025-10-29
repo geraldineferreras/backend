@@ -187,6 +187,9 @@ $route['api/student/debug-classes']['get'] = 'api/StudentController/debug_classe
 $route['api/student/classroom/(:any)/people']['get'] = 'api/StudentController/classroom_people_get/$1';
 $route['api/student/classroom/(:any)/stream']['get'] = 'api/StudentController/classroom_stream_get/$1';
 $route['api/student/classroom/(:any)/stream']['post'] = 'api/StudentController/classroom_stream_post/$1';
+// Student Stream Post update/delete (owner-only)
+$route['api/student/classroom/(:any)/stream/(:num)']['put'] = 'api/StudentController/classroom_stream_put/$1/$2';
+$route['api/student/classroom/(:any)/stream/(:num)']['delete'] = 'api/StudentController/classroom_stream_delete/$1/$2';
 
 // Student Profile Options APIs
 $route['api/student/programs']['get'] = 'api/StudentController/programs_get';

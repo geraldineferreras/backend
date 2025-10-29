@@ -1510,6 +1510,134 @@ class StudentController extends BaseController {
     }
 
     /**
+     * Update a student-created stream post (owner only)
+     * PUT /api/student/classroom/{class_code}/stream/{stream_id}
+     */
+    public function classroom_stream_put($class_code, $stream_id) {
+        $user_data = require_auth($this);
+        if (!$user_data) { return; }
+        if ($user_data['role'] !== 'student') {
+            $this->output->set_status_header(403)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+
+        try {
+            // Validate classroom and enrollment
+            $classroom = $this->db->where('class_code', $class_code)->where('is_active', 1)->get('classrooms')->row_array();
+            if (!$classroom) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Classroom not found']));
+                return;
+            }
+            $enrollment = $this->db->where('classroom_id', $classroom['id'])
+                ->where('student_id', $user_data['user_id'])->where('status', 'active')
+                ->get('classroom_enrollments')->row_array();
+            if (!$enrollment) {
+                $this->output->set_status_header(403)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Access denied. You are not enrolled in this class']));
+                return;
+            }
+
+            // Fetch post and verify ownership and class
+            $post = $this->db->where('id', (int)$stream_id)->get('classroom_stream')->row_array();
+            if (!$post || $post['class_code'] !== $class_code) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Stream post not found']));
+                return;
+            }
+            if ($post['user_id'] !== $user_data['user_id']) {
+                $this->output->set_status_header(403)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'You can only edit your own posts']));
+                return;
+            }
+
+            // Parse JSON body
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!is_array($input)) {
+                $this->output->set_status_header(400)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Invalid JSON data provided']));
+                return;
+            }
+
+            $update = [];
+            if (array_key_exists('title', $input)) { $update['title'] = trim((string)$input['title']); }
+            if (array_key_exists('content', $input)) { $update['content'] = trim((string)$input['content']); }
+            if (array_key_exists('allow_comments', $input)) { $update['allow_comments'] = (int)!!$input['allow_comments']; }
+
+            if (empty($update)) {
+                $this->output->set_status_header(400)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'No fields to update']));
+                return;
+            }
+
+            $update['updated_at'] = date('Y-m-d H:i:s');
+            $this->db->where('id', (int)$stream_id)->update('classroom_stream', $update);
+
+            $updated = $this->db->where('id', (int)$stream_id)->get('classroom_stream')->row_array();
+            $this->output->set_status_header(200)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'message' => 'Post updated successfully', 'data' => $updated]));
+        } catch (Exception $e) {
+            $this->output->set_status_header(500)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to update post']));
+        }
+    }
+
+    /**
+     * Delete a student-created stream post (owner only)
+     * DELETE /api/student/classroom/{class_code}/stream/{stream_id}
+     */
+    public function classroom_stream_delete($class_code, $stream_id) {
+        $user_data = require_auth($this);
+        if (!$user_data) { return; }
+        if ($user_data['role'] !== 'student') {
+            $this->output->set_status_header(403)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+
+        try {
+            // Validate classroom and enrollment
+            $classroom = $this->db->where('class_code', $class_code)->where('is_active', 1)->get('classrooms')->row_array();
+            if (!$classroom) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Classroom not found']));
+                return;
+            }
+            $enrollment = $this->db->where('classroom_id', $classroom['id'])
+                ->where('student_id', $user_data['user_id'])->where('status', 'active')
+                ->get('classroom_enrollments')->row_array();
+            if (!$enrollment) {
+                $this->output->set_status_header(403)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Access denied. You are not enrolled in this class']));
+                return;
+            }
+
+            // Fetch post and verify ownership and class
+            $post = $this->db->where('id', (int)$stream_id)->get('classroom_stream')->row_array();
+            if (!$post || $post['class_code'] !== $class_code) {
+                $this->output->set_status_header(404)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Stream post not found']));
+                return;
+            }
+            if ($post['user_id'] !== $user_data['user_id']) {
+                $this->output->set_status_header(403)->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'You can only delete your own posts']));
+                return;
+            }
+
+            // Delete post (attachments/comments assumed to cascade via constraints or handled elsewhere)
+            $this->db->where('id', (int)$stream_id)->delete('classroom_stream');
+
+            $this->output->set_status_header(200)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'message' => 'Post deleted successfully']));
+        } catch (Exception $e) {
+            $this->output->set_status_header(500)->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to delete post']));
+        }
+    }
+
+    /**
      * Debug classes - temporary method for troubleshooting
      * GET /api/student/debug-classes
      */
