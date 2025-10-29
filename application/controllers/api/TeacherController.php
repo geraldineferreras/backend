@@ -429,8 +429,16 @@ class TeacherController extends BaseController
             }
         }
         
+        // Resolve classroom by class_code to ensure classroom_id is stored (aligns with student flow)
+        $this->load->model('Classroom_model');
+        $classroom = $this->Classroom_model->get_by_code($class_code);
+        if (!$classroom) {
+            return json_response(false, 'Classroom not found', null, 404);
+        }
+
         $insert_data = [
             'class_code' => $class_code,
+            'classroom_id' => $classroom['id'],
             'user_id' => $user_data['user_id'],
             'title' => $data['title'] ?? null,
             'content' => $data['content'],
