@@ -477,6 +477,19 @@ class TeacherController extends BaseController
             return json_response(false, 'Classroom not found', null, 404);
         }
 
+        // Ensure attachment fields are set at insert time if files are present
+        $initial_attachment_type = $data['attachment_type'] ?? null;
+        $initial_attachment_url = $data['attachment_url'] ?? null;
+        if (!empty($all_attachments)) {
+            if (count($all_attachments) === 1) {
+                $initial_attachment_type = 'file';
+                $initial_attachment_url = $all_attachments[0]['attachment_url'] ?? $all_attachments[0]['file_path'] ?? null;
+            } else {
+                $initial_attachment_type = 'multiple';
+                $initial_attachment_url = null;
+            }
+        }
+
         $insert_data = [
             'class_code' => $class_code,
             'classroom_id' => $classroom['id'],
@@ -487,8 +500,8 @@ class TeacherController extends BaseController
             'is_scheduled' => $data['is_scheduled'] ?? 0,
             'scheduled_at' => $data['scheduled_at'] ?? null,
             'allow_comments' => $data['allow_comments'] ?? 1,
-            'attachment_type' => $data['attachment_type'] ?? null,
-            'attachment_url' => $data['attachment_url'] ?? null
+            'attachment_type' => $initial_attachment_type,
+            'attachment_url' => $initial_attachment_url
         ];
         
         if (!empty($data['student_ids'])) {

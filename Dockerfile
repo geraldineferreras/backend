@@ -15,6 +15,9 @@ RUN apt-get update \
 # Set recommended PHP.ini settings for production
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
+# Add after setting production php.ini so it is overwritten with custom settings
+COPY php.ini /usr/local/etc/php/conf.d/custom.ini
+
 # Set working dir and copy project files
 WORKDIR /var/www/html
 COPY . /var/www/html
