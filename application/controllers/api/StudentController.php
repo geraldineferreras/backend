@@ -1275,7 +1275,10 @@ class StudentController extends BaseController {
                         $count = $is_array ? count($file_info['name']) : 1;
                         for ($i = 0; $i < $count; $i++) {
                             $error = $is_array ? $file_info['error'][$i] : $file_info['error'];
-                            if ($error !== UPLOAD_ERR_OK) continue;
+                            if ($error !== UPLOAD_ERR_OK) {
+                                log_message('error', "Student stream post: File upload error ($error) for $original_name, size: $file_size");
+                                continue;
+                            }
                             $tmp_name = $is_array ? $file_info['tmp_name'][$i] : $file_info['tmp_name'];
                             $original_name = $is_array ? $file_info['name'][$i] : $file_info['name'];
                             $file_size = $is_array ? $file_info['size'][$i] : $file_info['size'];
