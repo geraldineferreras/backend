@@ -367,7 +367,7 @@ class TeacherController extends BaseController
                 if ($file_data['error'] === UPLOAD_ERR_OK) {
                     $config['upload_path'] = $upload_path;
                     $config['allowed_types'] = 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3';
-                    $config['max_size'] = 10240; // 10MB
+                    $config['max_size'] = 102400; // 100MB
                     $config['encrypt_name'] = false;
                     $config['remove_spaces'] = true;
                     $config['file_ext_tolower'] = true;
