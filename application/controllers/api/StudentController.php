@@ -1282,6 +1282,11 @@ class StudentController extends BaseController {
                             $file_type = $is_array ? $file_info['type'][$i] : $file_info['type'];
 
                             $extension = pathinfo($original_name, PATHINFO_EXTENSION);
+                                // --- 100MB/allowed type validation ---
+                            $allowed_types = ['gif','jpg','jpeg','png','webp','pdf','doc','docx','ppt','pptx','xls','xlsx','txt','zip','rar','mp4','mp3'];
+                            $max_size_bytes = 102400 * 1024; // 100MB
+                            if ($file_size > $max_size_bytes) continue;
+                            if (!in_array(strtolower($extension), $allowed_types)) continue;
                             $file_name = uniqid('student_stream_') . '_' . time() . '.' . $extension;
                             $relative_path = 'uploads/announcement/' . $file_name;
                             $disk_path = FCPATH . $relative_path;
