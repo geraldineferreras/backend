@@ -445,7 +445,7 @@ function create_email_html($type, $title, $message, $related_id = null, $related
     
     $html .= '
             <div style="text-align: center; margin-top: 20px;">
-                <a href="http://localhost/scms_new_backup/index.php" class="btn">View in SCMS</a>
+                <a href="https://scmsupdatedbackup.vercel.app/" class="btn">View in SCMS</a>
             </div>
             
             <div class="footer">
