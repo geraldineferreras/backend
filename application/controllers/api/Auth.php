@@ -1978,11 +1978,35 @@ class Auth extends BaseController {
 
     /**
      * Test email sending directly - Enhanced version
+     * Supports both GET (?to=email) and POST (body with email field)
      */
     public function test_email_sending() {
         try {
-            $data = json_decode(file_get_contents('php://input'));
-            $test_email = isset($data->email) ? trim($data->email) : 'geferreras@gmail.com';
+            // Check GET parameter first, then POST body, then default
+            $test_email = $this->input->get('to');
+            if (empty($test_email)) {
+                $data = json_decode(file_get_contents('php://input'));
+                $test_email = isset($data->email) ? trim($data->email) : null;
+            } else {
+                $test_email = trim($test_email);
+            }
+            
+            if (empty($test_email)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => false, 
+                        'message' => 'Email address required. Use ?to=email@example.com or POST with email field',
+                        'example_get' => '/api/auth/test-email?to=your-email@example.com'
+                    ]));
+                return;
+            }
+            
+            // Check environment variables for debugging
+            $sendgridKey = getenv('SENDGRID_API_KEY');
+            $resendKey = getenv('RESEND_API_KEY');
+            $smtpUser = getenv('SMTP_USER');
             
             $this->load->helper('email_notification');
             
@@ -1996,20 +2020,39 @@ class Auth extends BaseController {
                 $this->output
                     ->set_status_header(200)
                     ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => true, 'message' => 'Test email sent successfully']));
+                    ->set_output(json_encode([
+                        'status' => true, 
+                        'message' => 'Test email sent successfully',
+                        'to' => $test_email
+                    ]));
             } else {
-                log_message('error', "Failed to send test email to: {$test_email}");
+                $errorDetails = [
+                    'status' => false,
+                    'message' => 'Failed to send test email',
+                    'to' => $test_email,
+                    'debug' => [
+                        'sendgrid_api_key_set' => !empty($sendgridKey),
+                        'resend_api_key_set' => !empty($resendKey),
+                        'smtp_user_set' => !empty($smtpUser),
+                        'check_railway_logs' => 'Check Railway logs for detailed error messages'
+                    ]
+                ];
+                
+                log_message('error', "Failed to send test email to: {$test_email}. SendGrid: " . (!empty($sendgridKey) ? 'SET' : 'NOT SET') . ", Resend: " . (!empty($resendKey) ? 'SET' : 'NOT SET'));
                 $this->output
                     ->set_status_header(500)
                     ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to send test email']));
+                    ->set_output(json_encode($errorDetails));
             }
         } catch (Exception $e) {
             log_message('error', 'Test email error: ' . $e->getMessage());
             $this->output
                 ->set_status_header(500)
                 ->set_content_type('application/json')
-                ->set_output(json_encode(['status' => false, 'message' => 'Email test error: ' . $e->getMessage()]));
+                ->set_output(json_encode([
+                    'status' => false, 
+                    'message' => 'Email test error: ' . $e->getMessage()
+                ]));
         }
     }
 

@@ -175,13 +175,30 @@ function send_email(string $to, string $subject, string $htmlMessage, ?string $t
         curl_setopt($ch, CURLOPT_HEADER, true);
         $response = curl_exec($ch);
         $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
         $curlErr = curl_error($ch);
+        $curlErrno = curl_errno($ch);
         curl_close($ch);
 
         if ($httpCode === 202) {
             return true;
         }
-        log_message('error', 'SendGrid API send failed (HTTP ' . $httpCode . '): ' . ($response ?: $curlErr));
+        
+        // Extract response body (after headers) for better error messages
+        $responseBody = '';
+        if ($response && $headerSize) {
+            $responseBody = substr($response, $headerSize);
+        }
+        
+        $errorMsg = 'SendGrid API send failed';
+        $errorMsg .= ' (HTTP ' . $httpCode . ')';
+        if ($curlErrno !== 0) {
+            $errorMsg .= ' - cURL Error: ' . $curlErr . ' (Code: ' . $curlErrno . ')';
+        }
+        if ($responseBody) {
+            $errorMsg .= ' - Response: ' . $responseBody;
+        }
+        log_message('error', $errorMsg);
     }
 
     // 2) PHPMailer SMTP path (works locally; may be blocked on some PaaS)

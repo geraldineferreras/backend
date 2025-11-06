@@ -53,12 +53,14 @@ RESEND_FROM_EMAIL=noreply@yourdomain.com
 RESEND_FROM_NAME=SCMS System
 ```
 
-**Option 2: SendGrid API**
+**Option 2: SendGrid API (Currently Configured)**
 ```
 SENDGRID_API_KEY=your_sendgrid_api_key_here
 SENDGRID_FROM_EMAIL=noreply@yourdomain.com
 SENDGRID_FROM_NAME=SCMS System
 ```
+
+**Note:** If `SENDGRID_FROM_EMAIL` is not set, it will fallback to `SMTP_USER` environment variable.
 
 **Option 3: SMTP (Gmail)**
 ```
