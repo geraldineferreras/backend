@@ -798,10 +798,9 @@ class AttendanceController extends BaseController
         if (!$data) return;
 
         try {
-            // Get attendance record and verify teacher access
-            $attendance = $this->db->select('attendance.*, classrooms.teacher_id')
+            // Get attendance record first
+            $attendance = $this->db->select('attendance.*')
                 ->from('attendance')
-                ->join('classrooms', 'attendance.class_id = classrooms.id', 'left')
                 ->where('attendance.attendance_id', $attendance_id)
                 ->get()->row_array();
 
@@ -810,8 +809,17 @@ class AttendanceController extends BaseController
                 return;
             }
 
-            if ($attendance['teacher_id'] != $user_data['user_id']) {
-                $this->send_error('Access denied', 403);
+            // Verify teacher access by finding the corresponding class
+            // attendance.class_id is classes.class_id, not classrooms.id
+            $class = $this->db->select('classes.*')
+                ->from('classes')
+                ->where('classes.class_id', $attendance['class_id'])
+                ->where('classes.teacher_id', $user_data['user_id'])
+                ->where('classes.status', 'active')
+                ->get()->row_array();
+
+            if (!$class) {
+                $this->send_error('Access denied or class not found', 403);
                 return;
             }
 
@@ -832,9 +840,9 @@ class AttendanceController extends BaseController
             // Get the old attendance record for comparison
             $old_attendance = $this->db->select('attendance.*, subjects.subject_name, sections.section_name')
                 ->from('attendance')
-                ->join('classrooms', 'attendance.class_id = classrooms.id', 'left')
-                ->join('subjects', 'classrooms.subject_id = subjects.id', 'left')
-                ->join('sections', 'classrooms.section_id = sections.section_id', 'left')
+                ->join('classes', 'attendance.class_id = classes.class_id', 'left')
+                ->join('subjects', 'classes.subject_id = subjects.id', 'left')
+                ->join('sections', 'classes.section_id = sections.section_id', 'left')
                 ->where('attendance.attendance_id', $attendance_id)
                 ->get()->row_array();
 
