@@ -62,7 +62,16 @@ SENDGRID_FROM_NAME=SCMS System
 
 **Note:** If `SENDGRID_FROM_EMAIL` is not set, it will fallback to `SMTP_USER` environment variable.
 
-**Option 3: SMTP (Gmail)**
+**Option 3: Brevo API (Recommended - Higher Free Tier)**
+```
+BREVO_API_KEY=xkeysib-your_brevo_api_key_here
+BREVO_FROM_EMAIL=noreply@yourdomain.com
+BREVO_FROM_NAME=SCMS System
+```
+
+**Note:** Brevo offers 300 emails/day (9,000/month) on free tier vs SendGrid's 100/day. If `BREVO_FROM_EMAIL` is not set, it will fallback to `SMTP_USER` environment variable.
+
+**Option 4: SMTP (Gmail)**
 ```
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587

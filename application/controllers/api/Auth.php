@@ -2006,6 +2006,7 @@ class Auth extends BaseController {
             // Check environment variables for debugging
             $sendgridKey = getenv('SENDGRID_API_KEY');
             $resendKey = getenv('RESEND_API_KEY');
+            $brevoKey = getenv('BREVO_API_KEY');
             $smtpUser = getenv('SMTP_USER');
             
             $this->load->helper('email_notification');
@@ -2033,12 +2034,13 @@ class Auth extends BaseController {
                     'debug' => [
                         'sendgrid_api_key_set' => !empty($sendgridKey),
                         'resend_api_key_set' => !empty($resendKey),
+                        'brevo_api_key_set' => !empty($brevoKey),
                         'smtp_user_set' => !empty($smtpUser),
                         'check_railway_logs' => 'Check Railway logs for detailed error messages'
                     ]
                 ];
                 
-                log_message('error', "Failed to send test email to: {$test_email}. SendGrid: " . (!empty($sendgridKey) ? 'SET' : 'NOT SET') . ", Resend: " . (!empty($resendKey) ? 'SET' : 'NOT SET'));
+                log_message('error', "Failed to send test email to: {$test_email}. SendGrid: " . (!empty($sendgridKey) ? 'SET' : 'NOT SET') . ", Resend: " . (!empty($resendKey) ? 'SET' : 'NOT SET') . ", Brevo: " . (!empty($brevoKey) ? 'SET' : 'NOT SET'));
                 $this->output
                     ->set_status_header(500)
                     ->set_content_type('application/json')

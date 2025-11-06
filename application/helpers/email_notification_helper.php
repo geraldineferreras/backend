@@ -201,6 +201,58 @@ function send_email(string $to, string $subject, string $htmlMessage, ?string $t
         log_message('error', $errorMsg);
     }
 
+    // Brevo API (formerly Sendinblue)
+    $brevoApiKey = getenv('BREVO_API_KEY');
+    if ($brevoApiKey) {
+        $fromName = getenv('SMTP_FROM_NAME') ?: (getenv('BREVO_FROM_NAME') ?: 'SCMS System');
+        $fromEmail = getenv('BREVO_FROM_EMAIL') ?: (getenv('SMTP_USER') ?: 'scmswebsitee@gmail.com');
+        $payload = array(
+            'sender' => array(
+                'name' => $fromName,
+                'email' => $fromEmail
+            ),
+            'to' => array(array(
+                'email' => $to,
+                'name' => $toName ?: $to
+            )),
+            'subject' => $subject,
+            'htmlContent' => $htmlMessage
+        );
+
+        $ch = curl_init('https://api.brevo.com/v3/smtp/email');
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'api-key: ' . $brevoApiKey,
+            'Content-Type: application/json',
+            'Accept: application/json'
+        ));
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30); // 30 second timeout
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // 10 second connection timeout
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        $response = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
+        $curlErrno = curl_errno($ch);
+        curl_close($ch);
+
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return true;
+        }
+        
+        $errorMsg = 'Brevo API send failed';
+        $errorMsg .= ' (HTTP ' . $httpCode . ')';
+        if ($curlErrno !== 0) {
+            $errorMsg .= ' - cURL Error: ' . $curlErr . ' (Code: ' . $curlErrno . ')';
+        }
+        if ($response) {
+            $errorMsg .= ' - Response: ' . $response;
+        }
+        log_message('error', $errorMsg);
+    }
+
     // 2) PHPMailer SMTP path (works locally; may be blocked on some PaaS)
     try {
         if (class_exists('PHPMailer\\PHPMailer\\PHPMailer')) {
