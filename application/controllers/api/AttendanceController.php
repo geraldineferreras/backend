@@ -1238,6 +1238,41 @@ class AttendanceController extends BaseController
             if ($limit < 1) $limit = 50;
             if ($offset < 0) $offset = 0;
 
+            // Convert classroom.id to classes.class_id if needed
+            $attendance_class_id = $class_id;
+            if ($class_id) {
+                // Check if class_id is numeric (likely a classroom.id)
+                if (is_numeric($class_id)) {
+                    // Verify teacher has access to this classroom
+                    $classroom = $this->db->select('classrooms.*')
+                        ->from('classrooms')
+                        ->where('classrooms.id', $class_id)
+                        ->where('classrooms.teacher_id', $user_data['user_id'])
+                        ->where('classrooms.is_active', 1)
+                        ->get()->row_array();
+
+                    if ($classroom) {
+                        // Find the corresponding class_id from classes table
+                        $class = $this->db->select('classes.class_id')
+                            ->from('classes')
+                            ->where('classes.subject_id', $classroom['subject_id'])
+                            ->where('classes.section_id', $classroom['section_id'])
+                            ->where('classes.teacher_id', $classroom['teacher_id'])
+                            ->where('classes.status', 'active')
+                            ->get()->row_array();
+
+                        if ($class) {
+                            // Use the classes.class_id for attendance query
+                            $attendance_class_id = $class['class_id'];
+                        } else {
+                            // No active class found, set to null to return no results
+                            $attendance_class_id = null;
+                        }
+                    }
+                }
+                // If class_id is not numeric, assume it's already a classes.class_id
+            }
+
             // Build query
             $this->db->select('
                 attendance.*,
@@ -1249,14 +1284,13 @@ class AttendanceController extends BaseController
             ')
             ->from('attendance')
             ->join('users', 'attendance.student_id = users.user_id', 'left')
-            ->join('classrooms', 'attendance.class_id = classrooms.id', 'left')
             ->join('subjects', 'attendance.subject_id = subjects.id', 'left')
             ->join('sections', 'attendance.section_name = sections.section_name', 'left')
             ->where('attendance.teacher_id', $user_data['user_id']);
 
             // Apply filters
-            if ($class_id) {
-                $this->db->where('attendance.class_id', $class_id);
+            if ($attendance_class_id) {
+                $this->db->where('attendance.class_id', $attendance_class_id);
             }
             if ($date) {
                 $this->db->where('attendance.date', $date);
@@ -1282,14 +1316,13 @@ class AttendanceController extends BaseController
             ')
             ->from('attendance')
             ->join('users', 'attendance.student_id = users.user_id', 'left')
-            ->join('classrooms', 'attendance.class_id = classrooms.id', 'left')
             ->join('subjects', 'attendance.subject_id = subjects.id', 'left')
             ->join('sections', 'attendance.section_name = sections.section_name', 'left')
             ->where('attendance.teacher_id', $user_data['user_id']);
 
             // Apply filters again
-            if ($class_id) {
-                $this->db->where('attendance.class_id', $class_id);
+            if ($attendance_class_id) {
+                $this->db->where('attendance.class_id', $attendance_class_id);
             }
             if ($date) {
                 $this->db->where('attendance.date', $date);
