@@ -1871,13 +1871,30 @@ class Auth extends BaseController {
             $this->config->load('google_oauth');
             $google_config = $this->config->item('google_oauth');
             
-            // Get Google's public keys
+            // Get Google's public keys using cURL with timeout (replaces file_get_contents)
             $keys_url = 'https://www.googleapis.com/oauth2/v1/certs';
-            $keys_response = file_get_contents($keys_url);
+            $ch = curl_init($keys_url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15); // 15 second timeout
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5); // 5 second connection timeout
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            $keys_response = curl_exec($ch);
+            $curl_errno = curl_errno($ch);
+            $curl_error = curl_error($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($curl_errno !== 0 || $http_code !== 200) {
+                log_message('error', 'Failed to fetch Google public keys: ' . ($curl_error ?: 'HTTP ' . $http_code));
+                return false;
+            }
+            
             $keys = json_decode($keys_response, true);
             
-            if (!$keys) {
-                log_message('error', 'Failed to fetch Google public keys');
+            if (!$keys || !isset($keys['keys'])) {
+                log_message('error', 'Failed to decode Google public keys or invalid response format');
                 return false;
             }
             
