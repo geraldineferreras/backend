@@ -68,10 +68,15 @@ class TaskController extends BaseController
                 }
             }
             
+            // Process link attachments from form data (link, YouTube, Google Drive)
+            $link_attachments = [];
+            $this->_process_link_attachments_from_form($link_attachments);
+            $attachments = array_merge($attachments, $link_attachments);
+            
             // For backward compatibility, set attachment_url and attachment_type if only one file
             if (count($attachments) === 1) {
-                $attachment_url = $attachments[0]['file_name'];
-                $attachment_type = 'file';
+                $attachment_url = $attachments[0]['attachment_url'] ?? $attachments[0]['file_name'];
+                $attachment_type = $attachments[0]['attachment_type'] ?? 'file';
                 $original_filename = $attachments[0]['original_name'];
             } else {
                 $attachment_url = null;
@@ -86,7 +91,104 @@ class TaskController extends BaseController
             $attachment_url = $data->attachment_url ?? null;
             $attachment_type = $data->attachment_type ?? null;
             $original_filename = $data->original_filename ?? null;
+            
+            // Handle JSON attachments (links, YouTube, Google Drive, files)
             $attachments = [];
+            if (isset($data->attachments) && is_array($data->attachments)) {
+                foreach ($data->attachments as $attachment) {
+                    // Convert object to array if needed
+                    $attachment = is_object($attachment) ? (array)$attachment : $attachment;
+                    
+                    if (isset($attachment['type']) && isset($attachment['url'])) {
+                        // Link attachment (link, youtube, google_drive)
+                        $type = $attachment['type'];
+                        $url = $attachment['url'];
+                        
+                        // Validate URL based on type
+                        $is_valid = false;
+                        if ($type === 'youtube') {
+                            $is_valid = $this->_is_valid_youtube_url($url);
+                        } elseif ($type === 'google_drive') {
+                            $is_valid = $this->_is_valid_google_drive_url($url);
+                        } else {
+                            // For 'link' or other types, use standard URL validation
+                            $is_valid = filter_var($url, FILTER_VALIDATE_URL);
+                        }
+                        
+                        if ($is_valid) {
+                            $attachments[] = [
+                                'file_path' => $url,
+                                'file_name' => ($type . '_' . count($attachments)),
+                                'original_name' => $attachment['title'] ?? ucfirst(str_replace('_', ' ', $type)),
+                                'file_size' => null,
+                                'mime_type' => $this->_get_mime_type_for_attachment_type($type),
+                                'attachment_type' => $type,
+                                'attachment_url' => $url
+                            ];
+                        }
+                    } elseif (isset($attachment['attachment_type']) && isset($attachment['attachment_url'])) {
+                        // Already formatted attachment object
+                        $att_type = $attachment['attachment_type'];
+                        $att_url = $attachment['attachment_url'];
+                        
+                        // Validate URL based on type
+                        $is_valid = false;
+                        if ($att_type === 'youtube') {
+                            $is_valid = $this->_is_valid_youtube_url($att_url);
+                        } elseif ($att_type === 'google_drive') {
+                            $is_valid = $this->_is_valid_google_drive_url($att_url);
+                        } elseif ($att_type === 'link') {
+                            $is_valid = filter_var($att_url, FILTER_VALIDATE_URL);
+                        } else {
+                            // For 'file' type or others, accept without URL validation
+                            $is_valid = true;
+                        }
+                        
+                        if ($is_valid) {
+                            $attachments[] = [
+                                'file_name' => $attachment['file_name'] ?? $att_type . '_' . count($attachments),
+                                'original_name' => $attachment['original_name'] ?? $attachment['file_name'] ?? 'External Link',
+                                'file_path' => $attachment['file_path'] ?? $att_url,
+                                'file_size' => $attachment['file_size'] ?? 0,
+                                'mime_type' => $attachment['mime_type'] ?? $this->_get_mime_type_for_attachment_type($att_type ?? 'link'),
+                                'attachment_type' => $att_type,
+                                'attachment_url' => $att_url
+                            ];
+                        }
+                    }
+                }
+            } else {
+                // Legacy support: Single attachment
+                if (isset($data->attachment_url) && isset($data->attachment_type)) {
+                    $legacy_type = $data->attachment_type;
+                    $legacy_url = $data->attachment_url;
+                    
+                    // Validate URL based on type
+                    $is_valid = false;
+                    if ($legacy_type === 'youtube') {
+                        $is_valid = $this->_is_valid_youtube_url($legacy_url);
+                    } elseif ($legacy_type === 'google_drive') {
+                        $is_valid = $this->_is_valid_google_drive_url($legacy_url);
+                    } elseif ($legacy_type === 'link') {
+                        $is_valid = filter_var($legacy_url, FILTER_VALIDATE_URL);
+                    } else {
+                        // For 'file' type or others, accept without URL validation
+                        $is_valid = true;
+                    }
+                    
+                    if ($is_valid) {
+                        $attachments[] = [
+                            'file_name' => 'external_file',
+                            'original_name' => $data->original_filename ?? 'External Link',
+                            'file_path' => $legacy_url,
+                            'file_size' => 0,
+                            'mime_type' => $this->_get_mime_type_for_attachment_type($legacy_type),
+                            'attachment_type' => $legacy_type,
+                            'attachment_url' => $legacy_url
+                        ];
+                    }
+                }
+            }
         }
 
         // Validate required fields
@@ -2658,5 +2760,112 @@ class TaskController extends BaseController
         }
 
         return null;
+    }
+
+    /**
+     * Process link attachments from form data
+     */
+    private function _process_link_attachments_from_form(&$link_attachments) {
+        // Check for link attachments in form data
+        $link_fields = ['link_0', 'link_1', 'link_2', 'link_3', 'link_4'];
+        $youtube_fields = ['youtube_0', 'youtube_1', 'youtube_2', 'youtube_3', 'youtube_4'];
+        $gdrive_fields = ['gdrive_0', 'gdrive_1', 'gdrive_2', 'gdrive_3', 'gdrive_4'];
+        
+        // Process regular links
+        foreach ($link_fields as $field) {
+            $url = $this->input->post($field);
+            if (!empty($url) && filter_var($url, FILTER_VALIDATE_URL)) {
+                $link_attachments[] = [
+                    'file_path' => $url,
+                    'file_name' => 'link_' . count($link_attachments),
+                    'original_name' => 'External Link',
+                    'file_size' => null,
+                    'mime_type' => 'text/plain',
+                    'attachment_type' => 'link',
+                    'attachment_url' => $url
+                ];
+            }
+        }
+        
+        // Process YouTube links
+        foreach ($youtube_fields as $field) {
+            $url = $this->input->post($field);
+            if (!empty($url) && $this->_is_valid_youtube_url($url)) {
+                $link_attachments[] = [
+                    'file_path' => $url,
+                    'file_name' => 'youtube_' . count($link_attachments),
+                    'original_name' => 'YouTube Video',
+                    'file_size' => null,
+                    'mime_type' => 'video/youtube',
+                    'attachment_type' => 'youtube',
+                    'attachment_url' => $url
+                ];
+            }
+        }
+        
+        // Process Google Drive links
+        foreach ($gdrive_fields as $field) {
+            $url = $this->input->post($field);
+            if (!empty($url) && $this->_is_valid_google_drive_url($url)) {
+                $link_attachments[] = [
+                    'file_path' => $url,
+                    'file_name' => 'gdrive_' . count($link_attachments),
+                    'original_name' => 'Google Drive File',
+                    'file_size' => null,
+                    'mime_type' => 'application/gdrive',
+                    'attachment_type' => 'google_drive',
+                    'attachment_url' => $url
+                ];
+            }
+        }
+    }
+
+    /**
+     * Validate YouTube URL
+     */
+    private function _is_valid_youtube_url($url) {
+        $patterns = [
+            '/^https?:\/\/(www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]+/',
+            '/^https?:\/\/youtu\.be\/[a-zA-Z0-9_-]+/',
+            '/^https?:\/\/(www\.)?youtube\.com\/embed\/[a-zA-Z0-9_-]+/'
+        ];
+        
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $url)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Validate Google Drive URL
+     */
+    private function _is_valid_google_drive_url($url) {
+        $patterns = [
+            '/^https?:\/\/drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+\/view/',
+            '/^https?:\/\/drive\.google\.com\/open\?id=[a-zA-Z0-9_-]+/',
+            '/^https?:\/\/docs\.google\.com\/[a-zA-Z]+\/d\/[a-zA-Z0-9_-]+/'
+        ];
+        
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $url)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get MIME type for attachment type
+     */
+    private function _get_mime_type_for_attachment_type($type) {
+        $mime_types = [
+            'link' => 'text/plain',
+            'youtube' => 'video/youtube',
+            'google_drive' => 'application/gdrive'
+        ];
+        
+        return $mime_types[$type] ?? 'text/plain';
     }
 } 
