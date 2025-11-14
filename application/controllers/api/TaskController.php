@@ -351,20 +351,26 @@ class TaskController extends BaseController
             
             $data = new stdClass();
             $parsed_data = [];
+            $parsed_files = []; // Initialize early so files can be stored here during parsing
             $raw_input = null;
             $boundary = null;
             
-            // For PUT requests, parse raw input manually if $_POST is empty
-            if (empty($_POST) && $this->input->method() === 'put') {
-                error_log('Task update: PUT request detected, parsing raw input manually');
-                $raw_input = file_get_contents('php://input');
-                
-                // Extract boundary from Content-Type header
+            // For PUT requests, we need to read raw input once and parse both form data and files
+            // php://input can only be read once, so we read it here and reuse it
+            if ($this->input->method() === 'put') {
+                // Extract boundary from Content-Type header first
                 if (preg_match('/boundary=(.*)$/', $content_type, $matches)) {
                     $boundary = trim($matches[1]);
                 }
                 
-                if ($boundary) {
+                // Read raw input once - this can only be done once per request
+                $raw_input = file_get_contents('php://input');
+                
+                // Parse raw input manually if $_POST is empty
+                // We'll parse both form data AND files in the same loop since php://input can only be read once
+                if (empty($_POST) && !empty($boundary)) {
+                    error_log('Task update: PUT request detected, parsing raw input manually');
+                    
                     // Parse multipart data manually
                     $parts = explode('--' . $boundary, $raw_input);
                     
@@ -375,9 +381,51 @@ class TaskController extends BaseController
                         if (preg_match('/name="([^"]+)"/', $part, $name_matches)) {
                             $field_name = $name_matches[1];
                             
-                            // Check if this is a file upload (skip files, handle them via $_FILES)
+                            // Check if this is a file upload
                             if (preg_match('/filename="([^"]+)"/', $part, $file_matches)) {
-                                // File will be handled via $_FILES if available
+                                // This is a file - we'll handle it in the file parsing section below
+                                // Store it in parsed_files for later processing
+                                $filename = $file_matches[1];
+                                
+                                // Extract file content
+                                $file_start = strpos($part, "\r\n\r\n");
+                                if ($file_start === false) {
+                                    $file_start = strpos($part, "\n\n");
+                                }
+                                if ($file_start !== false) {
+                                    $file_start += 2;
+                                    $file_end = strrpos($part, "\r\n");
+                                    if ($file_end === false) {
+                                        $file_end = strrpos($part, "\n");
+                                    }
+                                    if ($file_end !== false && $file_end > $file_start) {
+                                        $file_content = substr($part, $file_start, $file_end - $file_start);
+                                        
+                                        // Extract content type
+                                        $content_type = 'application/octet-stream';
+                                        if (preg_match('/Content-Type:\s*([^\r\n]+)/i', $part, $ct_matches)) {
+                                            $content_type = trim($ct_matches[1]);
+                                        }
+                                        
+                                        // Save to temporary file
+                                        $tmp_file = tempnam(sys_get_temp_dir(), 'upload_');
+                                        file_put_contents($tmp_file, $file_content);
+                                        
+                                        // Store file info in parsed_files (will be processed later)
+                                        if (!isset($parsed_files[$field_name])) {
+                                            $parsed_files[$field_name] = [];
+                                        }
+                                        $parsed_files[$field_name][] = [
+                                            'tmp_name' => $tmp_file,
+                                            'name' => $filename,
+                                            'type' => $content_type,
+                                            'size' => strlen($file_content),
+                                            'error' => UPLOAD_ERR_OK
+                                        ];
+                                        
+                                        error_log('Task update: Parsed file during form data parsing - ' . $filename . ' (' . $field_name . ')');
+                                    }
+                                }
                                 continue;
                             }
                             
@@ -438,64 +486,10 @@ class TaskController extends BaseController
             
             // Handle multiple file uploads
             $attachments = [];
-            $parsed_files = [];
             
-            // For PUT requests, if $_FILES is empty, parse files from raw input
-            if (empty($_FILES) && $this->input->method() === 'put' && !empty($raw_input) && !empty($boundary)) {
-                error_log('Task update: $_FILES is empty for PUT request, parsing files from raw input');
-                $parts = explode('--' . $boundary, $raw_input);
-                
-                foreach ($parts as $part) {
-                    if (empty($part) || trim($part) === '--' || trim($part) === '') continue;
-                    
-                    // Check if this is a file upload
-                    if (preg_match('/name="([^"]+)"/', $part, $name_matches) && 
-                        preg_match('/filename="([^"]+)"/', $part, $file_matches)) {
-                        $field_name = $name_matches[1];
-                        $filename = $file_matches[1];
-                        
-                        // Extract file content
-                        $file_start = strpos($part, "\r\n\r\n");
-                        if ($file_start === false) {
-                            $file_start = strpos($part, "\n\n");
-                        }
-                        if ($file_start !== false) {
-                            $file_start += 2;
-                            $file_end = strrpos($part, "\r\n");
-                            if ($file_end === false) {
-                                $file_end = strrpos($part, "\n");
-                            }
-                            if ($file_end !== false && $file_end > $file_start) {
-                                $file_content = substr($part, $file_start, $file_end - $file_start);
-                                
-                                // Extract content type
-                                $content_type = 'application/octet-stream';
-                                if (preg_match('/Content-Type:\s*([^\r\n]+)/i', $part, $ct_matches)) {
-                                    $content_type = trim($ct_matches[1]);
-                                }
-                                
-                                // Save to temporary file
-                                $tmp_file = tempnam(sys_get_temp_dir(), 'upload_');
-                                file_put_contents($tmp_file, $file_content);
-                                
-                                // Store file info
-                                if (!isset($parsed_files[$field_name])) {
-                                    $parsed_files[$field_name] = [];
-                                }
-                                $parsed_files[$field_name][] = [
-                                    'tmp_name' => $tmp_file,
-                                    'name' => $filename,
-                                    'type' => $content_type,
-                                    'size' => strlen($file_content),
-                                    'error' => UPLOAD_ERR_OK
-                                ];
-                                
-                                error_log('Task update: Parsed file from raw input - ' . $filename . ' (' . $field_name . ')');
-                            }
-                        }
-                    }
-                }
-            }
+            // Files should already be parsed in parsed_files if we processed raw input above
+            // If $_FILES is populated (POST request), we'll use that instead
+            // No need to parse again since we already did it above
             
             // Debug: Log what files we received
             error_log('Task update: $_FILES contents - ' . print_r($_FILES, true));
