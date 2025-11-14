@@ -362,6 +362,9 @@ class TaskController extends BaseController
             // Handle multiple file uploads
             $attachments = [];
             
+            // Debug: Log what files we received
+            error_log('Task update: $_FILES contents - ' . print_r($_FILES, true));
+            
             // Method 1: Multiple files with same field name (attachment[])
             if (isset($_FILES['attachment']) && is_array($_FILES['attachment']['name'])) {
                 $file_count = count($_FILES['attachment']['name']);
@@ -377,7 +380,23 @@ class TaskController extends BaseController
                     }
                 }
             }
-            // Method 2: Multiple files with different field names (attachment1, attachment2, etc.)
+            // Method 2: Single file with field name 'attachment' (not an array)
+            elseif (isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
+                error_log('Task update: Processing single file attachment - ' . $_FILES['attachment']['name']);
+                $file_type = $_FILES['attachment']['type'] ?? null;
+                $file_size = $_FILES['attachment']['size'] ?? null;
+                $uploaded_file = $this->upload_task_file($_FILES['attachment']['tmp_name'], $_FILES['attachment']['name'], $file_type, $file_size);
+                if ($uploaded_file) {
+                    error_log('Task update: File uploaded successfully - ' . $uploaded_file['file_name']);
+                    $attachments[] = $uploaded_file;
+                } else {
+                    // Log upload failure
+                    error_log('Task update: File upload failed for ' . $_FILES['attachment']['name']);
+                    $this->send_error('File upload failed. Please check file size and type.', 400);
+                    return;
+                }
+            }
+            // Method 3: Multiple files with different field names (attachment1, attachment2, etc.)
             else {
                 foreach ($_FILES as $field_name => $file_data) {
                     if (strpos($field_name, 'attachment') === 0 && $file_data['error'] === UPLOAD_ERR_OK) {
@@ -394,6 +413,7 @@ class TaskController extends BaseController
             // Handle existing attachments - if existing_attachments is provided, merge with new ones
             $existing_attachments_post = $this->input->post('existing_attachments');
             if ($existing_attachments_post) {
+                error_log('Task update: Processing existing attachments - ' . $existing_attachments_post);
                 $existing_attachments = is_string($existing_attachments_post) ? json_decode($existing_attachments_post, true) : $existing_attachments_post;
                 if (is_array($existing_attachments)) {
                     // Add existing attachments to the array
@@ -416,6 +436,8 @@ class TaskController extends BaseController
                     }
                 }
             }
+            
+            error_log('Task update: Total attachments after processing - ' . count($attachments));
         } else {
             // Handle JSON request
             $data = $this->get_json_input();
@@ -999,7 +1021,9 @@ class TaskController extends BaseController
                 'attachment_url' => 'uploads/tasks/' . $upload_data['file_name']
             ];
         } else {
-            $this->send_error('File upload failed: ' . $this->upload->display_errors('', ''), 400);
+            $error_message = 'File upload failed: ' . $this->upload->display_errors('', '');
+            error_log('Task file upload error: ' . $error_message);
+            // Return false instead of calling send_error to let caller handle the error
             return false;
         }
     }
