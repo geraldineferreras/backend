@@ -345,6 +345,13 @@ class TaskController extends BaseController
         $content_type = $this->input->server('CONTENT_TYPE');
         $is_multipart = strpos($content_type, 'multipart/form-data') !== false;
 
+        // Debug logging
+        log_message('info', "Task update {$task_id} - Content-Type: {$content_type}, Is multipart: " . ($is_multipart ? 'yes' : 'no'));
+        log_message('info', "Task update {$task_id} - FILES count: " . count($_FILES));
+        if (!empty($_FILES)) {
+            log_message('info', "Task update {$task_id} - FILES keys: " . implode(', ', array_keys($_FILES)));
+        }
+
         if ($is_multipart) {
             // Handle multipart form data with file upload
             $data = new stdClass();
@@ -368,10 +375,25 @@ class TaskController extends BaseController
             
             // Process file uploads (attachment_0, attachment_1, etc.)
             foreach ($_FILES as $field_name => $file_data) {
-                if (strpos($field_name, 'attachment_') === 0 && $file_data['error'] === UPLOAD_ERR_OK) {
-                    $uploaded_file = $this->upload_task_file($file_data['tmp_name'], $file_data['name']);
+                if (strpos($field_name, 'attachment_') === 0) {
+                    // Check for upload errors
+                    if ($file_data['error'] !== UPLOAD_ERR_OK) {
+                        log_message('error', "File upload error for {$field_name}: " . $file_data['error']);
+                        continue;
+                    }
+                    
+                    // Check if file was actually uploaded
+                    if (empty($file_data['tmp_name']) || !is_uploaded_file($file_data['tmp_name'])) {
+                        log_message('error', "Invalid file upload for {$field_name}");
+                        continue;
+                    }
+                    
+                    $uploaded_file = $this->upload_task_file($file_data['tmp_name'], $file_data['name'], $file_data['type'], $file_data['size'], $field_name);
                     if ($uploaded_file) {
                         $new_attachments[] = $uploaded_file;
+                        log_message('info', "Successfully uploaded file {$field_name}: " . $uploaded_file['file_name']);
+                    } else {
+                        log_message('error', "Failed to upload file {$field_name}");
                     }
                 }
             }
@@ -944,7 +966,7 @@ class TaskController extends BaseController
     /**
      * Upload a single file for task attachments
      */
-    private function upload_task_file($tmp_name, $original_name) {
+    private function upload_task_file($tmp_name, $original_name, $file_type = null, $file_size = null, $field_name = null) {
         $upload_config = [
             'upload_path' => './uploads/tasks/',
             'allowed_types' => 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3',
@@ -959,13 +981,22 @@ class TaskController extends BaseController
 
         $this->load->library('upload', $upload_config);
         
+        // Get file type and size from parameters or from $_FILES if field_name is provided
+        if ($field_name && isset($_FILES[$field_name])) {
+            $file_type = $file_type ?? $_FILES[$field_name]['type'] ?? 'application/octet-stream';
+            $file_size = $file_size ?? $_FILES[$field_name]['size'] ?? 0;
+        } else {
+            $file_type = $file_type ?? 'application/octet-stream';
+            $file_size = $file_size ?? 0;
+        }
+        
         // Set the file data for upload
         $_FILES['temp_file'] = [
             'name' => $original_name,
-            'type' => $_FILES['attachment']['type'] ?? 'application/octet-stream',
+            'type' => $file_type,
             'tmp_name' => $tmp_name,
             'error' => UPLOAD_ERR_OK,
-            'size' => $_FILES['attachment']['size'] ?? 0
+            'size' => $file_size
         ];
 
         if ($this->upload->do_upload('temp_file')) {
@@ -980,7 +1011,9 @@ class TaskController extends BaseController
                 'attachment_url' => 'uploads/tasks/' . $upload_data['file_name']
             ];
         } else {
-            $this->send_error('File upload failed: ' . $this->upload->display_errors('', ''), 400);
+            $error_message = $this->upload->display_errors('', '');
+            log_message('error', 'Task file upload failed: ' . $error_message);
+            // Don't send error here, just return false - let the caller handle it
             return false;
         }
     }
