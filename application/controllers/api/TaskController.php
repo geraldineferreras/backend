@@ -340,8 +340,123 @@ class TaskController extends BaseController
         $user_data = require_teacher($this);
         if (!$user_data) return;
 
-        $data = $this->get_json_input();
-        if (!$data) return;
+        // Check if multipart form data with files
+        $content_type = $this->input->server('CONTENT_TYPE');
+        $is_multipart = strpos($content_type, 'multipart/form-data') !== false;
+
+        if ($is_multipart) {
+            // Handle multipart form data with file upload
+            $data = new stdClass();
+            $data->title = $this->input->post('title');
+            $data->type = $this->input->post('type');
+            $data->points = $this->input->post('points');
+            $data->instructions = $this->input->post('instructions');
+            $class_codes_post = $this->input->post('class_codes');
+            $data->class_codes = is_string($class_codes_post) ? json_decode($class_codes_post, true) : $class_codes_post;
+            $data->allow_comments = $this->input->post('allow_comments') ? 1 : 0;
+            $data->is_draft = $this->input->post('is_draft') ? 1 : 0;
+            $data->is_scheduled = $this->input->post('is_scheduled') ? 1 : 0;
+            $data->scheduled_at = $this->input->post('scheduled_at');
+            $data->due_date = $this->input->post('due_date');
+            
+            // Handle multiple file uploads
+            $attachments = [];
+            
+            // Method 1: Multiple files with same field name (attachment[])
+            if (isset($_FILES['attachment']) && is_array($_FILES['attachment']['name'])) {
+                $file_count = count($_FILES['attachment']['name']);
+                
+                for ($i = 0; $i < $file_count; $i++) {
+                    if ($_FILES['attachment']['error'][$i] === UPLOAD_ERR_OK) {
+                        $file_type = $_FILES['attachment']['type'][$i] ?? null;
+                        $file_size = $_FILES['attachment']['size'][$i] ?? null;
+                        $uploaded_file = $this->upload_task_file($_FILES['attachment']['tmp_name'][$i], $_FILES['attachment']['name'][$i], $file_type, $file_size);
+                        if ($uploaded_file) {
+                            $attachments[] = $uploaded_file;
+                        }
+                    }
+                }
+            }
+            // Method 2: Multiple files with different field names (attachment1, attachment2, etc.)
+            else {
+                foreach ($_FILES as $field_name => $file_data) {
+                    if (strpos($field_name, 'attachment') === 0 && $file_data['error'] === UPLOAD_ERR_OK) {
+                        $file_type = $file_data['type'] ?? null;
+                        $file_size = $file_data['size'] ?? null;
+                        $uploaded_file = $this->upload_task_file($file_data['tmp_name'], $file_data['name'], $file_type, $file_size);
+                        if ($uploaded_file) {
+                            $attachments[] = $uploaded_file;
+                        }
+                    }
+                }
+            }
+            
+            // Handle existing attachments - if existing_attachments is provided, merge with new ones
+            $existing_attachments_post = $this->input->post('existing_attachments');
+            if ($existing_attachments_post) {
+                $existing_attachments = is_string($existing_attachments_post) ? json_decode($existing_attachments_post, true) : $existing_attachments_post;
+                if (is_array($existing_attachments)) {
+                    // Add existing attachments to the array
+                    foreach ($existing_attachments as $existing) {
+                        if (isset($existing['attachment_id'])) {
+                            // Get existing attachment details from database
+                            $existing_attachment = $this->Task_model->get_task_attachment_by_id($existing['attachment_id']);
+                            if ($existing_attachment) {
+                                $attachments[] = [
+                                    'file_name' => $existing_attachment['file_name'],
+                                    'original_name' => $existing_attachment['original_name'],
+                                    'file_path' => $existing_attachment['file_path'],
+                                    'file_size' => $existing_attachment['file_size'],
+                                    'mime_type' => $existing_attachment['mime_type'],
+                                    'attachment_type' => $existing_attachment['attachment_type'] ?? 'file',
+                                    'attachment_url' => $existing_attachment['attachment_url'] ?? $existing_attachment['file_path']
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Handle JSON request
+            $data = $this->get_json_input();
+            if (!$data) {
+                $this->send_error('Invalid request data', 400);
+                return;
+            }
+            
+            // Handle JSON attachments
+            $attachments = [];
+            if (isset($data->attachments) && is_array($data->attachments)) {
+                foreach ($data->attachments as $attachment) {
+                    if (isset($attachment->attachment_id)) {
+                        // Existing attachment - get from database
+                        $existing_attachment = $this->Task_model->get_task_attachment_by_id($attachment->attachment_id);
+                        if ($existing_attachment) {
+                            $attachments[] = [
+                                'file_name' => $existing_attachment['file_name'],
+                                'original_name' => $existing_attachment['original_name'],
+                                'file_path' => $existing_attachment['file_path'],
+                                'file_size' => $existing_attachment['file_size'],
+                                'mime_type' => $existing_attachment['mime_type'],
+                                'attachment_type' => $existing_attachment['attachment_type'] ?? 'file',
+                                'attachment_url' => $existing_attachment['attachment_url'] ?? $existing_attachment['file_path']
+                            ];
+                        }
+                    } else {
+                        // New attachment from JSON (external link or already uploaded file)
+                        $attachments[] = [
+                            'file_name' => $attachment->file_name ?? 'external_file',
+                            'original_name' => $attachment->original_name ?? $attachment->file_name ?? 'external_file',
+                            'file_path' => $attachment->file_path ?? '',
+                            'file_size' => $attachment->file_size ?? 0,
+                            'mime_type' => $attachment->mime_type ?? 'application/octet-stream',
+                            'attachment_type' => $attachment->attachment_type ?? 'link',
+                            'attachment_url' => $attachment->attachment_url ?? ''
+                        ];
+                    }
+                }
+            }
+        }
 
         try {
             $task = $this->Task_model->get_by_id($task_id);
@@ -381,9 +496,26 @@ class TaskController extends BaseController
             if (isset($data->scheduled_at)) $update_data['scheduled_at'] = $data->scheduled_at;
             if (isset($data->due_date)) $update_data['due_date'] = $data->due_date;
 
-            $success = $this->Task_model->update($task_id, $update_data);
+            // For backward compatibility, set attachment_url and attachment_type if only one file
+            if (count($attachments) === 1) {
+                $update_data['attachment_url'] = $attachments[0]['file_name'];
+                $update_data['attachment_type'] = 'file';
+                $update_data['original_filename'] = $attachments[0]['original_name'];
+            } else if (count($attachments) > 1) {
+                $update_data['attachment_url'] = null;
+                $update_data['attachment_type'] = 'multiple';
+                $update_data['original_filename'] = null;
+            }
+
+            // Use update_with_attachments if attachments are provided, otherwise use regular update
+            if (!empty($attachments)) {
+                $success = $this->Task_model->update_with_attachments($task_id, $update_data, $attachments);
+            } else {
+                $success = $this->Task_model->update($task_id, $update_data);
+            }
+
             if ($success) {
-                $updated_task = $this->Task_model->get_by_id($task_id);
+                $updated_task = $this->Task_model->get_task_with_attachments($task_id);
                 
                 // Log task update
                 log_audit_event(
@@ -823,7 +955,7 @@ class TaskController extends BaseController
     /**
      * Upload a single file for task attachments
      */
-    private function upload_task_file($tmp_name, $original_name) {
+    private function upload_task_file($tmp_name, $original_name, $file_type = null, $file_size = null) {
         $upload_config = [
             'upload_path' => './uploads/tasks/',
             'allowed_types' => 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3',
@@ -838,13 +970,21 @@ class TaskController extends BaseController
 
         $this->load->library('upload', $upload_config);
         
+        // Get file info if not provided
+        if ($file_type === null) {
+            $file_type = mime_content_type($tmp_name) ?: 'application/octet-stream';
+        }
+        if ($file_size === null) {
+            $file_size = filesize($tmp_name) ?: 0;
+        }
+        
         // Set the file data for upload
         $_FILES['temp_file'] = [
             'name' => $original_name,
-            'type' => $_FILES['attachment']['type'] ?? 'application/octet-stream',
+            'type' => $file_type,
             'tmp_name' => $tmp_name,
             'error' => UPLOAD_ERR_OK,
-            'size' => $_FILES['attachment']['size'] ?? 0
+            'size' => $file_size
         ];
 
         if ($this->upload->do_upload('temp_file')) {

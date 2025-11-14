@@ -774,4 +774,12 @@ class Task_model extends CI_Model {
         return $this->db->where('file_name', $filename)
             ->get('task_attachments')->row_array();
     }
+
+    /**
+     * Get task attachment by ID
+     */
+    public function get_task_attachment_by_id($attachment_id) {
+        return $this->db->where('attachment_id', $attachment_id)
+            ->get('task_attachments')->row_array();
+    }
 } 
