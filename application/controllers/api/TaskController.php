@@ -359,6 +359,10 @@ class TaskController extends BaseController
             $data->scheduled_at = $this->input->post('scheduled_at');
             $data->due_date = $this->input->post('due_date');
             
+            // Debug: Log received form data
+            error_log('Task update: Received POST data - ' . print_r($this->input->post(), true));
+            error_log('Task update: Parsed data object - title: ' . ($data->title ?? 'NULL') . ', type: ' . ($data->type ?? 'NULL'));
+            
             // Handle multiple file uploads
             $attachments = [];
             
@@ -507,6 +511,7 @@ class TaskController extends BaseController
             }
 
             $update_data = [];
+            // Only update fields that are explicitly provided (not null)
             if (isset($data->title)) $update_data['title'] = $data->title;
             if (isset($data->type)) $update_data['type'] = $data->type;
             if (isset($data->points)) $update_data['points'] = $data->points;
@@ -515,8 +520,12 @@ class TaskController extends BaseController
             if (isset($data->allow_comments)) $update_data['allow_comments'] = $data->allow_comments;
             if (isset($data->is_draft)) $update_data['is_draft'] = $data->is_draft;
             if (isset($data->is_scheduled)) $update_data['is_scheduled'] = $data->is_scheduled;
-            if (isset($data->scheduled_at)) $update_data['scheduled_at'] = $data->scheduled_at;
+            if (isset($data->scheduled_at)) $update_data['scheduled_at'] = $data->scheduled_at ?: null;
             if (isset($data->due_date)) $update_data['due_date'] = $data->due_date;
+            
+            // Debug: Log what will be updated
+            error_log('Task update: Update data array - ' . print_r($update_data, true));
+            error_log('Task update: Attachments count - ' . count($attachments));
 
             // For backward compatibility, set attachment_url and attachment_type if only one file
             if (count($attachments) === 1) {
@@ -530,11 +539,16 @@ class TaskController extends BaseController
             }
 
             // Use update_with_attachments if attachments are provided, otherwise use regular update
+            // Note: update_with_attachments will update task data AND replace all attachments
             if (!empty($attachments)) {
+                error_log('Task update: Calling update_with_attachments with ' . count($attachments) . ' attachments');
                 $success = $this->Task_model->update_with_attachments($task_id, $update_data, $attachments);
             } else {
+                error_log('Task update: Calling regular update (no attachments)');
                 $success = $this->Task_model->update($task_id, $update_data);
             }
+            
+            error_log('Task update: Update result - ' . ($success ? 'SUCCESS' : 'FAILED'));
 
             if ($success) {
                 $updated_task = $this->Task_model->get_task_with_attachments($task_id);
