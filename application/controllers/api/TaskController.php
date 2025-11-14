@@ -511,12 +511,30 @@ class TaskController extends BaseController
             
             // Method 1: Multiple files with same field name (attachment[])
             if (isset($files_to_process['attachment'])) {
-                // Check if it's an array (multiple files) or single file
-                if (is_array($files_to_process['attachment']['name'])) {
+                // Check if it's parsed files (array of arrays) or $_FILES structure
+                if (isset($files_to_process['attachment'][0]) && is_array($files_to_process['attachment'][0])) {
+                    // Parsed files structure - array of file arrays
+                    foreach ($files_to_process['attachment'] as $file_item) {
+                        if (isset($file_item['error']) && $file_item['error'] === UPLOAD_ERR_OK) {
+                            $uploaded_file = $this->upload_task_file(
+                                $file_item['tmp_name'], 
+                                $file_item['name'], 
+                                $file_item['type'] ?? null, 
+                                $file_item['size'] ?? null
+                            );
+                            if ($uploaded_file) {
+                                error_log('Task update: File uploaded successfully (parsed array) - ' . $uploaded_file['file_name']);
+                                $attachments[] = $uploaded_file;
+                            }
+                        }
+                    }
+                }
+                // Check if it's $_FILES array structure (multiple files)
+                elseif (isset($files_to_process['attachment']['name']) && is_array($files_to_process['attachment']['name'])) {
                     $file_count = count($files_to_process['attachment']['name']);
                     
                     for ($i = 0; $i < $file_count; $i++) {
-                        if ($files_to_process['attachment']['error'][$i] === UPLOAD_ERR_OK) {
+                        if (isset($files_to_process['attachment']['error'][$i]) && $files_to_process['attachment']['error'][$i] === UPLOAD_ERR_OK) {
                             $file_type = $files_to_process['attachment']['type'][$i] ?? null;
                             $file_size = $files_to_process['attachment']['size'][$i] ?? null;
                             $uploaded_file = $this->upload_task_file($files_to_process['attachment']['tmp_name'][$i], $files_to_process['attachment']['name'][$i], $file_type, $file_size);
@@ -528,8 +546,8 @@ class TaskController extends BaseController
                     }
                 } 
                 // Method 2: Single file with field name 'attachment' (not an array)
-                elseif ($files_to_process['attachment']['error'] === UPLOAD_ERR_OK) {
-                    error_log('Task update: Processing single file attachment - ' . $files_to_process['attachment']['name']);
+                elseif (isset($files_to_process['attachment']['error']) && $files_to_process['attachment']['error'] === UPLOAD_ERR_OK) {
+                    error_log('Task update: Processing single file attachment - ' . ($files_to_process['attachment']['name'] ?? 'unknown'));
                     $file_type = $files_to_process['attachment']['type'] ?? null;
                     $file_size = $files_to_process['attachment']['size'] ?? null;
                     $uploaded_file = $this->upload_task_file($files_to_process['attachment']['tmp_name'], $files_to_process['attachment']['name'], $file_type, $file_size);
@@ -538,7 +556,7 @@ class TaskController extends BaseController
                         $attachments[] = $uploaded_file;
                     } else {
                         // Log upload failure
-                        error_log('Task update: File upload failed for ' . $files_to_process['attachment']['name']);
+                        error_log('Task update: File upload failed for ' . ($files_to_process['attachment']['name'] ?? 'unknown'));
                         $this->send_error('File upload failed. Please check file size and type.', 400);
                         return;
                     }
