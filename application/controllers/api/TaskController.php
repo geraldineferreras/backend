@@ -346,76 +346,262 @@ class TaskController extends BaseController
 
         if ($is_multipart) {
             // Handle multipart form data with file upload
+            // For PUT requests, $_POST and $_FILES may not be populated automatically
+            // We need to handle both POST and PUT requests properly
+            
             $data = new stdClass();
-            $data->title = $this->input->post('title');
-            $data->type = $this->input->post('type');
-            $data->points = $this->input->post('points');
-            $data->instructions = $this->input->post('instructions');
-            $class_codes_post = $this->input->post('class_codes');
-            $data->class_codes = is_string($class_codes_post) ? json_decode($class_codes_post, true) : $class_codes_post;
-            $data->allow_comments = $this->input->post('allow_comments') ? 1 : 0;
-            $data->is_draft = $this->input->post('is_draft') ? 1 : 0;
-            $data->is_scheduled = $this->input->post('is_scheduled') ? 1 : 0;
-            $data->scheduled_at = $this->input->post('scheduled_at');
-            $data->due_date = $this->input->post('due_date');
+            $parsed_data = [];
+            $raw_input = null;
+            $boundary = null;
+            
+            // For PUT requests, parse raw input manually if $_POST is empty
+            if (empty($_POST) && $this->input->method() === 'put') {
+                error_log('Task update: PUT request detected, parsing raw input manually');
+                $raw_input = file_get_contents('php://input');
+                
+                // Extract boundary from Content-Type header
+                if (preg_match('/boundary=(.*)$/', $content_type, $matches)) {
+                    $boundary = trim($matches[1]);
+                }
+                
+                if ($boundary) {
+                    // Parse multipart data manually
+                    $parts = explode('--' . $boundary, $raw_input);
+                    
+                    foreach ($parts as $part) {
+                        if (empty($part) || trim($part) === '--' || trim($part) === '') continue;
+                        
+                        // Parse each part
+                        if (preg_match('/name="([^"]+)"/', $part, $name_matches)) {
+                            $field_name = $name_matches[1];
+                            
+                            // Check if this is a file upload (skip files, handle them via $_FILES)
+                            if (preg_match('/filename="([^"]+)"/', $part, $file_matches)) {
+                                // File will be handled via $_FILES if available
+                                continue;
+                            }
+                            
+                            // Extract the value (text field)
+                            $value_start = strpos($part, "\r\n\r\n");
+                            if ($value_start === false) {
+                                $value_start = strpos($part, "\n\n");
+                            }
+                            if ($value_start !== false) {
+                                $value_start += 2;
+                                $value_end = strrpos($part, "\r\n");
+                                if ($value_end === false) {
+                                    $value_end = strrpos($part, "\n");
+                                }
+                                if ($value_end !== false && $value_end > $value_start) {
+                                    $value = substr($part, $value_start, $value_end - $value_start);
+                                    $parsed_data[$field_name] = trim($value);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Use parsed data
+                $data->title = $parsed_data['title'] ?? null;
+                $data->type = $parsed_data['type'] ?? null;
+                $data->points = $parsed_data['points'] ?? null;
+                $data->instructions = $parsed_data['instructions'] ?? null;
+                $class_codes_post = $parsed_data['class_codes'] ?? null;
+                $data->class_codes = is_string($class_codes_post) ? json_decode($class_codes_post, true) : $class_codes_post;
+                $allow_comments = $parsed_data['allow_comments'] ?? null;
+                $data->allow_comments = ($allow_comments == '1' || $allow_comments === 1 || $allow_comments === true) ? 1 : 0;
+                $is_draft = $parsed_data['is_draft'] ?? null;
+                $data->is_draft = ($is_draft == '1' || $is_draft === 1 || $is_draft === true) ? 1 : 0;
+                $is_scheduled = $parsed_data['is_scheduled'] ?? null;
+                $data->is_scheduled = ($is_scheduled == '1' || $is_scheduled === 1 || $is_scheduled === true) ? 1 : 0;
+                $data->scheduled_at = $parsed_data['scheduled_at'] ?? null;
+                $data->due_date = $parsed_data['due_date'] ?? null;
+            } else {
+                // For POST requests or if $_POST is populated, use standard method
+                $data->title = $this->input->post('title');
+                $data->type = $this->input->post('type');
+                $data->points = $this->input->post('points');
+                $data->instructions = $this->input->post('instructions');
+                $class_codes_post = $this->input->post('class_codes');
+                $data->class_codes = is_string($class_codes_post) ? json_decode($class_codes_post, true) : $class_codes_post;
+                $data->allow_comments = $this->input->post('allow_comments') ? 1 : 0;
+                $data->is_draft = $this->input->post('is_draft') ? 1 : 0;
+                $data->is_scheduled = $this->input->post('is_scheduled') ? 1 : 0;
+                $data->scheduled_at = $this->input->post('scheduled_at');
+                $data->due_date = $this->input->post('due_date');
+            }
             
             // Debug: Log received form data
-            error_log('Task update: Received POST data - ' . print_r($this->input->post(), true));
-            error_log('Task update: Parsed data object - title: ' . ($data->title ?? 'NULL') . ', type: ' . ($data->type ?? 'NULL'));
+            error_log('Task update: Request method - ' . $this->input->method());
+            error_log('Task update: $_POST empty - ' . (empty($_POST) ? 'YES' : 'NO'));
+            error_log('Task update: Received data - title: ' . ($data->title ?? 'NULL') . ', type: ' . ($data->type ?? 'NULL'));
             
             // Handle multiple file uploads
             $attachments = [];
+            $parsed_files = [];
             
-            // Debug: Log what files we received
-            error_log('Task update: $_FILES contents - ' . print_r($_FILES, true));
-            
-            // Method 1: Multiple files with same field name (attachment[])
-            if (isset($_FILES['attachment']) && is_array($_FILES['attachment']['name'])) {
-                $file_count = count($_FILES['attachment']['name']);
+            // For PUT requests, if $_FILES is empty, parse files from raw input
+            if (empty($_FILES) && $this->input->method() === 'put' && !empty($raw_input) && !empty($boundary)) {
+                error_log('Task update: $_FILES is empty for PUT request, parsing files from raw input');
+                $parts = explode('--' . $boundary, $raw_input);
                 
-                for ($i = 0; $i < $file_count; $i++) {
-                    if ($_FILES['attachment']['error'][$i] === UPLOAD_ERR_OK) {
-                        $file_type = $_FILES['attachment']['type'][$i] ?? null;
-                        $file_size = $_FILES['attachment']['size'][$i] ?? null;
-                        $uploaded_file = $this->upload_task_file($_FILES['attachment']['tmp_name'][$i], $_FILES['attachment']['name'][$i], $file_type, $file_size);
-                        if ($uploaded_file) {
-                            $attachments[] = $uploaded_file;
+                foreach ($parts as $part) {
+                    if (empty($part) || trim($part) === '--' || trim($part) === '') continue;
+                    
+                    // Check if this is a file upload
+                    if (preg_match('/name="([^"]+)"/', $part, $name_matches) && 
+                        preg_match('/filename="([^"]+)"/', $part, $file_matches)) {
+                        $field_name = $name_matches[1];
+                        $filename = $file_matches[1];
+                        
+                        // Extract file content
+                        $file_start = strpos($part, "\r\n\r\n");
+                        if ($file_start === false) {
+                            $file_start = strpos($part, "\n\n");
+                        }
+                        if ($file_start !== false) {
+                            $file_start += 2;
+                            $file_end = strrpos($part, "\r\n");
+                            if ($file_end === false) {
+                                $file_end = strrpos($part, "\n");
+                            }
+                            if ($file_end !== false && $file_end > $file_start) {
+                                $file_content = substr($part, $file_start, $file_end - $file_start);
+                                
+                                // Extract content type
+                                $content_type = 'application/octet-stream';
+                                if (preg_match('/Content-Type:\s*([^\r\n]+)/i', $part, $ct_matches)) {
+                                    $content_type = trim($ct_matches[1]);
+                                }
+                                
+                                // Save to temporary file
+                                $tmp_file = tempnam(sys_get_temp_dir(), 'upload_');
+                                file_put_contents($tmp_file, $file_content);
+                                
+                                // Store file info
+                                if (!isset($parsed_files[$field_name])) {
+                                    $parsed_files[$field_name] = [];
+                                }
+                                $parsed_files[$field_name][] = [
+                                    'tmp_name' => $tmp_file,
+                                    'name' => $filename,
+                                    'type' => $content_type,
+                                    'size' => strlen($file_content),
+                                    'error' => UPLOAD_ERR_OK
+                                ];
+                                
+                                error_log('Task update: Parsed file from raw input - ' . $filename . ' (' . $field_name . ')');
+                            }
                         }
                     }
                 }
             }
-            // Method 2: Single file with field name 'attachment' (not an array)
-            elseif (isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
-                error_log('Task update: Processing single file attachment - ' . $_FILES['attachment']['name']);
-                $file_type = $_FILES['attachment']['type'] ?? null;
-                $file_size = $_FILES['attachment']['size'] ?? null;
-                $uploaded_file = $this->upload_task_file($_FILES['attachment']['tmp_name'], $_FILES['attachment']['name'], $file_type, $file_size);
-                if ($uploaded_file) {
-                    error_log('Task update: File uploaded successfully - ' . $uploaded_file['file_name']);
-                    $attachments[] = $uploaded_file;
-                } else {
-                    // Log upload failure
-                    error_log('Task update: File upload failed for ' . $_FILES['attachment']['name']);
-                    $this->send_error('File upload failed. Please check file size and type.', 400);
-                    return;
+            
+            // Debug: Log what files we received
+            error_log('Task update: $_FILES contents - ' . print_r($_FILES, true));
+            error_log('Task update: Parsed files - ' . print_r($parsed_files, true));
+            error_log('Task update: Checking for attachment field - isset: ' . (isset($_FILES['attachment']) ? 'YES' : 'NO'));
+            if (isset($_FILES['attachment'])) {
+                error_log('Task update: attachment is_array: ' . (is_array($_FILES['attachment']['name']) ? 'YES' : 'NO'));
+                error_log('Task update: attachment error code: ' . (is_array($_FILES['attachment']['name']) ? 'ARRAY' : $_FILES['attachment']['error']));
+            }
+            
+            // Use parsed files if $_FILES is empty, otherwise use $_FILES
+            $files_to_process = !empty($_FILES) ? $_FILES : $parsed_files;
+            
+            // Method 1: Multiple files with same field name (attachment[])
+            if (isset($files_to_process['attachment'])) {
+                // Check if it's an array (multiple files) or single file
+                if (is_array($files_to_process['attachment']['name'])) {
+                    $file_count = count($files_to_process['attachment']['name']);
+                    
+                    for ($i = 0; $i < $file_count; $i++) {
+                        if ($files_to_process['attachment']['error'][$i] === UPLOAD_ERR_OK) {
+                            $file_type = $files_to_process['attachment']['type'][$i] ?? null;
+                            $file_size = $files_to_process['attachment']['size'][$i] ?? null;
+                            $uploaded_file = $this->upload_task_file($files_to_process['attachment']['tmp_name'][$i], $files_to_process['attachment']['name'][$i], $file_type, $file_size);
+                            if ($uploaded_file) {
+                                error_log('Task update: File uploaded successfully (array) - ' . $uploaded_file['file_name']);
+                                $attachments[] = $uploaded_file;
+                            }
+                        }
+                    }
+                } 
+                // Method 2: Single file with field name 'attachment' (not an array)
+                elseif ($files_to_process['attachment']['error'] === UPLOAD_ERR_OK) {
+                    error_log('Task update: Processing single file attachment - ' . $files_to_process['attachment']['name']);
+                    $file_type = $files_to_process['attachment']['type'] ?? null;
+                    $file_size = $files_to_process['attachment']['size'] ?? null;
+                    $uploaded_file = $this->upload_task_file($files_to_process['attachment']['tmp_name'], $files_to_process['attachment']['name'], $file_type, $file_size);
+                    if ($uploaded_file) {
+                        error_log('Task update: File uploaded successfully - ' . $uploaded_file['file_name']);
+                        $attachments[] = $uploaded_file;
+                    } else {
+                        // Log upload failure
+                        error_log('Task update: File upload failed for ' . $files_to_process['attachment']['name']);
+                        $this->send_error('File upload failed. Please check file size and type.', 400);
+                        return;
+                    }
                 }
             }
             // Method 3: Multiple files with different field names (attachment1, attachment2, etc.)
-            else {
-                foreach ($_FILES as $field_name => $file_data) {
-                    if (strpos($field_name, 'attachment') === 0 && $file_data['error'] === UPLOAD_ERR_OK) {
-                        $file_type = $file_data['type'] ?? null;
-                        $file_size = $file_data['size'] ?? null;
-                        $uploaded_file = $this->upload_task_file($file_data['tmp_name'], $file_data['name'], $file_type, $file_size);
-                        if ($uploaded_file) {
-                            $attachments[] = $uploaded_file;
+            // Also catch files from parsed_files array
+            if (empty($attachments)) {
+                foreach ($files_to_process as $field_name => $file_data) {
+                    error_log('Task update: Checking file field - ' . $field_name);
+                    if (strpos($field_name, 'attachment') === 0) {
+                        // Handle parsed files (array of arrays)
+                        if (isset($file_data[0]) && is_array($file_data[0])) {
+                            // Multiple files with same field name from parsed data
+                            foreach ($file_data as $file_item) {
+                                if ($file_item['error'] === UPLOAD_ERR_OK) {
+                                    $uploaded_file = $this->upload_task_file($file_item['tmp_name'], $file_item['name'], $file_item['type'], $file_item['size']);
+                                    if ($uploaded_file) {
+                                        error_log('Task update: File uploaded via Method 3 (parsed array) - ' . $uploaded_file['file_name']);
+                                        $attachments[] = $uploaded_file;
+                                    }
+                                }
+                            }
+                        }
+                        // Handle both array and single file formats from $_FILES
+                        elseif (is_array($file_data['error'])) {
+                            // Multiple files with same field name
+                            for ($i = 0; $i < count($file_data['error']); $i++) {
+                                if ($file_data['error'][$i] === UPLOAD_ERR_OK) {
+                                    $file_type = $file_data['type'][$i] ?? null;
+                                    $file_size = $file_data['size'][$i] ?? null;
+                                    $uploaded_file = $this->upload_task_file($file_data['tmp_name'][$i], $file_data['name'][$i], $file_type, $file_size);
+                                    if ($uploaded_file) {
+                                        $attachments[] = $uploaded_file;
+                                    }
+                                }
+                            }
+                        } elseif ($file_data['error'] === UPLOAD_ERR_OK) {
+                            // Single file
+                            $file_type = $file_data['type'] ?? null;
+                            $file_size = $file_data['size'] ?? null;
+                            $uploaded_file = $this->upload_task_file($file_data['tmp_name'], $file_data['name'], $file_type, $file_size);
+                            if ($uploaded_file) {
+                                error_log('Task update: File uploaded via Method 3 - ' . $uploaded_file['file_name']);
+                                $attachments[] = $uploaded_file;
+                            } else {
+                                error_log('Task update: File upload failed via Method 3 - ' . $file_data['name']);
+                            }
+                        } else {
+                            error_log('Task update: File has error code ' . ($file_data['error'] ?? 'UNKNOWN') . ' for field ' . $field_name);
                         }
                     }
                 }
             }
             
             // Handle existing attachments - if existing_attachments is provided, merge with new ones
-            $existing_attachments_post = $this->input->post('existing_attachments');
+            // For PUT requests, get from parsed_data if available, otherwise from POST
+            if (!empty($parsed_data) && isset($parsed_data['existing_attachments'])) {
+                $existing_attachments_post = $parsed_data['existing_attachments'];
+            } else {
+                $existing_attachments_post = $this->input->post('existing_attachments');
+            }
+            
             if ($existing_attachments_post) {
                 error_log('Task update: Processing existing attachments - ' . $existing_attachments_post);
                 $existing_attachments = is_string($existing_attachments_post) ? json_decode($existing_attachments_post, true) : $existing_attachments_post;
@@ -542,13 +728,20 @@ class TaskController extends BaseController
             // Note: update_with_attachments will update task data AND replace all attachments
             if (!empty($attachments)) {
                 error_log('Task update: Calling update_with_attachments with ' . count($attachments) . ' attachments');
+                error_log('Task update: Update data keys: ' . implode(', ', array_keys($update_data)));
                 $success = $this->Task_model->update_with_attachments($task_id, $update_data, $attachments);
             } else {
                 error_log('Task update: Calling regular update (no attachments)');
+                error_log('Task update: Update data keys: ' . implode(', ', array_keys($update_data)));
                 $success = $this->Task_model->update($task_id, $update_data);
             }
             
             error_log('Task update: Update result - ' . ($success ? 'SUCCESS' : 'FAILED'));
+            
+            // If update failed, log database error
+            if (!$success) {
+                error_log('Task update: Database error - ' . $this->db->error()['message'] ?? 'Unknown error');
+            }
 
             if ($success) {
                 $updated_task = $this->Task_model->get_task_with_attachments($task_id);
