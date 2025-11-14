@@ -334,149 +334,14 @@ class TaskController extends BaseController
     /**
      * Update task (Teacher only)
      * PUT /api/tasks/{task_id}
-     * Supports both JSON and multipart/form-data (for file uploads)
      */
     public function task_put($task_id)
     {
         $user_data = require_teacher($this);
         if (!$user_data) return;
 
-        // Check if multipart form data with files
-        $content_type = $this->input->server('CONTENT_TYPE');
-        $is_multipart = strpos($content_type, 'multipart/form-data') !== false;
-
-        // Debug logging
-        log_message('info', "Task update {$task_id} - Content-Type: {$content_type}, Is multipart: " . ($is_multipart ? 'yes' : 'no'));
-        log_message('info', "Task update {$task_id} - FILES count: " . count($_FILES));
-        if (!empty($_FILES)) {
-            log_message('info', "Task update {$task_id} - FILES keys: " . implode(', ', array_keys($_FILES)));
-        }
-
-        if ($is_multipart) {
-            // Handle multipart form data with file upload
-            $data = new stdClass();
-            $data->title = $this->input->post('title');
-            $data->type = $this->input->post('type');
-            $data->points = $this->input->post('points');
-            $data->instructions = $this->input->post('instructions');
-            $class_codes_post = $this->input->post('class_codes');
-            $data->class_codes = !empty($class_codes_post) ? json_decode($class_codes_post, true) : null;
-            $allow_comments_post = $this->input->post('allow_comments');
-            $data->allow_comments = ($allow_comments_post === '1' || $allow_comments_post === 1 || $allow_comments_post === true) ? 1 : 0;
-            $is_draft_post = $this->input->post('is_draft');
-            $data->is_draft = ($is_draft_post === '1' || $is_draft_post === 1 || $is_draft_post === true) ? 1 : 0;
-            $is_scheduled_post = $this->input->post('is_scheduled');
-            $data->is_scheduled = ($is_scheduled_post === '1' || $is_scheduled_post === 1 || $is_scheduled_post === true) ? 1 : 0;
-            $data->scheduled_at = $this->input->post('scheduled_at');
-            $data->due_date = $this->input->post('due_date');
-            
-            // Handle multiple file uploads
-            $new_attachments = [];
-            
-            // Process file uploads (attachment_0, attachment_1, etc.)
-            foreach ($_FILES as $field_name => $file_data) {
-                if (strpos($field_name, 'attachment_') === 0) {
-                    // Check for upload errors
-                    if ($file_data['error'] !== UPLOAD_ERR_OK) {
-                        log_message('error', "File upload error for {$field_name}: " . $file_data['error']);
-                        continue;
-                    }
-                    
-                    // Check if file was actually uploaded
-                    if (empty($file_data['tmp_name']) || !is_uploaded_file($file_data['tmp_name'])) {
-                        log_message('error', "Invalid file upload for {$field_name}");
-                        continue;
-                    }
-                    
-                    $uploaded_file = $this->upload_task_file($file_data['tmp_name'], $file_data['name'], $file_data['type'], $file_data['size'], $field_name);
-                    if ($uploaded_file) {
-                        $new_attachments[] = $uploaded_file;
-                        log_message('info', "Successfully uploaded file {$field_name}: " . $uploaded_file['file_name']);
-                    } else {
-                        log_message('error', "Failed to upload file {$field_name}");
-                    }
-                }
-            }
-            
-            // Process link attachments (link_0, link_1, etc. with link_type_0, link_type_1, etc.)
-            $link_index = 0;
-            $max_links = 10; // Limit to prevent infinite loop
-            while ($link_index < $max_links) {
-                $link_url = $this->input->post("link_{$link_index}");
-                if ($link_url === false || empty($link_url)) {
-                    $link_index++;
-                    continue;
-                }
-                
-                $link_type = $this->input->post("link_type_{$link_index}");
-                if (empty($link_type)) {
-                    $link_type = 'link';
-                }
-                
-                if (filter_var($link_url, FILTER_VALIDATE_URL)) {
-                    $new_attachments[] = [
-                        'file_path' => $link_url,
-                        'file_name' => $link_type . '_' . uniqid(),
-                        'original_name' => $link_url,
-                        'file_size' => 0,
-                        'mime_type' => $this->get_mime_type_for_link_type($link_type),
-                        'attachment_type' => $link_type,
-                        'attachment_url' => $link_url
-                    ];
-                }
-                $link_index++;
-            }
-            
-            // Get existing attachments to preserve (if provided)
-            $existing_attachments_json = $this->input->post('existing_attachments');
-            $existing_attachments = [];
-            $has_existing_attachments_field = $this->input->post('existing_attachments') !== false;
-            
-            if ($has_existing_attachments_field && !empty($existing_attachments_json)) {
-                $existing_attachments_data = json_decode($existing_attachments_json, true);
-                if (is_array($existing_attachments_data)) {
-                    // Convert existing attachment URLs to attachment format
-                    foreach ($existing_attachments_data as $existing_att) {
-                        if (is_array($existing_att) && isset($existing_att['attachment_url'])) {
-                            $existing_attachments[] = [
-                                'file_path' => $existing_att['attachment_url'],
-                                'file_name' => $existing_att['file_name'] ?? basename($existing_att['attachment_url']),
-                                'original_name' => $existing_att['original_name'] ?? basename($existing_att['attachment_url']),
-                                'file_size' => $existing_att['file_size'] ?? 0,
-                                'mime_type' => $existing_att['mime_type'] ?? 'application/octet-stream',
-                                'attachment_type' => $existing_att['attachment_type'] ?? 'file',
-                                'attachment_url' => $existing_att['attachment_url']
-                            ];
-                        } elseif (is_string($existing_att)) {
-                            // Simple URL string
-                            $existing_attachments[] = [
-                                'file_path' => $existing_att,
-                                'file_name' => basename($existing_att),
-                                'original_name' => basename($existing_att),
-                                'file_size' => 0,
-                                'mime_type' => 'application/octet-stream',
-                                'attachment_type' => 'file',
-                                'attachment_url' => $existing_att
-                            ];
-                        }
-                    }
-                }
-            }
-            
-            // Merge existing and new attachments
-            // If existing_attachments field was provided (even if empty), we should update attachments
-            // Otherwise, only update if there are new attachments
-            $all_attachments = array_merge($existing_attachments, $new_attachments);
-            $should_update_attachments = $has_existing_attachments_field || !empty($new_attachments);
-            
-        } else {
-            // Handle JSON request
-            $data = $this->get_json_input();
-            if (!$data) return;
-            
-            $all_attachments = [];
-            $should_update_attachments = false; // JSON requests don't update attachments unless explicitly handled
-        }
+        $data = $this->get_json_input();
+        if (!$data) return;
 
         try {
             $task = $this->Task_model->get_by_id($task_id);
@@ -486,9 +351,7 @@ class TaskController extends BaseController
             }
 
             // Validate required fields if updating
-            if (isset($data->title) && !empty($data->title)) {
-                // Title is being updated, validate it
-            } elseif (isset($data->title) && empty($data->title)) {
+            if (isset($data->title) && empty($data->title)) {
                 $this->send_error('Title is required', 400);
                 return;
             }
@@ -518,15 +381,9 @@ class TaskController extends BaseController
             if (isset($data->scheduled_at)) $update_data['scheduled_at'] = $data->scheduled_at;
             if (isset($data->due_date)) $update_data['due_date'] = $data->due_date;
 
-            // Update task with attachments if provided or if existing_attachments field was sent
-            if ($should_update_attachments) {
-                $success = $this->Task_model->update_with_attachments($task_id, $update_data, $all_attachments);
-            } else {
-                $success = $this->Task_model->update($task_id, $update_data);
-            }
-            
+            $success = $this->Task_model->update($task_id, $update_data);
             if ($success) {
-                $updated_task = $this->Task_model->get_task_with_attachments($task_id);
+                $updated_task = $this->Task_model->get_by_id($task_id);
                 
                 // Log task update
                 log_audit_event(
@@ -966,7 +823,7 @@ class TaskController extends BaseController
     /**
      * Upload a single file for task attachments
      */
-    private function upload_task_file($tmp_name, $original_name, $file_type = null, $file_size = null, $field_name = null) {
+    private function upload_task_file($tmp_name, $original_name) {
         $upload_config = [
             'upload_path' => './uploads/tasks/',
             'allowed_types' => 'gif|jpg|jpeg|png|webp|pdf|doc|docx|ppt|pptx|xls|xlsx|txt|zip|rar|mp4|mp3',
@@ -981,22 +838,13 @@ class TaskController extends BaseController
 
         $this->load->library('upload', $upload_config);
         
-        // Get file type and size from parameters or from $_FILES if field_name is provided
-        if ($field_name && isset($_FILES[$field_name])) {
-            $file_type = $file_type ?? $_FILES[$field_name]['type'] ?? 'application/octet-stream';
-            $file_size = $file_size ?? $_FILES[$field_name]['size'] ?? 0;
-        } else {
-            $file_type = $file_type ?? 'application/octet-stream';
-            $file_size = $file_size ?? 0;
-        }
-        
         // Set the file data for upload
         $_FILES['temp_file'] = [
             'name' => $original_name,
-            'type' => $file_type,
+            'type' => $_FILES['attachment']['type'] ?? 'application/octet-stream',
             'tmp_name' => $tmp_name,
             'error' => UPLOAD_ERR_OK,
-            'size' => $file_size
+            'size' => $_FILES['attachment']['size'] ?? 0
         ];
 
         if ($this->upload->do_upload('temp_file')) {
@@ -1011,9 +859,7 @@ class TaskController extends BaseController
                 'attachment_url' => 'uploads/tasks/' . $upload_data['file_name']
             ];
         } else {
-            $error_message = $this->upload->display_errors('', '');
-            log_message('error', 'Task file upload failed: ' . $error_message);
-            // Don't send error here, just return false - let the caller handle it
+            $this->send_error('File upload failed: ' . $this->upload->display_errors('', ''), 400);
             return false;
         }
     }
@@ -1507,20 +1353,6 @@ class TaskController extends BaseController
         ];
 
         return $mime_types[$extension] ?? 'application/octet-stream';
-    }
-
-    /**
-     * Helper method to get MIME type for link attachment type
-     */
-    private function get_mime_type_for_link_type($link_type)
-    {
-        $mime_types = [
-            'link' => 'text/plain',
-            'youtube' => 'video/youtube',
-            'google_drive' => 'application/gdrive'
-        ];
-
-        return $mime_types[$link_type] ?? 'text/plain';
     }
 
     /**

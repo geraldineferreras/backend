@@ -716,34 +716,24 @@ class Task_model extends CI_Model {
     public function update_with_attachments($task_id, $task_data, $attachments = []) {
         $this->db->trans_start();
         
-        // Update the main task (even if task_data is empty, this is fine)
-        $update_success = true;
-        if (!empty($task_data)) {
-            $update_success = $this->update($task_id, $task_data);
-        }
+        // Update the main task
+        $update_success = $this->update($task_id, $task_data);
         
-        // Always update attachments if this method is called
-        // Delete existing attachments first
-        $this->db->where('task_id', $task_id)->delete('task_attachments');
-        
-        // Insert new attachments (even if empty array - this removes all attachments)
-        if (!empty($attachments)) {
+        if ($update_success && !empty($attachments)) {
+            // Delete existing attachments
+            $this->db->where('task_id', $task_id)->delete('task_attachments');
+            
+            // Insert new attachments
             foreach ($attachments as $attachment) {
                 $attachment['task_id'] = $task_id;
-                if (!isset($attachment['created_at'])) {
-                    $attachment['created_at'] = date('Y-m-d H:i:s');
-                }
-                $insert_result = $this->db->insert('task_attachments', $attachment);
-                if (!$insert_result) {
-                    $error = $this->db->error();
-                    log_message('error', 'Failed to insert task attachment: ' . ($error['message'] ?? 'Unknown error'));
-                }
+                $attachment['created_at'] = date('Y-m-d H:i:s');
+                $this->db->insert('task_attachments', $attachment);
             }
         }
         
         $this->db->trans_complete();
         
-        return $this->db->trans_status() !== FALSE && $update_success;
+        return $this->db->trans_status() !== FALSE;
     }
 
     /**
