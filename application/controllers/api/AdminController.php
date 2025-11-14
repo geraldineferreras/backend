@@ -837,11 +837,27 @@ class AdminController extends BaseController {
                 return json_response(false, "$field is required", null, 400);
             }
         }
-        $id = $this->Subject_model->insert($data);
-        if ($id) {
-            return json_response(true, 'Subject created successfully', ['id' => $id], 201);
-        } else {
-            return json_response(false, 'Failed to create subject', null, 500);
+        
+        // Automatically set created_by from authenticated user's JWT token
+        $data['created_by'] = $user_data['user_id'];
+        
+        try {
+            $id = $this->Subject_model->insert($data);
+            if ($id) {
+                return json_response(true, 'Subject created successfully', ['id' => $id], 201);
+            } else {
+                // Get database error if available
+                $db_error = $this->db->error();
+                $error_message = 'Failed to create subject';
+                if (!empty($db_error['message'])) {
+                    $error_message .= ': ' . $db_error['message'];
+                    log_message('error', 'Subject creation failed: ' . $db_error['message']);
+                }
+                return json_response(false, $error_message, null, 500);
+            }
+        } catch (Exception $e) {
+            log_message('error', 'Subject creation exception: ' . $e->getMessage());
+            return json_response(false, 'Failed to create subject: ' . $e->getMessage(), null, 500);
         }
     }
 
