@@ -819,8 +819,21 @@ class AdminController extends BaseController {
         $user_data = require_admin($this);
         if (!$user_data) return;
         $this->load->model('Subject_model');
-        $subjects = $this->Subject_model->get_all();
-        return json_response(true, 'Subjects retrieved successfully', $subjects);
+        
+        try {
+            $subjects = $this->Subject_model->get_all();
+            return json_response(true, 'Subjects retrieved successfully', $subjects);
+        } catch (Exception $e) {
+            log_message('error', 'Error fetching subjects: ' . $e->getMessage());
+            $db_error = $this->db->error();
+            $error_message = 'Failed to retrieve subjects';
+            if (!empty($db_error['message'])) {
+                $error_message .= ': ' . $db_error['message'];
+            } else {
+                $error_message .= ': ' . $e->getMessage();
+            }
+            return json_response(false, $error_message, null, 500);
+        }
     }
 
     public function subjects_post() {
