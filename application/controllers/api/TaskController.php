@@ -259,9 +259,34 @@ class TaskController extends BaseController
                 // Send notifications to students in the affected classes
                 // Only send if notifications are enabled and there are assigned students (for individual assignments)
                 // Convert to boolean properly (handles both multipart and JSON)
-                $send_notifications = isset($data->send_notifications) ? (bool)filter_var($data->send_notifications, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : true;
-                $notify_students = isset($data->notify_students) ? (bool)filter_var($data->notify_students, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : true;
-                $assigned_students = $data->assigned_students ?? [];
+                if (isset($data->send_notifications)) {
+                    $val = $data->send_notifications;
+                    // Handle boolean, string, and numeric values
+                    if (is_bool($val)) {
+                        $send_notifications = $val;
+                    } elseif (is_string($val)) {
+                        $send_notifications = in_array(strtolower($val), ['true', '1', 'yes', 'on']);
+                    } else {
+                        $send_notifications = (bool)$val;
+                    }
+                } else {
+                    $send_notifications = true; // Default to true if not set
+                }
+                
+                if (isset($data->notify_students)) {
+                    $val = $data->notify_students;
+                    if (is_bool($val)) {
+                        $notify_students = $val;
+                    } elseif (is_string($val)) {
+                        $notify_students = in_array(strtolower($val), ['true', '1', 'yes', 'on']);
+                    } else {
+                        $notify_students = (bool)$val;
+                    }
+                } else {
+                    $notify_students = true; // Default to true if not set
+                }
+                
+                $assigned_students = isset($data->assigned_students) ? $data->assigned_students : [];
                 
                 $this->send_task_notifications(
                     $task_id, 
