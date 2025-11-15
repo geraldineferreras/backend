@@ -3,19 +3,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 // Load email notification helper
 if (!function_exists('send_email_notification')) {
-    $email_helper_path = APPPATH . 'helpers/email_notification_helper.php';
-    if (file_exists($email_helper_path)) {
-        require_once $email_helper_path;
-    } else {
-        // Define a fallback function if the helper doesn't exist
-        if (!function_exists('send_email_notification')) {
-            function send_email_notification($user_id, $type, $title, $message, $related_id = null, $related_type = null, $class_code = null) {
-                // Fallback: just log that email would be sent
-                error_log("Email notification would be sent to user {$user_id}: {$title}");
-                return true;
-            }
-        }
-    }
+    require_once APPPATH . 'helpers/email_notification_helper.php';
 }
 
 /**
