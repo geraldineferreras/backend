@@ -2,23 +2,40 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 // Ensure PHPMailer is available (supports both Composer and manual include)
+$phpmailer_loaded = false;
 if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
     // Try common vendor path
     $phpmailerBase = APPPATH . '../vendor/phpmailer/phpmailer/src/';
     if (file_exists($phpmailerBase . 'PHPMailer.php')) {
-        require_once $phpmailerBase . 'PHPMailer.php';
-        require_once $phpmailerBase . 'SMTP.php';
-        require_once $phpmailerBase . 'Exception.php';
+        $phpmailer_loaded = @require_once $phpmailerBase . 'PHPMailer.php';
+        if ($phpmailer_loaded) {
+            @require_once $phpmailerBase . 'SMTP.php';
+            @require_once $phpmailerBase . 'Exception.php';
+        }
     } else if (file_exists(APPPATH . 'third_party/PHPMailer/src/PHPMailer.php')) {
         // Fallback to third_party path (non-Composer)
-        require_once APPPATH . 'third_party/PHPMailer/src/PHPMailer.php';
-        require_once APPPATH . 'third_party/PHPMailer/src/SMTP.php';
-        require_once APPPATH . 'third_party/PHPMailer/src/Exception.php';
+        $phpmailer_loaded = @require_once APPPATH . 'third_party/PHPMailer/src/PHPMailer.php';
+        if ($phpmailer_loaded) {
+            @require_once APPPATH . 'third_party/PHPMailer/src/SMTP.php';
+            @require_once APPPATH . 'third_party/PHPMailer/src/Exception.php';
+        }
+    }
+    
+    // Verify class exists after loading
+    if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+        $phpmailer_loaded = false;
+        error_log("PHPMailer classes not available after require");
     }
 }
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
+// Use PHPMailer classes only if successfully loaded
+if ($phpmailer_loaded && class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+    // Use statements must be at top level, so we'll use fully qualified names in functions
+    // Define alias for convenience if class exists
+    if (!class_exists('PHPMailer')) {
+        class_alias('PHPMailer\PHPMailer\PHPMailer', 'PHPMailer');
+    }
+}
 
 // Define notification helper functions locally to avoid circular dependency
 if (!function_exists('get_notification_icon')) {
@@ -56,8 +73,13 @@ if (!function_exists('get_notification_type_display')) {
 /**
  * Create and configure PHPMailer instance for Gmail SMTP
  */
-function create_phpmailer(): PHPMailer {
-    $mail = new PHPMailer(true);
+function create_phpmailer() {
+    // Check if PHPMailer is available
+    if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+        throw new \Exception('PHPMailer is not available');
+    }
+    
+    $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
 
     // SMTP configuration - defaults align with application/config/email.php (TLS:587)
     $smtpHost = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
@@ -279,7 +301,7 @@ function send_email(string $to, string $subject, string $htmlMessage, ?string $t
         } else {
             log_message('error', 'PHPMailer not available. Install dependency or vendor path on Railway.');
         }
-    } catch (Exception $e) {
+    } catch (\Exception $e) {
         log_message('error', 'PHPMailer exception: ' . $e->getMessage());
     }
 
