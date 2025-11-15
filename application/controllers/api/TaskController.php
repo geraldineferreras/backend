@@ -273,8 +273,30 @@ class TaskController extends BaseController
                     // Send notifications to students in the affected classes
                     // Only send if notifications are enabled and there are assigned students (for individual assignments)
                     // Convert to boolean properly (handles both multipart and JSON)
-                    $send_notifications = isset($data->send_notifications) ? (bool)filter_var($data->send_notifications, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : true;
-                    $notify_students = isset($data->notify_students) ? (bool)filter_var($data->notify_students, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : true;
+                    // Default to true if not set (backward compatibility)
+                    $send_notifications = true; // Default
+                    if (isset($data->send_notifications)) {
+                        $val = $data->send_notifications;
+                        if (is_bool($val)) {
+                            $send_notifications = $val;
+                        } elseif (is_string($val)) {
+                            $send_notifications = in_array(strtolower($val), ['true', '1', 'yes'], true);
+                        } elseif (is_numeric($val)) {
+                            $send_notifications = (bool)$val;
+                        }
+                    }
+                    
+                    $notify_students = true; // Default
+                    if (isset($data->notify_students)) {
+                        $val = $data->notify_students;
+                        if (is_bool($val)) {
+                            $notify_students = $val;
+                        } elseif (is_string($val)) {
+                            $notify_students = in_array(strtolower($val), ['true', '1', 'yes'], true);
+                        } elseif (is_numeric($val)) {
+                            $notify_students = (bool)$val;
+                        }
+                    }
                     
                     // Ensure assigned_students is always an array (handle null from json_decode)
                     $assigned_students = $data->assigned_students ?? null;
@@ -285,6 +307,9 @@ class TaskController extends BaseController
                     if (!is_array($assigned_students)) {
                         $assigned_students = [];
                     }
+                    
+                    // Debug logging
+                    log_message('info', "Task notification flags - send_notifications: " . ($send_notifications ? 'true' : 'false') . ", notify_students: " . ($notify_students ? 'true' : 'false') . ", assigned_students count: " . count($assigned_students));
                     
                     // Send notifications (errors are caught inside the method)
                     // Ensure class_codes is an array
@@ -2212,10 +2237,14 @@ class TaskController extends BaseController
             }
             
             // Check if notifications should be sent
+            // For individual assignments with assigned students, always send if flags allow
+            // The flags are checked, but if assigned_students exist, we should notify them
             if (!$send_notifications || !$notify_students) {
-                log_message('info', "Task notifications skipped for task {$task_id} - notification flags are false");
+                log_message('info', "Task notifications skipped for task {$task_id} - notification flags are false (send_notifications: " . ($send_notifications ? 'true' : 'false') . ", notify_students: " . ($notify_students ? 'true' : 'false') . ")");
                 return;
             }
+            
+            log_message('info', "Processing notifications for task {$task_id} - assignment_type: {$assignment_type}, assigned_students count: " . count($assigned_students));
             
             $task_title = $task['title'] ?? 'Task';
             $task_type = ucfirst($task['type'] ?? 'task');
@@ -2236,28 +2265,39 @@ class TaskController extends BaseController
                 
                 // Group assigned students by class_code for efficient notification sending
                 $students_by_class = [];
+                log_message('info', "Processing assigned_students array for task {$task_id} - count: " . count($assigned_students) . ", is_array: " . (is_array($assigned_students) ? 'yes' : 'no'));
+                
                 if (is_array($assigned_students) && !empty($assigned_students)) {
-                    foreach ($assigned_students as $assignment) {
+                    foreach ($assigned_students as $index => $assignment) {
                         // Handle both array and object formats
                         $assignment = is_object($assignment) ? (array)$assignment : $assignment;
                         
                         $student_id = isset($assignment['student_id']) ? (int)$assignment['student_id'] : null;
                         $class_code = isset($assignment['class_code']) ? $assignment['class_code'] : null;
                         
+                        log_message('info', "Processing assignment {$index} - student_id: {$student_id}, class_code: {$class_code}");
+                        
                         if ($student_id && $class_code) {
                             if (!isset($students_by_class[$class_code])) {
                                 $students_by_class[$class_code] = [];
                             }
                             $students_by_class[$class_code][] = $student_id;
+                            log_message('info', "Added student {$student_id} to class {$class_code} notification list");
+                        } else {
+                            log_message('warning', "Skipping invalid assignment {$index} - student_id: " . ($student_id ?? 'null') . ", class_code: " . ($class_code ?? 'null'));
                         }
                     }
+                } else {
+                    log_message('warning', "assigned_students is empty or not an array for task {$task_id}");
                 }
                 
                 // Send notifications to assigned students grouped by class
                 if (!empty($students_by_class)) {
+                    log_message('info', "Sending notifications to " . count($students_by_class) . " classes for task {$task_id}");
                     foreach ($students_by_class as $class_code => $student_ids) {
                         if (!empty($student_ids) && is_array($student_ids)) {
                             try {
+                                log_message('info', "Creating notifications for " . count($student_ids) . " students in class {$class_code} for task {$task_id}");
                                 create_notifications_for_users(
                                     $student_ids,
                                     'task',
@@ -2272,11 +2312,14 @@ class TaskController extends BaseController
                                 log_message('info', "Task notifications sent to " . count($student_ids) . " assigned students in class {$class_code} for task {$task_id}");
                             } catch (Exception $e) {
                                 log_message('error', "Failed to send notifications to students in class {$class_code}: " . $e->getMessage());
+                                log_message('error', "Exception trace: " . $e->getTraceAsString());
                             }
+                        } else {
+                            log_message('warning', "Empty student_ids array for class {$class_code} in task {$task_id}");
                         }
                     }
                 } else {
-                    log_message('info', "No valid assigned students found for task {$task_id} - skipping notifications");
+                    log_message('warning', "No valid assigned students found for task {$task_id} - students_by_class is empty - skipping notifications");
                 }
             } else {
                 // Classroom assignment - send to all students in the class (backward compatibility)
