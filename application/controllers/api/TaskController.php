@@ -374,11 +374,14 @@ class TaskController extends BaseController
                 );
                 
                 $this->send_success($task, 'Task created successfully', 201);
+                return; // Stop execution after sending success response
             } else {
                 $this->send_error('Failed to create task', 500);
+                return; // Stop execution after sending error response
             }
         } catch (Exception $e) {
             $this->send_error('Failed to create task: ' . $e->getMessage(), 500);
+            return; // Stop execution after sending error response
         }
     }
 
