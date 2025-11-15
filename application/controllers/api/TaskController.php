@@ -1,5 +1,11 @@
 <?php
-require_once(APPPATH . 'controllers/api/BaseController.php');
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+$baseControllerPath = APPPATH . 'controllers/api/BaseController.php';
+if (!file_exists($baseControllerPath)) {
+    show_error('BaseController not found at: ' . $baseControllerPath, 500, 'Missing Controller');
+}
+require_once($baseControllerPath);
 
 class TaskController extends BaseController
 {

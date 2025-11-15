@@ -22,7 +22,18 @@ if (!function_exists('broadcast_notification')) {
         
         // Load the stream controller to access connections
         if (!class_exists('NotificationStreamController')) {
-            require_once(APPPATH . 'controllers/api/NotificationStreamController.php');
+            $controllerPath = APPPATH . 'controllers/api/NotificationStreamController.php';
+            if (file_exists($controllerPath) && is_readable($controllerPath)) {
+                @require_once($controllerPath);
+            } else {
+                // NotificationStreamController doesn't exist, return silently
+                return false;
+            }
+        }
+        
+        // Check if class exists after require
+        if (!class_exists('NotificationStreamController')) {
+            return false;
         }
         
         // Create instance to access connections
@@ -86,7 +97,18 @@ if (!function_exists('broadcast_to_role')) {
         $CI =& get_instance();
         
         if (!class_exists('NotificationStreamController')) {
-            require_once(APPPATH . 'controllers/api/NotificationStreamController.php');
+            $controllerPath = APPPATH . 'controllers/api/NotificationStreamController.php';
+            if (file_exists($controllerPath) && is_readable($controllerPath)) {
+                @require_once($controllerPath);
+            } else {
+                // NotificationStreamController doesn't exist, return silently
+                return false;
+            }
+        }
+        
+        // Check if class exists after require
+        if (!class_exists('NotificationStreamController')) {
+            return false;
         }
         
         $stream_controller = new NotificationStreamController();
@@ -152,7 +174,18 @@ if (!function_exists('get_connected_users_count')) {
      */
     function get_connected_users_count() {
         if (!class_exists('NotificationStreamController')) {
-            require_once(APPPATH . 'controllers/api/NotificationStreamController.php');
+            $controllerPath = APPPATH . 'controllers/api/NotificationStreamController.php';
+            if (file_exists($controllerPath) && is_readable($controllerPath)) {
+                @require_once($controllerPath);
+            } else {
+                // NotificationStreamController doesn't exist, return silently
+                return false;
+            }
+        }
+        
+        // Check if class exists after require
+        if (!class_exists('NotificationStreamController')) {
+            return false;
         }
         
         $stream_controller = new NotificationStreamController();
@@ -173,7 +206,18 @@ if (!function_exists('get_connected_users_by_role')) {
      */
     function get_connected_users_by_role() {
         if (!class_exists('NotificationStreamController')) {
-            require_once(APPPATH . 'controllers/api/NotificationStreamController.php');
+            $controllerPath = APPPATH . 'controllers/api/NotificationStreamController.php';
+            if (file_exists($controllerPath) && is_readable($controllerPath)) {
+                @require_once($controllerPath);
+            } else {
+                // NotificationStreamController doesn't exist, return silently
+                return false;
+            }
+        }
+        
+        // Check if class exists after require
+        if (!class_exists('NotificationStreamController')) {
+            return false;
         }
         
         $stream_controller = new NotificationStreamController();
