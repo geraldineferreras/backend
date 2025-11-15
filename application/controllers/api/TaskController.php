@@ -304,13 +304,6 @@ class TaskController extends BaseController
                         }
                     }
                     
-                    if (property_exists($data, 'assigned_students')) {
-                        $assigned_students = $data->assigned_students;
-                        if (!is_array($assigned_students)) {
-                            $assigned_students = [];
-                        }
-                    }
-                    
                     // Get class_codes and assignment_type safely
                     $class_codes = property_exists($data, 'class_codes') ? $data->class_codes : [];
                     $assignment_type = property_exists($data, 'assignment_type') ? $data->assignment_type : 'classroom';
@@ -338,10 +331,6 @@ class TaskController extends BaseController
                         }
                     }
                     
-                    if (isset($data['assigned_students']) && is_array($data['assigned_students'])) {
-                        $assigned_students = $data['assigned_students'];
-                    }
-                    
                     // Get class_codes and assignment_type safely
                     $class_codes = isset($data['class_codes']) ? $data['class_codes'] : [];
                     $assignment_type = isset($data['assignment_type']) ? $data['assignment_type'] : 'classroom';
@@ -351,16 +340,27 @@ class TaskController extends BaseController
                     $assignment_type = 'classroom';
                 }
                 
-                $this->send_task_notifications(
-                    $task_id, 
-                    $task, 
-                    $class_codes, 
-                    $user_data,
-                    $assignment_type,
-                    $assigned_students,
-                    $send_notifications,
-                    $notify_students
-                );
+                // For individual assignments, fetch assigned students from database to ensure correct structure
+                if ($assignment_type === 'individual') {
+                    $assigned_students = $this->Task_model->get_assigned_students($task_id);
+                }
+                
+                // Send notifications (wrapped in try-catch to prevent breaking the response)
+                try {
+                    $this->send_task_notifications(
+                        $task_id, 
+                        $task, 
+                        $class_codes, 
+                        $user_data,
+                        $assignment_type,
+                        $assigned_students,
+                        $send_notifications,
+                        $notify_students
+                    );
+                } catch (Exception $e) {
+                    // Log error but don't fail the task creation
+                    log_message('error', "Failed to send task notifications: " . $e->getMessage());
+                }
                 
                 // Log task creation
                 log_audit_event(

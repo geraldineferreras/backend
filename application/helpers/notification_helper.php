@@ -5,7 +5,12 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 if (!function_exists('send_email_notification')) {
     $email_helper_path = APPPATH . 'helpers/email_notification_helper.php';
     if (file_exists($email_helper_path)) {
-        require_once $email_helper_path;
+        try {
+            @require_once $email_helper_path;
+        } catch (Exception $e) {
+            // Log error but don't break the application
+            log_message('error', 'Failed to load email notification helper: ' . $e->getMessage());
+        }
     }
 }
 
