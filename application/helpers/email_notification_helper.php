@@ -2,23 +2,48 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 // Ensure PHPMailer is available (supports both Composer and manual include)
+$phpmailerLoaded = false;
 if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
     // Try common vendor path
     $phpmailerBase = APPPATH . '../vendor/phpmailer/phpmailer/src/';
-    if (file_exists($phpmailerBase . 'PHPMailer.php')) {
-        require_once $phpmailerBase . 'PHPMailer.php';
-        require_once $phpmailerBase . 'SMTP.php';
-        require_once $phpmailerBase . 'Exception.php';
+    $phpmailerFile = $phpmailerBase . 'PHPMailer.php';
+    if (file_exists($phpmailerFile) && is_readable($phpmailerFile)) {
+        $error = false;
+        $smtpFile = $phpmailerBase . 'SMTP.php';
+        $exceptionFile = $phpmailerBase . 'Exception.php';
+        
+        if (file_exists($smtpFile) && file_exists($exceptionFile)) {
+            // Suppress errors and check if require was successful
+            @require_once $phpmailerFile;
+            @require_once $smtpFile;
+            @require_once $exceptionFile;
+            
+            if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+                $phpmailerLoaded = true;
+            }
+        }
     } else if (file_exists(APPPATH . 'third_party/PHPMailer/src/PHPMailer.php')) {
         // Fallback to third_party path (non-Composer)
-        require_once APPPATH . 'third_party/PHPMailer/src/PHPMailer.php';
-        require_once APPPATH . 'third_party/PHPMailer/src/SMTP.php';
-        require_once APPPATH . 'third_party/PHPMailer/src/Exception.php';
+        $thirdPartyBase = APPPATH . 'third_party/PHPMailer/src/';
+        $phpmailerFile = $thirdPartyBase . 'PHPMailer.php';
+        $smtpFile = $thirdPartyBase . 'SMTP.php';
+        $exceptionFile = $thirdPartyBase . 'Exception.php';
+        
+        if (file_exists($smtpFile) && file_exists($exceptionFile) && is_readable($phpmailerFile)) {
+            @require_once $phpmailerFile;
+            @require_once $smtpFile;
+            @require_once $exceptionFile;
+            
+            if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+                $phpmailerLoaded = true;
+            }
+        }
     }
+} else {
+    $phpmailerLoaded = true;
 }
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
+// Note: PHPMailer use statements moved inside functions to avoid errors if classes don't exist
 
 // Define notification helper functions locally to avoid circular dependency
 if (!function_exists('get_notification_icon')) {
@@ -56,8 +81,12 @@ if (!function_exists('get_notification_type_display')) {
 /**
  * Create and configure PHPMailer instance for Gmail SMTP
  */
-function create_phpmailer(): PHPMailer {
-    $mail = new PHPMailer(true);
+function create_phpmailer() {
+    if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+        throw new Exception('PHPMailer is not available. Please install PHPMailer via Composer or manually.');
+    }
+    
+    $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
 
     // SMTP configuration - defaults align with application/config/email.php (TLS:587)
     $smtpHost = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
