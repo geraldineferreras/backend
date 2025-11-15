@@ -3,7 +3,10 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 // Load email notification helper
 if (!function_exists('send_email_notification')) {
-    require_once APPPATH . 'helpers/email_notification_helper.php';
+    $email_helper_path = APPPATH . 'helpers/email_notification_helper.php';
+    if (file_exists($email_helper_path)) {
+        require_once $email_helper_path;
+    }
 }
 
 /**
@@ -27,11 +30,13 @@ function create_notification($user_id, $type, $title, $message, $related_id = nu
     $notification_id = $CI->Notification_model->create_notification($notification_data);
     
     // Send email notification (always enabled for now)
-    try {
-        send_email_notification($user_id, $type, $title, $message, $related_id, $related_type, $class_code);
-    } catch (Exception $e) {
-        // Log email error but don't fail the notification creation
-        error_log("Email notification failed: " . $e->getMessage());
+    if (function_exists('send_email_notification')) {
+        try {
+            send_email_notification($user_id, $type, $title, $message, $related_id, $related_type, $class_code);
+        } catch (Exception $e) {
+            // Log email error but don't fail the notification creation
+            error_log("Email notification failed: " . $e->getMessage());
+        }
     }
     
     // Broadcast real-time notification if helper is available
@@ -86,11 +91,13 @@ function create_notifications_for_users($user_ids, $type, $title, $message, $rel
         $notification_ids[] = $notification_id;
         
         // Send email notification (always enabled for now)
-        try {
-            send_email_notification($user_id, $type, $title, $message, $related_id, $related_type, $class_code);
-        } catch (Exception $e) {
-            // Log email error but don't fail the notification creation
-            error_log("Email notification failed: " . $e->getMessage());
+        if (function_exists('send_email_notification')) {
+            try {
+                send_email_notification($user_id, $type, $title, $message, $related_id, $related_type, $class_code);
+            } catch (Exception $e) {
+                // Log email error but don't fail the notification creation
+                error_log("Email notification failed: " . $e->getMessage());
+            }
         }
     }
     
