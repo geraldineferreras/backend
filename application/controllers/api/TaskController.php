@@ -249,9 +249,20 @@ class TaskController extends BaseController
             }
             
             if ($task_id) {
+                // Safely get assigned_students for student assignment
+                $assigned_students_for_task = [];
+                if (is_object($data) && property_exists($data, 'assigned_students')) {
+                    $assigned_students_for_task = $data->assigned_students;
+                } elseif (is_array($data) && isset($data['assigned_students'])) {
+                    $assigned_students_for_task = $data['assigned_students'];
+                }
+                if (!is_array($assigned_students_for_task)) {
+                    $assigned_students_for_task = [];
+                }
+                
                 // If individual assignment, assign specific students
-                if ($task_data['assignment_type'] === 'individual' && !empty($data->assigned_students)) {
-                    $this->Task_model->safe_assign_students_to_task($task_id, $data->assigned_students);
+                if ($task_data['assignment_type'] === 'individual' && !empty($assigned_students_for_task)) {
+                    $this->Task_model->safe_assign_students_to_task($task_id, $assigned_students_for_task);
                 }
                 
                 $task = $this->Task_model->get_task_with_attachments($task_id);
@@ -259,41 +270,87 @@ class TaskController extends BaseController
                 // Send notifications to students in the affected classes
                 // Only send if notifications are enabled and there are assigned students (for individual assignments)
                 // Convert to boolean properly (handles both multipart and JSON)
-                if (isset($data->send_notifications)) {
-                    $val = $data->send_notifications;
-                    // Handle boolean, string, and numeric values
-                    if (is_bool($val)) {
-                        $send_notifications = $val;
-                    } elseif (is_string($val)) {
-                        $send_notifications = in_array(strtolower($val), ['true', '1', 'yes', 'on']);
-                    } else {
-                        $send_notifications = (bool)$val;
-                    }
-                } else {
-                    $send_notifications = true; // Default to true if not set
-                }
+                // Safely access properties - handle both object and array formats
+                $send_notifications = true; // Default to true
+                $notify_students = true; // Default to true
+                $assigned_students = [];
                 
-                if (isset($data->notify_students)) {
-                    $val = $data->notify_students;
-                    if (is_bool($val)) {
-                        $notify_students = $val;
-                    } elseif (is_string($val)) {
-                        $notify_students = in_array(strtolower($val), ['true', '1', 'yes', 'on']);
-                    } else {
-                        $notify_students = (bool)$val;
+                if (is_object($data)) {
+                    if (property_exists($data, 'send_notifications')) {
+                        $val = $data->send_notifications;
+                        if (is_bool($val)) {
+                            $send_notifications = $val;
+                        } elseif (is_string($val)) {
+                            $send_notifications = in_array(strtolower($val), ['true', '1', 'yes', 'on']);
+                        } else {
+                            $send_notifications = (bool)$val;
+                        }
                     }
+                    
+                    if (property_exists($data, 'notify_students')) {
+                        $val = $data->notify_students;
+                        if (is_bool($val)) {
+                            $notify_students = $val;
+                        } elseif (is_string($val)) {
+                            $notify_students = in_array(strtolower($val), ['true', '1', 'yes', 'on']);
+                        } else {
+                            $notify_students = (bool)$val;
+                        }
+                    }
+                    
+                    if (property_exists($data, 'assigned_students')) {
+                        $assigned_students = $data->assigned_students;
+                        if (!is_array($assigned_students)) {
+                            $assigned_students = [];
+                        }
+                    }
+                    
+                    // Get class_codes and assignment_type safely
+                    $class_codes = property_exists($data, 'class_codes') ? $data->class_codes : [];
+                    $assignment_type = property_exists($data, 'assignment_type') ? $data->assignment_type : 'classroom';
+                } elseif (is_array($data)) {
+                    // Handle array format (shouldn't happen but be safe)
+                    if (isset($data['send_notifications'])) {
+                        $val = $data['send_notifications'];
+                        if (is_bool($val)) {
+                            $send_notifications = $val;
+                        } elseif (is_string($val)) {
+                            $send_notifications = in_array(strtolower($val), ['true', '1', 'yes', 'on']);
+                        } else {
+                            $send_notifications = (bool)$val;
+                        }
+                    }
+                    
+                    if (isset($data['notify_students'])) {
+                        $val = $data['notify_students'];
+                        if (is_bool($val)) {
+                            $notify_students = $val;
+                        } elseif (is_string($val)) {
+                            $notify_students = in_array(strtolower($val), ['true', '1', 'yes', 'on']);
+                        } else {
+                            $notify_students = (bool)$val;
+                        }
+                    }
+                    
+                    if (isset($data['assigned_students']) && is_array($data['assigned_students'])) {
+                        $assigned_students = $data['assigned_students'];
+                    }
+                    
+                    // Get class_codes and assignment_type safely
+                    $class_codes = isset($data['class_codes']) ? $data['class_codes'] : [];
+                    $assignment_type = isset($data['assignment_type']) ? $data['assignment_type'] : 'classroom';
                 } else {
-                    $notify_students = true; // Default to true if not set
+                    // Fallback if $data is neither object nor array
+                    $class_codes = [];
+                    $assignment_type = 'classroom';
                 }
-                
-                $assigned_students = isset($data->assigned_students) ? $data->assigned_students : [];
                 
                 $this->send_task_notifications(
                     $task_id, 
                     $task, 
-                    $data->class_codes, 
+                    $class_codes, 
                     $user_data,
-                    $data->assignment_type ?? 'classroom',
+                    $assignment_type,
                     $assigned_students,
                     $send_notifications,
                     $notify_students
