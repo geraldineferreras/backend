@@ -318,7 +318,7 @@ function send_email(string $to, string $subject, string $htmlMessage, ?string $t
 /**
  * Send email notification (rewritten to use PHPMailer)
  */
-function send_email_notification($user_id, $type, $title, $message, $related_id = null, $related_type = null, $class_code = null) {
+function send_email_notification($user_id, $type, $title, $message, $related_id = null, $related_type = null, $class_code = null, $options = array()) {
     $CI =& get_instance();
 
     $user_email = get_user_email($user_id);
@@ -327,7 +327,7 @@ function send_email_notification($user_id, $type, $title, $message, $related_id 
         return false;
     }
 
-    $html_content = create_email_html($type, $title, $message, $related_id, $related_type, $class_code);
+    $html_content = create_email_html($type, $title, $message, $related_id, $related_type, $class_code, $options);
 
     $result = send_email($user_email, $title, $html_content);
 
@@ -360,10 +360,13 @@ function get_class_name($class_code) {
 /**
  * Create HTML email content
  */
-function create_email_html($type, $title, $message, $related_id = null, $related_type = null, $class_code = null) {
+function create_email_html($type, $title, $message, $related_id = null, $related_type = null, $class_code = null, $options = array()) {
     $icon = get_notification_icon($type);
     $type_display = get_notification_type_display($type);
     $current_date = date('F j, Y g:i A');
+    $default_cta_url = getenv('EMAIL_NOTIFICATION_DEFAULT_URL') ?: 'https://scmsupdatedbackup.vercel.app/';
+    $cta_url = isset($options['action_url']) && !empty($options['action_url']) ? $options['action_url'] : $default_cta_url;
+    $cta_text = isset($options['action_text']) && !empty($options['action_text']) ? $options['action_text'] : 'View in SCMS';
     
     $html = '
     <!DOCTYPE html>
@@ -472,10 +475,14 @@ function create_email_html($type, $title, $message, $related_id = null, $related
         $html .= '</div>';
     }
     
-    $html .= '
+    if (!empty($cta_url)) {
+        $html .= '
             <div style="text-align: center; margin-top: 20px;">
-                <a href="https://scmsupdatedbackup.vercel.app/" class="btn">View in SCMS</a>
-            </div>
+                <a href="' . htmlspecialchars($cta_url) . '" class="btn">' . htmlspecialchars($cta_text) . '</a>
+            </div>';
+    }
+    
+    $html .= '
             
             <div class="footer">
                 <p>This is an automated notification from the SCMS System.</p>

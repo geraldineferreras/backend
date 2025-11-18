@@ -17,7 +17,7 @@ if (!function_exists('send_email_notification')) {
 /**
  * Create a notification for a user
  */
-function create_notification($user_id, $type, $title, $message, $related_id = null, $related_type = null, $class_code = null, $is_urgent = false) {
+function create_notification($user_id, $type, $title, $message, $related_id = null, $related_type = null, $class_code = null, $is_urgent = false, $options = array()) {
     $CI =& get_instance();
     $CI->load->model('Notification_model');
     
@@ -37,7 +37,7 @@ function create_notification($user_id, $type, $title, $message, $related_id = nu
     // Send email notification (always enabled for now)
     if (function_exists('send_email_notification')) {
         try {
-            send_email_notification($user_id, $type, $title, $message, $related_id, $related_type, $class_code);
+            send_email_notification($user_id, $type, $title, $message, $related_id, $related_type, $class_code, $options);
         } catch (Exception $e) {
             // Log email error but don't fail the notification creation
             error_log("Email notification failed: " . $e->getMessage());
@@ -227,7 +227,7 @@ function create_enrollment_notification($user_id, $enrollment_id, $title, $messa
 /**
  * Create system notification
  */
-function create_system_notification($user_id, $title, $message, $is_urgent = false) {
+function create_system_notification($user_id, $title, $message, $is_urgent = false, $options = array()) {
     return create_notification(
         $user_id,
         'system',
@@ -236,7 +236,8 @@ function create_system_notification($user_id, $title, $message, $is_urgent = fal
         null,
         null,
         null,
-        $is_urgent
+        $is_urgent,
+        $options
     );
 }
 

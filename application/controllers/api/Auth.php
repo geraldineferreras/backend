@@ -763,16 +763,8 @@ class Auth extends BaseController {
         ];
 
         if ($this->User_model->update($user['user_id'], $update_data)) {
-            $send_result = $this->send_email_verification($user, $token_plain);
-
-            if (!$send_result) {
-                $this->output
-                    ->set_status_header(500)
-                    ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to send verification email. Please try again later.']));
-                return;
-            }
-
+            $verification_link = $this->build_verification_link($token_plain);
+            $this->send_verification_pending_notification($user['user_id'], $user['full_name'], $user['role'], $verification_link);
             $this->output
                 ->set_status_header(200)
                 ->set_content_type('application/json')
@@ -1675,19 +1667,8 @@ class Auth extends BaseController {
 
     private function handle_post_registration_flow($user_id, $full_name, $role, $email, array $verification_context) {
         if ($verification_context['required'] && !empty($verification_context['token_plain'])) {
-            $user_stub = [
-                'user_id' => $user_id,
-                'full_name' => $full_name,
-                'role' => $role,
-                'email' => $email
-            ];
-
-            $email_sent = $this->send_email_verification($user_stub, $verification_context['token_plain']);
-            if ($email_sent) {
-                $this->send_verification_pending_notification($user_id, $full_name, $role);
-            } else {
-                log_message('error', "Failed to send verification email to {$email}");
-            }
+            $verification_link = $this->build_verification_link($verification_context['token_plain']);
+            $this->send_verification_pending_notification($user_id, $full_name, $role, $verification_link);
         } else {
             $this->send_welcome_notification($user_id, $full_name, $role, $email);
         }
@@ -1712,13 +1693,18 @@ class Auth extends BaseController {
         }
     }
 
-    private function send_verification_pending_notification($user_id, $full_name, $role) {
+    private function send_verification_pending_notification($user_id, $full_name, $role, $verification_link = null) {
         try {
+            $link = $verification_link ?: $this->verification_link_base;
             $title = "Verify your email address";
-            $message = "Hello {$full_name}, please verify your {$role} account email to complete your registration. ";
-            $message .= "Check your inbox for the verification link or request a new one from the login page.";
+            $message = "Hello {$full_name}, please verify your {$role} account email to complete your registration.\n\n";
+            $message .= "Click the Verify Email button below or use this link if needed:\n{$link}\n\n";
+            $message .= "If you did not create this account, you can ignore this email.";
 
-            create_system_notification($user_id, $title, $message, true);
+            create_system_notification($user_id, $title, $message, true, [
+                'action_text' => 'Verify Email',
+                'action_url' => $link
+            ]);
         } catch (Exception $e) {
             log_message('error', "Failed to send verification pending notification: " . $e->getMessage());
         }
@@ -1808,38 +1794,6 @@ class Auth extends BaseController {
 
         $separator = (strpos($this->verification_link_base, '?') === false) ? '?' : '&';
         return $this->verification_link_base . $separator . 'token=' . urlencode($token);
-    }
-
-    private function send_email_verification($user, $token) {
-        try {
-            if (empty($token) || empty($user['email'])) {
-                return false;
-            }
-
-            $verification_link = $this->build_verification_link($token);
-            if (!$verification_link) {
-                return false;
-            }
-
-            $system_name = getenv('SYSTEM_NAME') ?: 'SCMS';
-            $role = isset($user['role']) ? ucfirst($user['role']) : 'Account';
-            $subject = "{$system_name} - Verify your email address";
-
-            $expiry_hours = round($this->email_verification_ttl / 3600, 1);
-
-            $message = "<p>Hello {$user['full_name']},</p>";
-            $message .= "<p>Thanks for registering as a {$role} on {$system_name}. ";
-            $message .= "Please confirm your email address by clicking the button below:</p>";
-            $message .= "<p><a href=\"{$verification_link}\" style=\"display:inline-block;padding:12px 20px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;\">Verify Email</a></p>";
-            $message .= "<p>Or copy and paste this link in your browser:<br>{$verification_link}</p>";
-            $message .= "<p>This link will expire in {$expiry_hours} hours.</p>";
-            $message .= "<p>If you did not create this account, you can ignore this email.</p>";
-
-            return send_email($user['email'], $subject, $message, $user['full_name']);
-        } catch (Exception $e) {
-            log_message('error', 'Verification email error: ' . $e->getMessage());
-            return false;
-        }
     }
 
     /**
