@@ -69,6 +69,10 @@ $route['api/auth/debug-routing']['get'] = 'api/auth/debug_routing';
 $route['api/auth/reset-password']['post'] = 'api/auth/reset_password';
 $route['api/auth/change-password']['post'] = 'api/auth/change_password';
 $route['api/auth/change-password']['options'] = 'api/auth/options';
+$route['api/auth/verify-email']['get'] = 'api/auth/verify_email';
+$route['api/auth/verify-email']['post'] = 'api/auth/verify_email';
+$route['api/auth/resend-verification']['post'] = 'api/auth/resend_verification_email';
+$route['api/auth/resend-verification']['options'] = 'api/auth/options';
 
 // Backward-compatible aliases without /api prefix (for frontend calls like /auth/forgot-password)
 $route['auth/forgot-password']['post'] = 'api/auth/forgot_password';

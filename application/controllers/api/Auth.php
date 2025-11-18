@@ -5,12 +5,36 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Auth extends BaseController {
 
+    private $email_verification_ttl = 86400; // 24 hours
+    private $email_verification_token_bytes = 32; // 32 bytes => 64 hex chars
+    private $verification_resend_cooldown = 300; // 5 minutes
+    private $verify_admin_registrations = false;
+    private $verification_link_base;
+
     public function __construct() {
         parent::__construct();
         error_reporting(0);
         $this->load->model('User_model');
-        $this->load->helper(['response', 'auth', 'audit', 'notification']);
+        $this->load->helper(['response', 'auth', 'audit', 'notification', 'email_notification', 'url']);
         $this->load->library(['Token_lib', 'session']);
+
+        $ttl = getenv('EMAIL_VERIFICATION_TTL');
+        if ($ttl && is_numeric($ttl)) {
+            $this->email_verification_ttl = max(300, (int)$ttl);
+        }
+
+        $cooldown = getenv('EMAIL_VERIFICATION_RESEND_COOLDOWN');
+        if ($cooldown && is_numeric($cooldown)) {
+            $this->verification_resend_cooldown = max(60, (int)$cooldown);
+        }
+
+        $token_bytes = getenv('EMAIL_VERIFICATION_TOKEN_BYTES');
+        if ($token_bytes && is_numeric($token_bytes)) {
+            $this->email_verification_token_bytes = max(16, min(64, (int)$token_bytes));
+        }
+
+        $this->verify_admin_registrations = filter_var(getenv('VERIFY_ADMIN_REGISTRATIONS') ?: 'false', FILTER_VALIDATE_BOOLEAN);
+        $this->verification_link_base = rtrim(getenv('FRONTEND_VERIFY_BASE_URL') ?: site_url('api/auth/verify-email'), '/');
     }
 
     public function login() {
@@ -55,6 +79,18 @@ class Auth extends BaseController {
                 return;
             }
 
+            if ($this->should_block_unverified_login($user)) {
+                $this->output
+                    ->set_status_header(423)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => false,
+                        'message' => 'Email not verified yet. Please check your inbox for the verification link or request a new one.',
+                        'can_resend' => true
+                    ]));
+                return;
+            }
+
             // Update last_login
             $this->User_model->update($user['user_id'], [
                 'last_login' => date('Y-m-d H:i:s')
@@ -92,6 +128,8 @@ class Auth extends BaseController {
                         'full_name' => $user['full_name'],
                         'email' => $user['email'],
                         'status' => $user['status'],
+                        'email_verification_status' => $user['email_verification_status'] ?? 'verified',
+                        'email_verified_at' => $user['email_verified_at'] ?? null,
                         'last_login' => date('Y-m-d H:i:s'),
                         'token' => $token,
                         'token_type' => 'Bearer',
@@ -286,6 +324,9 @@ class Auth extends BaseController {
                 }
             }
 
+            $verification_context = $this->create_email_verification_context($role);
+            $this->apply_email_verification_context($user_data, $verification_context);
+
             // Debug final data
             log_message('debug', '=== FINAL USER DATA ===');
             log_message('debug', 'Role: ' . $role);
@@ -296,22 +337,25 @@ class Auth extends BaseController {
 
             // Insert user into database
             if ($this->User_model->insert($user_data)) {
-                // Send welcome system notification
-                $this->send_welcome_notification($user_id, $full_name, $role, $email);
+                $this->handle_post_registration_flow($user_id, $full_name, $role, $email, $verification_context);
                 
                 $this->output
                     ->set_status_header(201)
                     ->set_content_type('application/json')
                     ->set_output(json_encode([
                         'status' => true,
-                        'message' => ucfirst($role) . ' registered successfully!',
+                        'message' => $verification_context['required']
+                            ? 'Registration successful! Please check your email to verify your account.'
+                            : ucfirst($role) . ' registered successfully!',
                         'data' => [
                             'user_id' => $user_id,
                             'role' => $role,
                             'full_name' => $full_name,
                             'email' => $email,
                             'profile_pic' => $profile_pic_path,
-                            'cover_pic' => $cover_pic_path
+                            'cover_pic' => $cover_pic_path,
+                            'email_verification_status' => $user_data['email_verification_status'],
+                            'verification_required' => $verification_context['required']
                         ]
                     ]));
             } else {
@@ -473,6 +517,9 @@ class Auth extends BaseController {
             'cover_pic' => isset($data->cover_pic) ? $data->cover_pic : null
         ];
 
+        $verification_context = $this->create_email_verification_context($role);
+        $this->apply_email_verification_context($dataToInsert, $verification_context);
+
         // Role-specific fields
         if ($role === 'student') {
             if (empty($data->student_num) || empty($data->qr_code)) {
@@ -525,19 +572,206 @@ class Auth extends BaseController {
         log_message('debug', '================================');
         
         if ($this->User_model->insert($dataToInsert)) {
+            $this->handle_post_registration_flow($user_id, $full_name, $role, $email, $verification_context);
+
             $this->output
                 ->set_status_header(201)
                 ->set_content_type('application/json')
                 ->set_output(json_encode([
                     'status' => true,
-                    'message' => ucfirst($role) . ' registered successfully!',
-                    'data' => ['user_id' => $user_id]
+                    'message' => $verification_context['required']
+                        ? 'Registration successful! Please check your email to verify your account.'
+                        : ucfirst($role) . ' registered successfully!',
+                    'data' => [
+                        'user_id' => $user_id,
+                        'email_verification_status' => $dataToInsert['email_verification_status'],
+                        'verification_required' => $verification_context['required']
+                    ]
                 ]));
         } else {
             $this->output
                 ->set_status_header(500)
                 ->set_content_type('application/json')
                 ->set_output(json_encode(['status' => false, 'message' => ucfirst($role) . ' registration failed!']));
+        }
+    }
+
+    /**
+     * Verify email address via token (GET or POST)
+     */
+    public function verify_email() {
+        $token = $this->input->get('token');
+
+        if (empty($token)) {
+            $data = json_decode(file_get_contents('php://input'));
+            if (json_last_error() === JSON_ERROR_NONE && isset($data->token)) {
+                $token = $data->token;
+            } elseif ($this->input->post('token')) {
+                $token = $this->input->post('token');
+            }
+        }
+
+        $token = is_string($token) ? trim($token) : null;
+
+        if (empty($token)) {
+            $this->output
+                ->set_status_header(400)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Verification token is required']));
+            return;
+        }
+
+        $token_hash = $this->hash_verification_token($token);
+        $user = $this->User_model->get_by_verification_token($token_hash);
+
+        if (!$user) {
+            $this->output
+                ->set_status_header(404)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Invalid verification token']));
+            return;
+        }
+
+        if (($user['email_verification_status'] ?? 'verified') === 'verified') {
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'message' => 'Email already verified']));
+            return;
+        }
+
+        if (!empty($user['email_verification_expires_at']) && strtotime($user['email_verification_expires_at']) < time()) {
+            $this->output
+                ->set_status_header(410)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Verification link has expired. Please request a new verification email.'
+                ]));
+            return;
+        }
+
+        $update_data = [
+            'email_verification_status' => 'verified',
+            'email_verification_token' => null,
+            'email_verification_expires_at' => null,
+            'email_verification_sent_at' => null,
+            'email_verified_at' => date('Y-m-d H:i:s')
+        ];
+
+        if ($this->User_model->update($user['user_id'], $update_data)) {
+            $this->send_verification_success_notification($user['user_id'], $user['full_name'], $user['role']);
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Email verified successfully. You can now log in.'
+                ]));
+        } else {
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to verify email. Please try again.']));
+        }
+    }
+
+    /**
+     * Resend verification email
+     */
+    public function resend_verification_email() {
+        $data = json_decode(file_get_contents('php://input'));
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $data = null;
+        }
+
+        $email = null;
+        if ($data && isset($data->email)) {
+            $email = $data->email;
+        } elseif ($this->input->post('email')) {
+            $email = $this->input->post('email');
+        }
+
+        $email = is_string($email) ? trim($email) : null;
+
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->output
+                ->set_status_header(400)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Valid email is required']));
+            return;
+        }
+
+        $user = $this->User_model->get_by_email($email);
+        if (!$user) {
+            $this->output
+                ->set_status_header(404)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'No account found for this email']));
+            return;
+        }
+
+        if (!$this->should_require_verification($user['role'])) {
+            $this->output
+                ->set_status_header(400)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Email verification is not required for this account']));
+            return;
+        }
+
+        if (($user['email_verification_status'] ?? 'verified') === 'verified') {
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'message' => 'Email already verified']));
+            return;
+        }
+
+        if (!empty($user['email_verification_sent_at'])) {
+            $last_sent = strtotime($user['email_verification_sent_at']);
+            if ($last_sent && (time() - $last_sent) < $this->verification_resend_cooldown) {
+                $wait = $this->verification_resend_cooldown - (time() - $last_sent);
+                $this->output
+                    ->set_status_header(429)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => false,
+                        'message' => 'Please wait before requesting another verification email.',
+                        'retry_after_seconds' => $wait
+                    ]));
+                return;
+            }
+        }
+
+        $token_plain = $this->generate_email_verification_token();
+        $update_data = [
+            'email_verification_status' => 'pending',
+            'email_verification_token' => $this->hash_verification_token($token_plain),
+            'email_verification_expires_at' => date('Y-m-d H:i:s', time() + $this->email_verification_ttl),
+            'email_verification_sent_at' => date('Y-m-d H:i:s')
+        ];
+
+        if ($this->User_model->update($user['user_id'], $update_data)) {
+            $send_result = $this->send_email_verification($user, $token_plain);
+
+            if (!$send_result) {
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Failed to send verification email. Please try again later.']));
+                return;
+            }
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => true, 'message' => 'Verification email sent successfully']));
+        } else {
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Failed to generate verification token.']));
         }
     }
 
@@ -1429,6 +1663,26 @@ class Auth extends BaseController {
         // The BaseController constructor handles CORS and exits for OPTIONS requests.
     }
 
+    private function handle_post_registration_flow($user_id, $full_name, $role, $email, array $verification_context) {
+        $this->send_welcome_notification($user_id, $full_name, $role, $email);
+
+        if ($verification_context['required'] && !empty($verification_context['token_plain'])) {
+            $user_stub = [
+                'user_id' => $user_id,
+                'full_name' => $full_name,
+                'role' => $role,
+                'email' => $email
+            ];
+
+            $email_sent = $this->send_email_verification($user_stub, $verification_context['token_plain']);
+            if ($email_sent) {
+                $this->send_verification_pending_notification($user_id, $full_name, $role);
+            } else {
+                log_message('error', "Failed to send verification email to {$email}");
+            }
+        }
+    }
+
     /**
      * Send welcome system notification to new users
      */
@@ -1445,6 +1699,136 @@ class Auth extends BaseController {
             
         } catch (Exception $e) {
             log_message('error', "Failed to send welcome notification: " . $e->getMessage());
+        }
+    }
+
+    private function send_verification_pending_notification($user_id, $full_name, $role) {
+        try {
+            $title = "Verify your email address";
+            $message = "Hello {$full_name}, please verify your {$role} account email to complete your registration. ";
+            $message .= "Check your inbox for the verification link or request a new one from the login page.";
+
+            create_system_notification($user_id, $title, $message, true);
+        } catch (Exception $e) {
+            log_message('error', "Failed to send verification pending notification: " . $e->getMessage());
+        }
+    }
+
+    private function send_verification_success_notification($user_id, $full_name, $role) {
+        try {
+            $title = "Email verified successfully";
+            $message = "Hi {$full_name}, your {$role} account email has been verified. ";
+            $message .= "You can now log in to the system.";
+
+            create_system_notification($user_id, $title, $message, false);
+        } catch (Exception $e) {
+            log_message('error', "Failed to send verification success notification: " . $e->getMessage());
+        }
+    }
+
+    private function create_email_verification_context($role) {
+        $requires_verification = $this->should_require_verification($role);
+
+        if (!$requires_verification) {
+            return [
+                'required' => false,
+                'status' => 'verified',
+                'token_plain' => null,
+                'token_hash' => null,
+                'expires_at' => null,
+                'sent_at' => null,
+                'verified_at' => date('Y-m-d H:i:s')
+            ];
+        }
+
+        $token_plain = $this->generate_email_verification_token();
+
+        return [
+            'required' => true,
+            'status' => 'pending',
+            'token_plain' => $token_plain,
+            'token_hash' => $this->hash_verification_token($token_plain),
+            'expires_at' => date('Y-m-d H:i:s', time() + $this->email_verification_ttl),
+            'sent_at' => date('Y-m-d H:i:s'),
+            'verified_at' => null
+        ];
+    }
+
+    private function apply_email_verification_context(array &$payload, array $context) {
+        $payload['email_verification_status'] = $context['status'];
+        $payload['email_verification_token'] = $context['token_hash'];
+        $payload['email_verification_expires_at'] = $context['expires_at'];
+        $payload['email_verification_sent_at'] = $context['required'] ? $context['sent_at'] : null;
+        $payload['email_verified_at'] = $context['verified_at'];
+    }
+
+    private function should_require_verification($role) {
+        $role = strtolower((string)$role);
+        if (in_array($role, ['student', 'teacher'])) {
+            return true;
+        }
+
+        if ($role === 'admin') {
+            return $this->verify_admin_registrations;
+        }
+
+        return false;
+    }
+
+    private function should_block_unverified_login($user) {
+        if (!$this->should_require_verification($user['role'] ?? null)) {
+            return false;
+        }
+
+        return isset($user['email_verification_status']) && $user['email_verification_status'] === 'pending';
+    }
+
+    private function generate_email_verification_token() {
+        return bin2hex(random_bytes($this->email_verification_token_bytes));
+    }
+
+    private function hash_verification_token($token) {
+        return hash('sha256', $token);
+    }
+
+    private function build_verification_link($token) {
+        if (empty($token)) {
+            return null;
+        }
+
+        $separator = (strpos($this->verification_link_base, '?') === false) ? '?' : '&';
+        return $this->verification_link_base . $separator . 'token=' . urlencode($token);
+    }
+
+    private function send_email_verification($user, $token) {
+        try {
+            if (empty($token) || empty($user['email'])) {
+                return false;
+            }
+
+            $verification_link = $this->build_verification_link($token);
+            if (!$verification_link) {
+                return false;
+            }
+
+            $system_name = getenv('SYSTEM_NAME') ?: 'SCMS';
+            $role = isset($user['role']) ? ucfirst($user['role']) : 'Account';
+            $subject = "{$system_name} - Verify your email address";
+
+            $expiry_hours = round($this->email_verification_ttl / 3600, 1);
+
+            $message = "<p>Hello {$user['full_name']},</p>";
+            $message .= "<p>Thanks for registering as a {$role} on {$system_name}. ";
+            $message .= "Please confirm your email address by clicking the button below:</p>";
+            $message .= "<p><a href=\"{$verification_link}\" style=\"display:inline-block;padding:12px 20px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;\">Verify Email</a></p>";
+            $message .= "<p>Or copy and paste this link in your browser:<br>{$verification_link}</p>";
+            $message .= "<p>This link will expire in {$expiry_hours} hours.</p>";
+            $message .= "<p>If you did not create this account, you can ignore this email.</p>";
+
+            return send_email($user['email'], $subject, $message, $user['full_name']);
+        } catch (Exception $e) {
+            log_message('error', 'Verification email error: ' . $e->getMessage());
+            return false;
         }
     }
 
@@ -1542,7 +1926,12 @@ class Auth extends BaseController {
                     'last_oauth_login' => date('Y-m-d H:i:s'),
                     'oauth_provider' => 'google',
                     'created_at' => date('Y-m-d H:i:s'),
-                    'last_login' => date('Y-m-d H:i:s')
+                    'last_login' => date('Y-m-d H:i:s'),
+                    'email_verification_status' => 'verified',
+                    'email_verified_at' => date('Y-m-d H:i:s'),
+                    'email_verification_token' => null,
+                    'email_verification_expires_at' => null,
+                    'email_verification_sent_at' => null
                 ];
                 
                 $insert_result = $this->User_model->insert($user_data);
@@ -1570,7 +1959,12 @@ class Auth extends BaseController {
                         'account_type' => 'unified',
                         'google_email_verified' => true,
                         'last_oauth_login' => date('Y-m-d H:i:s'),
-                        'oauth_provider' => 'google'
+                        'oauth_provider' => 'google',
+                        'email_verification_status' => 'verified',
+                        'email_verification_token' => null,
+                        'email_verification_expires_at' => null,
+                        'email_verification_sent_at' => null,
+                        'email_verified_at' => $user['email_verified_at'] ?? date('Y-m-d H:i:s')
                     ];
                     
                     $this->User_model->update($user['user_id'], $update_data);
@@ -1581,7 +1975,12 @@ class Auth extends BaseController {
                     $update_data = [
                         'google_id' => $google_user_data['google_id'],
                         'last_oauth_login' => date('Y-m-d H:i:s'),
-                        'oauth_provider' => 'google'
+                        'oauth_provider' => 'google',
+                        'email_verification_status' => 'verified',
+                        'email_verification_token' => null,
+                        'email_verification_expires_at' => null,
+                        'email_verification_sent_at' => null,
+                        'email_verified_at' => $user['email_verified_at'] ?? date('Y-m-d H:i:s')
                     ];
                     
                     $this->User_model->update($user['user_id'], $update_data);

@@ -97,4 +97,8 @@ class User_model extends CI_Model {
                         ->get()
                         ->row_array();
     }
+
+    public function get_by_verification_token($token_hash) {
+        return $this->db->get_where('users', ['email_verification_token' => $token_hash])->row_array();
+    }
 } 
