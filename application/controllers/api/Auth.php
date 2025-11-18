@@ -8,7 +8,7 @@ class Auth extends BaseController {
     private $email_verification_ttl = 86400; // 24 hours
     private $email_verification_token_bytes = 32; // 32 bytes => 64 hex chars
     private $verification_resend_cooldown = 300; // 5 minutes
-    private $verify_admin_registrations = false;
+    private $verify_admin_registrations = true;
     private $verification_link_base;
     private $email_verification_redirect_url;
 
@@ -34,7 +34,7 @@ class Auth extends BaseController {
             $this->email_verification_token_bytes = max(16, min(64, (int)$token_bytes));
         }
 
-        $this->verify_admin_registrations = filter_var(getenv('VERIFY_ADMIN_REGISTRATIONS') ?: 'false', FILTER_VALIDATE_BOOLEAN);
+        $this->verify_admin_registrations = filter_var(getenv('VERIFY_ADMIN_REGISTRATIONS') ?: 'true', FILTER_VALIDATE_BOOLEAN);
         $this->verification_link_base = rtrim(getenv('FRONTEND_VERIFY_BASE_URL') ?: site_url('api/auth/verify-email'), '/');
         $this->email_verification_redirect_url = rtrim(getenv('EMAIL_VERIFICATION_REDIRECT_URL') ?: 'https://scmsupdatedbackup.vercel.app/auth/login', '/');
     }
