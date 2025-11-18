@@ -10,6 +10,7 @@ class Auth extends BaseController {
     private $verification_resend_cooldown = 300; // 5 minutes
     private $verify_admin_registrations = false;
     private $verification_link_base;
+    private $email_verification_redirect_url;
 
     public function __construct() {
         parent::__construct();
@@ -35,6 +36,7 @@ class Auth extends BaseController {
 
         $this->verify_admin_registrations = filter_var(getenv('VERIFY_ADMIN_REGISTRATIONS') ?: 'false', FILTER_VALIDATE_BOOLEAN);
         $this->verification_link_base = rtrim(getenv('FRONTEND_VERIFY_BASE_URL') ?: site_url('api/auth/verify-email'), '/');
+        $this->email_verification_redirect_url = rtrim(getenv('EMAIL_VERIFICATION_REDIRECT_URL') ?: 'https://scmsupdatedbackup.vercel.app/auth/login', '/');
     }
 
     public function login() {
@@ -661,6 +663,14 @@ class Auth extends BaseController {
 
         if ($this->User_model->update($user['user_id'], $update_data)) {
             $this->send_verification_success_notification($user['user_id'], $user['full_name'], $user['role']);
+            if ($this->should_require_verification($user['role'])) {
+                $this->send_welcome_notification($user['user_id'], $user['full_name'], $user['role'], $user['email']);
+            }
+
+            if (strtoupper($this->input->method(TRUE)) === 'GET') {
+                redirect($this->email_verification_redirect_url . '?status=verified', 'location', 302);
+                return;
+            }
 
             $this->output
                 ->set_status_header(200)
@@ -1664,8 +1674,6 @@ class Auth extends BaseController {
     }
 
     private function handle_post_registration_flow($user_id, $full_name, $role, $email, array $verification_context) {
-        $this->send_welcome_notification($user_id, $full_name, $role, $email);
-
         if ($verification_context['required'] && !empty($verification_context['token_plain'])) {
             $user_stub = [
                 'user_id' => $user_id,
@@ -1680,6 +1688,8 @@ class Auth extends BaseController {
             } else {
                 log_message('error', "Failed to send verification email to {$email}");
             }
+        } else {
+            $this->send_welcome_notification($user_id, $full_name, $role, $email);
         }
     }
 
