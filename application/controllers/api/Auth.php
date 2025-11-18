@@ -83,7 +83,7 @@ class Auth extends BaseController {
 
             if ($this->should_block_unverified_login($user)) {
                 $this->output
-                    ->set_status_header(423)
+                    ->set_status_header(423, 'Locked')
                     ->set_content_type('application/json')
                     ->set_output(json_encode([
                         'status' => false,
