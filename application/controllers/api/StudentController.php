@@ -772,7 +772,7 @@ class StudentController extends BaseController {
                 return;
             }
 
-            if ($student_section_id != $classroom['section_id']) {
+            if (!$is_irregular_student && $student_section_id != $classroom['section_id']) {
                 $this->output
                     ->set_status_header(403)
                     ->set_content_type('application/json')
