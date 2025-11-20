@@ -619,10 +619,12 @@ function send_registration_rejected_email($full_name, $email, $role, $login_url 
 
 /**
  * Send email notification to all admins/chairpersons when a new registration needs approval
+ * Also creates in-app system notifications (toaster) for each admin
  */
 function notify_admins_pending_approval($pending_user_full_name, $pending_user_email, $pending_user_role, $pending_user_program = null) {
     $CI =& get_instance();
     $CI->load->model('User_model');
+    $CI->load->helper('notification');
     
     $admins = $CI->User_model->get_admin_emails();
     
@@ -636,7 +638,7 @@ function notify_admins_pending_approval($pending_user_full_name, $pending_user_e
     
     $program_text = $pending_user_program ? " ({$pending_user_program})" : '';
     $subject = "New {$pending_user_role} registration awaiting approval";
-    $message = "Hello,\n\n"
+    $email_message = "Hello,\n\n"
         . "A new {$pending_user_role} account registration is pending your approval:\n\n"
         . "Name: {$pending_user_full_name}\n"
         . "Email: {$pending_user_email}\n"
@@ -645,33 +647,63 @@ function notify_admins_pending_approval($pending_user_full_name, $pending_user_e
         . "Please review and approve or reject this registration in the admin panel.\n\n"
         . "Approval URL: {$approval_url}";
     
-    $html = create_email_html('system', $subject, $message, null, null, null, [
+    // In-app notification message (shorter for toaster)
+    $notification_title = "New {$pending_user_role} registration pending";
+    $notification_message = "{$pending_user_full_name} ({$pending_user_email})" . ($program_text ? $program_text : '') . " needs approval";
+    
+    $html = create_email_html('system', $subject, $email_message, null, null, null, [
         'action_text' => 'Review Registration',
         'action_url' => $approval_url
     ]);
     
-    $success_count = 0;
-    $failure_count = 0;
+    $email_success_count = 0;
+    $email_failure_count = 0;
+    $notification_success_count = 0;
+    $notification_failure_count = 0;
     
     foreach ($admins as $admin) {
+        // Send email notification
         try {
             $result = send_email($admin['email'], $subject, $html, $admin['name']);
             if ($result) {
-                $success_count++;
-                log_message('info', "Pending approval notification sent to admin: {$admin['email']}");
+                $email_success_count++;
+                log_message('info', "Pending approval email sent to admin: {$admin['email']}");
             } else {
-                $failure_count++;
-                log_message('error', "Failed to send pending approval notification to admin: {$admin['email']}");
+                $email_failure_count++;
+                log_message('error', "Failed to send pending approval email to admin: {$admin['email']}");
             }
         } catch (Exception $e) {
-            $failure_count++;
-            log_message('error', "Exception sending pending approval notification to {$admin['email']}: " . $e->getMessage());
+            $email_failure_count++;
+            log_message('error', "Exception sending pending approval email to {$admin['email']}: " . $e->getMessage());
+        }
+        
+        // Create in-app system notification (toaster)
+        try {
+            if (function_exists('create_system_notification')) {
+                create_system_notification(
+                    $admin['user_id'],
+                    $notification_title,
+                    $notification_message,
+                    true, // Mark as urgent
+                    [
+                        'action_text' => 'Review Now',
+                        'action_url' => $approval_url
+                    ]
+                );
+                $notification_success_count++;
+                log_message('info', "Pending approval system notification created for admin: {$admin['user_id']} ({$admin['email']})");
+            } else {
+                log_message('warning', "create_system_notification function not available");
+            }
+        } catch (Exception $e) {
+            $notification_failure_count++;
+            log_message('error', "Exception creating system notification for admin {$admin['user_id']}: " . $e->getMessage());
         }
     }
     
-    log_message('info', "Pending approval notifications sent: {$success_count} success, {$failure_count} failures");
+    log_message('info', "Pending approval notifications - Emails: {$email_success_count} success, {$email_failure_count} failures | System notifications: {$notification_success_count} success, {$notification_failure_count} failures");
     
-    return $success_count > 0;
+    return ($email_success_count > 0 || $notification_success_count > 0);
 }
 
 /**

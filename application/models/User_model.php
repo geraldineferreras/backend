@@ -119,7 +119,7 @@ class User_model extends CI_Model {
      * Get all active admin and chairperson emails for notifications
      */
     public function get_admin_emails() {
-        $admins = $this->db->select('email, full_name, role, admin_type')
+        $admins = $this->db->select('user_id, email, full_name, role, admin_type')
             ->from('users')
             ->where('status', 'active')
             ->group_start()
@@ -131,6 +131,7 @@ class User_model extends CI_Model {
 
         return array_map(function($admin) {
             return [
+                'user_id' => $admin['user_id'],
                 'email' => $admin['email'],
                 'name' => $admin['full_name'],
                 'role' => $admin['role'],
