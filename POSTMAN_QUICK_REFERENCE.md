@@ -272,7 +272,6 @@ $db['default'] = array(
     'database' => 'scms_db'
 );
 ```
-
 ## Quick Start Checklist
 
 - [ ] XAMPP server running

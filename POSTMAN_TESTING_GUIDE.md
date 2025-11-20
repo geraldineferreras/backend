@@ -554,7 +554,6 @@ After completing these tests:
 ## Support
 
 If you encounter issues:
-
 1. Check the troubleshooting section
 2. Review server error logs
 3. Verify database connectivity
