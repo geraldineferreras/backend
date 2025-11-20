@@ -158,6 +158,255 @@ class AdminController extends BaseController {
         return json_response(true, 'Registration rejected successfully');
     }
 
+    /**
+     * Get class join request logs (View-only)
+     * GET /api/admin/class-join-request-logs
+     * 
+     * Returns all class join attempts with details:
+     * - Student Name, Section, Status (Regular/Irregular)
+     * - Class/Subject Name, Teacher Name
+     * - Result: Approved/Rejected/Pending
+     * - Date & Time, Who approved/rejected
+     * 
+     * Admin sees ALL programs
+     * Chairperson sees only their program
+     */
+    public function class_join_request_logs_get() {
+        $user_data = require_role($this, ['admin', 'chairperson']);
+        if (!$user_data) {
+            return;
+        }
+
+        try {
+            // Get query parameters for pagination
+            $page = $this->input->get('page') ?: 1;
+            $limit = $this->input->get('limit') ?: 50;
+            $offset = ($page - 1) * $limit;
+
+            // Get filters
+            $status_filter = $this->input->get('status'); // pending, active, rejected, etc.
+            $program_filter = $this->input->get('program'); // optional program filter
+
+            // Start building the query
+            $this->db->select('
+                ce.id as enrollment_id,
+                ce.student_id,
+                ce.status as request_status,
+                ce.enrolled_at as requested_at,
+                ce.updated_at as last_updated_at,
+                ce.created_at,
+                student.full_name as student_name,
+                student.student_num,
+                student.student_type,
+                student_section.section_name as student_section,
+                student_section.program as student_program,
+                c.class_code,
+                c.id as classroom_id,
+                subject.subject_name as class_subject_name,
+                class_section.section_name as class_section_name,
+                class_section.program as class_program,
+                teacher.user_id as teacher_id,
+                teacher.full_name as teacher_name,
+                teacher.email as teacher_email
+            ')
+            ->from('classroom_enrollments ce')
+            ->join('users student', 'ce.student_id = student.user_id COLLATE utf8mb4_unicode_ci', 'inner')
+            ->join('sections student_section', 'student.section_id = student_section.section_id', 'left')
+            ->join('classrooms c', 'ce.classroom_id = c.id', 'inner')
+            ->join('subjects subject', 'c.subject_id = subject.id', 'left')
+            ->join('sections class_section', 'c.section_id = class_section.section_id', 'left')
+            ->join('users teacher', 'c.teacher_id = teacher.user_id', 'left');
+
+            // Filter by chairperson's program if user is chairperson
+            if ($user_data['role'] === 'chairperson' && !empty($user_data['program'])) {
+                $chairperson_program = $user_data['program'];
+                // Filter by the class's program (since chairperson should see requests for classes in their program)
+                $this->db->where('class_section.program', $chairperson_program);
+            }
+
+            // Apply program filter if provided (for admin)
+            if (!empty($program_filter) && $user_data['role'] === 'admin') {
+                $this->db->where('class_section.program', $program_filter);
+            }
+
+            // Apply status filter if provided
+            if (!empty($status_filter)) {
+                $this->db->where('ce.status', $status_filter);
+            }
+
+            // Order by most recent first
+            $this->db->order_by('ce.enrolled_at', 'DESC');
+
+            // Get total count before pagination
+            // Build a separate count query with same filters
+            $this->db->select('COUNT(*) as total', false);
+            $this->db->from('classroom_enrollments ce');
+            $this->db->join('users student', 'ce.student_id = student.user_id COLLATE utf8mb4_unicode_ci', 'inner');
+            $this->db->join('sections student_section', 'student.section_id = student_section.section_id', 'left');
+            $this->db->join('classrooms c', 'ce.classroom_id = c.id', 'inner');
+            $this->db->join('subjects subject', 'c.subject_id = subject.id', 'left');
+            $this->db->join('sections class_section', 'c.section_id = class_section.section_id', 'left');
+            $this->db->join('users teacher', 'c.teacher_id = teacher.user_id', 'left');
+            
+            // Re-apply filters for count query
+            if ($user_data['role'] === 'chairperson' && !empty($user_data['program'])) {
+                $this->db->where('class_section.program', $user_data['program']);
+            }
+            if (!empty($program_filter) && $user_data['role'] === 'admin') {
+                $this->db->where('class_section.program', $program_filter);
+            }
+            if (!empty($status_filter)) {
+                $this->db->where('ce.status', $status_filter);
+            }
+            
+            $count_result = $this->db->get()->row_array();
+            $total_count = $count_result['total'] ?? 0;
+
+            // Reset query builder for main query
+            $this->db->reset_query();
+
+            // Rebuild the main query with all selects and joins
+            $this->db->select('
+                ce.id as enrollment_id,
+                ce.student_id,
+                ce.status as request_status,
+                ce.enrolled_at as requested_at,
+                ce.updated_at as last_updated_at,
+                ce.created_at,
+                student.full_name as student_name,
+                student.student_num,
+                student.student_type,
+                student_section.section_name as student_section,
+                student_section.program as student_program,
+                c.class_code,
+                c.id as classroom_id,
+                subject.subject_name as class_subject_name,
+                class_section.section_name as class_section_name,
+                class_section.program as class_program,
+                teacher.user_id as teacher_id,
+                teacher.full_name as teacher_name,
+                teacher.email as teacher_email
+            ')
+            ->from('classroom_enrollments ce')
+            ->join('users student', 'ce.student_id = student.user_id COLLATE utf8mb4_unicode_ci', 'inner')
+            ->join('sections student_section', 'student.section_id = student_section.section_id', 'left')
+            ->join('classrooms c', 'ce.classroom_id = c.id', 'inner')
+            ->join('subjects subject', 'c.subject_id = subject.id', 'left')
+            ->join('sections class_section', 'c.section_id = class_section.section_id', 'left')
+            ->join('users teacher', 'c.teacher_id = teacher.user_id', 'left');
+
+            // Re-apply filters
+            if ($user_data['role'] === 'chairperson' && !empty($user_data['program'])) {
+                $this->db->where('class_section.program', $user_data['program']);
+            }
+            if (!empty($program_filter) && $user_data['role'] === 'admin') {
+                $this->db->where('class_section.program', $program_filter);
+            }
+            if (!empty($status_filter)) {
+                $this->db->where('ce.status', $status_filter);
+            }
+
+            // Order by most recent first
+            $this->db->order_by('ce.enrolled_at', 'DESC');
+
+            // Apply pagination
+            if ($limit > 0) {
+                $this->db->limit($limit, $offset);
+            }
+
+            $logs = $this->db->get()->result_array();
+
+            // Format the response data
+            $formatted_logs = array_map(function($log) {
+                // Determine result based on status
+                $result = 'Pending';
+                if ($log['request_status'] === 'active') {
+                    $result = 'Approved';
+                } elseif ($log['request_status'] === 'rejected') {
+                    $result = 'Rejected';
+                } elseif (in_array(strtolower($log['request_status'] ?? ''), ['inactive', 'dropped'])) {
+                    $result = ucfirst(strtolower($log['request_status']));
+                }
+
+                // Determine student status
+                $student_status = 'Regular';
+                if (!empty($log['student_type']) && strtolower($log['student_type']) === 'irregular') {
+                    $student_status = 'Irregular';
+                }
+
+                // Format date/time
+                $requested_at = $log['requested_at'] 
+                    ? date('Y-m-d H:i:s', strtotime($log['requested_at'])) 
+                    : null;
+                $requested_at_iso = $log['requested_at'] 
+                    ? date('c', strtotime($log['requested_at'])) 
+                    : null;
+                $last_updated_at = $log['last_updated_at'] 
+                    ? date('Y-m-d H:i:s', strtotime($log['last_updated_at'])) 
+                    : null;
+                $last_updated_at_iso = $log['last_updated_at'] 
+                    ? date('c', strtotime($log['last_updated_at'])) 
+                    : null;
+
+                // Determine who approved/rejected
+                $action_by = null;
+                if ($result === 'Approved' || $result === 'Rejected') {
+                    $action_by = $log['teacher_name'] ?? 'Unknown Teacher';
+                }
+
+                return [
+                    'enrollment_id' => $log['enrollment_id'],
+                    'student' => [
+                        'student_id' => $log['student_id'],
+                        'student_name' => $log['student_name'],
+                        'student_num' => $log['student_num'],
+                        'student_section' => $log['student_section'],
+                        'student_status' => $student_status,
+                        'student_program' => $log['student_program']
+                    ],
+                    'class' => [
+                        'classroom_id' => $log['classroom_id'],
+                        'class_code' => $log['class_code'],
+                        'subject_name' => $log['class_subject_name'],
+                        'section_name' => $log['class_section_name'],
+                        'program' => $log['class_program']
+                    ],
+                    'teacher' => [
+                        'teacher_id' => $log['teacher_id'],
+                        'teacher_name' => $log['teacher_name'],
+                        'teacher_email' => $log['teacher_email']
+                    ],
+                    'request' => [
+                        'status' => $log['request_status'],
+                        'result' => $result,
+                        'requested_at' => $requested_at,
+                        'requested_at_iso' => $requested_at_iso,
+                        'last_updated_at' => $last_updated_at,
+                        'last_updated_at_iso' => $last_updated_at_iso,
+                        'action_by' => $action_by
+                    ]
+                ];
+            }, $logs);
+
+            // Prepare response
+            $response_data = [
+                'logs' => $formatted_logs,
+                'pagination' => [
+                    'page' => (int)$page,
+                    'limit' => (int)$limit,
+                    'total' => (int)$total_count,
+                    'total_pages' => $limit > 0 ? ceil($total_count / $limit) : 1
+                ]
+            ];
+
+            return json_response(true, 'Class join request logs retrieved successfully', $response_data);
+
+        } catch (Exception $e) {
+            log_message('error', 'Get class join request logs error: ' . $e->getMessage());
+            return json_response(false, 'Failed to retrieve class join request logs: ' . $e->getMessage(), null, 500);
+        }
+    }
+
     // List all sections
     public function sections_get() {
         $user_data = require_admin($this);

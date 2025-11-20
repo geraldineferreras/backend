@@ -161,6 +161,7 @@ $route['api/admin/students']['get'] = 'api/AdminController/all_students_get';
 $route['api/admin/registrations/pending']['get'] = 'api/AdminController/registrations_pending_get';
 $route['api/admin/registrations/(:any)/approve']['post'] = 'api/AdminController/registrations_approve_post/$1';
 $route['api/admin/registrations/(:any)/reject']['post'] = 'api/AdminController/registrations_reject_post/$1';
+$route['api/admin/class-join-request-logs']['get'] = 'api/AdminController/class_join_request_logs_get';
 
 // Teacher APIs
 $route['api/teacher/attendance']['post'] = 'teachercontroller/mark_attendance_qr';
