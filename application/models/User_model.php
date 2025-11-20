@@ -114,4 +114,28 @@ class User_model extends CI_Model {
 
         return $this->db->get()->result_array();
     }
+
+    /**
+     * Get all active admin and chairperson emails for notifications
+     */
+    public function get_admin_emails() {
+        $admins = $this->db->select('email, full_name, role, admin_type')
+            ->from('users')
+            ->where('status', 'active')
+            ->group_start()
+                ->where('role', 'admin')
+                ->or_where('role', 'chairperson')
+            ->group_end()
+            ->get()
+            ->result_array();
+
+        return array_map(function($admin) {
+            return [
+                'email' => $admin['email'],
+                'name' => $admin['full_name'],
+                'role' => $admin['role'],
+                'admin_type' => $admin['admin_type'] ?? null
+            ];
+        }, $admins);
+    }
 } 

@@ -605,7 +605,7 @@ function send_registration_approved_email($full_name, $email, $role, $temporary_
 function send_registration_rejected_email($full_name, $email, $role, $login_url = null) {
     $login_url = $login_url ?: get_scms_login_url();
     $subject = 'Your account registration was rejected';
-    $message = "Hi {$full_name},\n\nWe’re sorry, but your {$role} account registration has been rejected. "
+    $message = "Hi {$full_name},\n\nWe're sorry, but your {$role} account registration has been rejected. "
         . "Please contact the administrator or chairperson for assistance if you believe this was a mistake.\n\n"
         . "Login link: {$login_url}";
 
@@ -615,6 +615,63 @@ function send_registration_rejected_email($full_name, $email, $role, $login_url 
     ]);
 
     return send_email($email, $subject, $html, $full_name);
+}
+
+/**
+ * Send email notification to all admins/chairpersons when a new registration needs approval
+ */
+function notify_admins_pending_approval($pending_user_full_name, $pending_user_email, $pending_user_role, $pending_user_program = null) {
+    $CI =& get_instance();
+    $CI->load->model('User_model');
+    
+    $admins = $CI->User_model->get_admin_emails();
+    
+    if (empty($admins)) {
+        log_message('warning', 'No active admins found to notify about pending registration');
+        return false;
+    }
+    
+    $approval_url = getenv('ADMIN_APPROVAL_URL') ?: (getenv('APP_LOGIN_URL') ?: get_scms_login_url());
+    $approval_url = rtrim($approval_url, '/') . '/admin/account-approval';
+    
+    $program_text = $pending_user_program ? " ({$pending_user_program})" : '';
+    $subject = "New {$pending_user_role} registration awaiting approval";
+    $message = "Hello,\n\n"
+        . "A new {$pending_user_role} account registration is pending your approval:\n\n"
+        . "Name: {$pending_user_full_name}\n"
+        . "Email: {$pending_user_email}\n"
+        . "User Type: " . ucfirst($pending_user_role) . "{$program_text}\n"
+        . "Submitted: " . date('F j, Y g:i A') . "\n\n"
+        . "Please review and approve or reject this registration in the admin panel.\n\n"
+        . "Approval URL: {$approval_url}";
+    
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Review Registration',
+        'action_url' => $approval_url
+    ]);
+    
+    $success_count = 0;
+    $failure_count = 0;
+    
+    foreach ($admins as $admin) {
+        try {
+            $result = send_email($admin['email'], $subject, $html, $admin['name']);
+            if ($result) {
+                $success_count++;
+                log_message('info', "Pending approval notification sent to admin: {$admin['email']}");
+            } else {
+                $failure_count++;
+                log_message('error', "Failed to send pending approval notification to admin: {$admin['email']}");
+            }
+        } catch (Exception $e) {
+            $failure_count++;
+            log_message('error', "Exception sending pending approval notification to {$admin['email']}: " . $e->getMessage());
+        }
+    }
+    
+    log_message('info', "Pending approval notifications sent: {$success_count} success, {$failure_count} failures");
+    
+    return $success_count > 0;
 }
 
 /**

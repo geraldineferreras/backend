@@ -202,8 +202,8 @@ class Auth extends BaseController {
             log_message('debug', 'Student Type: ' . ($student_type ?: 'not provided (will default to regular)'));
             log_message('debug', '================================');
 
-            // Validate required fields (password is optional - admin will send temporary password after approval)
-            if (empty($role) || empty($full_name) || empty($email)) {
+            // Validate required fields
+            if (empty($role) || empty($full_name) || empty($email) || empty($password)) {
                 $this->output
                     ->set_status_header(400)
                     ->set_content_type('application/json')
@@ -269,8 +269,7 @@ class Auth extends BaseController {
             }
 
             // Prepare user data
-            // Password is optional - admin will send temporary password after approval
-            $hashed_password = !empty($password) ? password_hash($password, PASSWORD_BCRYPT) : null;
+            $hashed_password = password_hash($password, PASSWORD_BCRYPT);
             $user_id = generate_user_id(strtoupper(substr($role, 0, 3)));
             
             $user_data = [
@@ -471,8 +470,9 @@ class Auth extends BaseController {
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Invalid email format.';
         }
-        // Password is optional - admin will send temporary password after approval
-        if (!empty($password) && strlen($password) < 6) {
+        if (empty($password)) {
+            $errors[] = 'Password is required.';
+        } elseif (strlen($password) < 6) {
             $errors[] = 'Password must be at least 6 characters.';
         }
         if (empty($contact_num)) {
@@ -522,8 +522,7 @@ class Auth extends BaseController {
             $program = $program_shortcut; // Use standardized program name
         }
 
-        // Password is optional - admin will send temporary password after approval
-        $hashed_password = !empty($password) ? password_hash($password, PASSWORD_BCRYPT) : null;
+        $hashed_password = password_hash($password, PASSWORD_BCRYPT);
         $user_id = generate_user_id(strtoupper(substr($role, 0, 3)));
         $dataToInsert = [
             'user_id' => $user_id,
@@ -710,6 +709,21 @@ class Auth extends BaseController {
 
             if ($requires_manual_approval) {
                 $this->notify_account_pending_approval($user['user_id'], $user['full_name'], $user['role'], $user['email']);
+                
+                // Notify all admins/chairpersons about the new pending registration
+                if (function_exists('notify_admins_pending_approval')) {
+                    try {
+                        notify_admins_pending_approval(
+                            $user['full_name'],
+                            $user['email'],
+                            $user['role'],
+                            $user['program'] ?? null
+                        );
+                    } catch (Exception $e) {
+                        log_message('error', "Failed to notify admins about pending approval: " . $e->getMessage());
+                    }
+                }
+                
                 $response_message = 'Email verified successfully. Your account is now pending approval.';
             } elseif ($this->should_require_verification($user['role'])) {
                 $this->send_welcome_notification($user['user_id'], $user['full_name'], $user['role'], $user['email']);
