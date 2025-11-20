@@ -1068,6 +1068,14 @@ class StudentController extends BaseController {
                 ->get()
                 ->row_array();
 
+            $this->send_student_join_request_cancel_notification(
+                $classroom['teacher_id'],
+                $user_data,
+                $classroom,
+                $subject['subject_name'] ?? null,
+                $section['section_name'] ?? null
+            );
+
             // Log the cancellation for auditing
             $this->load->model('Audit_model');
             if (class_exists('Audit_model')) {
@@ -2672,6 +2680,42 @@ class StudentController extends BaseController {
             );
         } catch (Exception $e) {
             log_message('error', "Failed to send join request notification: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Notify teacher when a student cancels their join request
+     */
+    private function send_student_join_request_cancel_notification($teacher_id, $student_data, $classroom_data, $subject_name = null, $section_name = null) {
+        try {
+            $this->load->helper('notification');
+
+            $teacher = $this->db->select('full_name')
+                ->from('users')
+                ->where('user_id', $teacher_id)
+                ->get()
+                ->row_array();
+
+            if (!$teacher) {
+                log_message('error', "Teacher not found for join request cancel notification: {$teacher_id}");
+                return;
+            }
+
+            $student_name = $student_data['full_name'] ?? $student_data['user_id'];
+            $subject = $subject_name ?? $classroom_data['subject_name'] ?? 'the class';
+            $section = $section_name ?? $classroom_data['section_name'] ?? '';
+            $class_label = trim($subject . ' ' . $section);
+
+            $message = "{$student_name} cancelled their join request for {$class_label}.";
+
+            create_system_notification(
+                $teacher_id,
+                'Join Request Cancelled',
+                $message,
+                false
+            );
+        } catch (Exception $e) {
+            log_message('error', "Failed to send join request cancel notification: " . $e->getMessage());
         }
     }
 
