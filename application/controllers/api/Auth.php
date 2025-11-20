@@ -73,14 +73,6 @@ class Auth extends BaseController {
 
         $user = $this->User_model->get_by_email($email);
         if ($user && password_verify($password, $user['password'])) {
-            if ($user['status'] !== 'active') {
-                $this->output
-                    ->set_status_header(403)
-                    ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Account is inactive. Please contact administrator.']));
-                return;
-            }
-
             if ($this->should_block_unverified_login($user)) {
                 $this->output
                     ->set_status_header(423, 'Locked')
@@ -90,6 +82,15 @@ class Auth extends BaseController {
                         'message' => 'Email not verified yet. Please check your inbox for the verification link or request a new one.',
                         'can_resend' => true
                     ]));
+                return;
+            }
+
+            $status_block = $this->get_account_status_block_response($user);
+            if ($status_block) {
+                $this->output
+                    ->set_status_header($status_block['status_code'], $status_block['status_text'])
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode($status_block['payload']));
                 return;
             }
 
@@ -281,7 +282,7 @@ class Auth extends BaseController {
                 'address' => $address,
                 'profile_pic' => $profile_pic_path,
                 'cover_pic' => $cover_pic_path,
-                'status' => 'active',
+                'status' => $this->get_initial_account_status($role),
                 'last_login' => null
             ];
 
@@ -531,7 +532,7 @@ class Auth extends BaseController {
             'password' => $hashed_password,
             'contact_num' => $contact_num,
             'address' => $address,
-            'status' => 'active',
+            'status' => $this->get_initial_account_status($role),
             'last_login' => null,
             'profile_pic' => isset($data->profile_pic) ? $data->profile_pic : null,
             'cover_pic' => isset($data->cover_pic) ? $data->cover_pic : null
@@ -690,22 +691,32 @@ class Auth extends BaseController {
             return;
         }
 
+        $requires_manual_approval = $this->requires_manual_approval($user['role']);
+        $next_status = $requires_manual_approval ? 'pending_approval' : 'active';
+
         $update_data = [
             'email_verification_status' => 'verified',
             'email_verification_token' => null,
             'email_verification_expires_at' => null,
             'email_verification_sent_at' => null,
-            'email_verified_at' => date('Y-m-d H:i:s')
+            'email_verified_at' => date('Y-m-d H:i:s'),
+            'status' => $next_status
         ];
 
         if ($this->User_model->update($user['user_id'], $update_data)) {
             $this->send_verification_success_notification($user['user_id'], $user['full_name'], $user['role']);
-            if ($this->should_require_verification($user['role'])) {
+            $response_message = 'Email verified successfully. You can now log in.';
+
+            if ($requires_manual_approval) {
+                $this->notify_account_pending_approval($user['user_id'], $user['full_name'], $user['role'], $user['email']);
+                $response_message = 'Email verified successfully. Your account is now pending approval.';
+            } elseif ($this->should_require_verification($user['role'])) {
                 $this->send_welcome_notification($user['user_id'], $user['full_name'], $user['role'], $user['email']);
             }
 
             if (strtoupper($this->input->method(TRUE)) === 'GET') {
-                redirect($this->email_verification_redirect_url . '?status=verified', 'location', 302);
+                $redirect_status = $requires_manual_approval ? 'pending_approval' : 'verified';
+                redirect($this->email_verification_redirect_url . '?status=' . $redirect_status, 'location', 302);
                 return;
             }
 
@@ -714,7 +725,8 @@ class Auth extends BaseController {
                 ->set_content_type('application/json')
                 ->set_output(json_encode([
                     'status' => true,
-                    'message' => 'Email verified successfully. You can now log in.'
+                    'message' => $response_message,
+                    'next_status' => $next_status
                 ]));
         } else {
             $this->output
@@ -1787,6 +1799,29 @@ class Auth extends BaseController {
         }
     }
 
+    private function notify_account_pending_approval($user_id, $full_name, $role, $email) {
+        $title = "Account under review";
+        $message = "Hello {$full_name}, your {$role} account has been verified and is now waiting for administrator approval.";
+        $message .= " We will notify you as soon as the review is complete.";
+
+        try {
+            create_system_notification($user_id, $title, $message, true);
+        } catch (Exception $e) {
+            log_message('error', "Failed to create pending approval notification: " . $e->getMessage());
+        }
+
+        if (function_exists('send_registration_under_review_email')) {
+            try {
+                $login_url = function_exists('get_scms_login_url')
+                    ? get_scms_login_url()
+                    : (getenv('APP_LOGIN_URL') ?: $this->email_verification_redirect_url);
+                send_registration_under_review_email($full_name, $email, $role, $login_url);
+            } catch (Exception $e) {
+                log_message('error', "Failed to send pending approval email: " . $e->getMessage());
+            }
+        }
+    }
+
     private function create_email_verification_context($role) {
         $requires_verification = $this->should_require_verification($role);
 
@@ -1842,6 +1877,73 @@ class Auth extends BaseController {
         }
 
         return isset($user['email_verification_status']) && $user['email_verification_status'] === 'pending';
+    }
+
+    private function requires_manual_approval($role) {
+        $role = strtolower((string)$role);
+        return in_array($role, ['student', 'teacher']);
+    }
+
+    private function get_initial_account_status($role) {
+        if ($this->should_require_verification($role)) {
+            return 'pending_verification';
+        }
+
+        if ($this->requires_manual_approval($role)) {
+            return 'pending_approval';
+        }
+
+        return 'active';
+    }
+
+    private function get_account_status_block_response(array $user = null) {
+        if (!$user) {
+            return null;
+        }
+
+        $status = strtolower($user['status'] ?? 'inactive');
+
+        switch ($status) {
+            case 'pending_verification':
+                return [
+                    'status_code' => 423,
+                    'status_text' => 'Locked',
+                    'payload' => [
+                        'status' => false,
+                        'message' => 'Please verify your email address before logging in.',
+                        'can_resend' => true
+                    ]
+                ];
+            case 'pending_approval':
+                return [
+                    'status_code' => 423,
+                    'status_text' => 'Locked',
+                    'payload' => [
+                        'status' => false,
+                        'message' => 'Your account is under review and awaiting administrator approval.'
+                    ]
+                ];
+            case 'rejected':
+                return [
+                    'status_code' => 403,
+                    'status_text' => 'Forbidden',
+                    'payload' => [
+                        'status' => false,
+                        'message' => 'Your account registration has been rejected. Please contact the administrator for assistance.'
+                    ]
+                ];
+            case 'inactive':
+                return [
+                    'status_code' => 403,
+                    'status_text' => 'Forbidden',
+                    'payload' => [
+                        'status' => false,
+                        'message' => 'Account is inactive. Please contact administrator.'
+                    ]
+                ];
+            default:
+                return null;
+        }
     }
 
     private function generate_email_verification_token() {

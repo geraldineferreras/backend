@@ -7,9 +7,155 @@ class AdminController extends BaseController {
     public function __construct() {
         parent::__construct();
         $this->load->model(['Section_model', 'User_model']);
-        $this->load->helper(['response', 'auth', 'notification', 'utility']);
+        $this->load->helper(['response', 'auth', 'notification', 'utility', 'email_notification']);
         $this->load->library('Token_lib');
         // CORS headers are already handled by BaseController
+    }
+
+    /**
+     * List pending teacher/student registrations waiting for approval
+     */
+    public function registrations_pending_get() {
+        $user_data = require_role($this, ['admin', 'chairperson']);
+        if (!$user_data) {
+            return;
+        }
+
+        $role_filter = strtolower($this->input->get('role'));
+        if ($role_filter && !in_array($role_filter, ['teacher', 'student'])) {
+            return json_response(false, 'Role filter must be teacher or student', null, 400);
+        }
+
+        $registrations = $this->User_model->get_pending_registrations($role_filter ?: null);
+        $payload = array_map(function($user) {
+            return [
+                'user_id' => $user['user_id'],
+                'full_name' => $user['full_name'],
+                'email' => $user['email'],
+                'role' => $user['role'],
+                'program' => $user['role'] === 'student' ? ($user['program'] ?? null) : null,
+                'submitted_at' => $user['created_at'] ?? null
+            ];
+        }, $registrations);
+
+        return json_response(true, 'Pending registrations retrieved successfully', $payload);
+    }
+
+    /**
+     * Approve a pending teacher/student registration
+     */
+    public function registrations_approve_post($user_id = null) {
+        $user_data = require_role($this, ['admin', 'chairperson']);
+        if (!$user_data) {
+            return;
+        }
+
+        if (empty($user_id)) {
+            return json_response(false, 'User ID is required', null, 400);
+        }
+
+        $user = $this->User_model->get_by_id($user_id);
+        if (!$user || !in_array($user['role'], ['teacher', 'student'])) {
+            return json_response(false, 'Pending registration not found for this user', null, 404);
+        }
+
+        if ($user['status'] !== 'pending_approval') {
+            return json_response(false, 'User is not awaiting approval', null, 409);
+        }
+
+        if (($user['email_verification_status'] ?? 'pending') !== 'verified') {
+            return json_response(false, 'User must verify their email before approval', null, 409);
+        }
+
+        $temporary_password = $this->generate_temporary_password();
+        $update_data = [
+            'status' => 'active',
+            'password' => password_hash($temporary_password, PASSWORD_BCRYPT)
+        ];
+
+        $success = $this->User_model->update($user_id, $update_data);
+        if (!$success) {
+            return json_response(false, 'Failed to approve registration', null, 500);
+        }
+
+        $login_url = function_exists('get_scms_login_url')
+            ? get_scms_login_url()
+            : (getenv('APP_LOGIN_URL') ?: site_url('auth/login'));
+
+        if (function_exists('send_registration_approved_email')) {
+            try {
+                send_registration_approved_email($user['full_name'], $user['email'], $user['role'], $temporary_password, $login_url);
+            } catch (Exception $e) {
+                log_message('error', 'Failed to send approval email: ' . $e->getMessage());
+            }
+        }
+
+        try {
+            $title = 'Account approved';
+            $message = "Hello {$user['full_name']}, your {$user['role']} account has been approved. "
+                . "Use the temporary password sent to your email to sign in and update your password.";
+            create_system_notification($user_id, $title, $message, false);
+        } catch (Exception $e) {
+            log_message('error', 'Failed to create approval notification: ' . $e->getMessage());
+        }
+
+        return json_response(true, 'Registration approved successfully');
+    }
+
+    /**
+     * Reject a pending teacher/student registration
+     */
+    public function registrations_reject_post($user_id = null) {
+        $user_data = require_role($this, ['admin', 'chairperson']);
+        if (!$user_data) {
+            return;
+        }
+
+        if (empty($user_id)) {
+            return json_response(false, 'User ID is required', null, 400);
+        }
+
+        $user = $this->User_model->get_by_id($user_id);
+        if (!$user || !in_array($user['role'], ['teacher', 'student'])) {
+            return json_response(false, 'Pending registration not found for this user', null, 404);
+        }
+
+        if ($user['status'] !== 'pending_approval') {
+            return json_response(false, 'User is not awaiting approval', null, 409);
+        }
+
+        $data = json_decode(file_get_contents('php://input'));
+        $reason = null;
+        if (json_last_error() === JSON_ERROR_NONE && isset($data->reason)) {
+            $reason = trim($data->reason);
+        }
+
+        $success = $this->User_model->update($user_id, ['status' => 'rejected']);
+        if (!$success) {
+            return json_response(false, 'Failed to reject registration', null, 500);
+        }
+
+        if (function_exists('send_registration_rejected_email')) {
+            try {
+                send_registration_rejected_email($user['full_name'], $user['email'], $user['role']);
+            } catch (Exception $e) {
+                log_message('error', 'Failed to send rejection email: ' . $e->getMessage());
+            }
+        }
+
+        try {
+            $title = 'Registration rejected';
+            $message = "Hello {$user['full_name']}, your {$user['role']} account registration has been rejected.";
+            if ($reason) {
+                $message .= " Reason: {$reason}.";
+            }
+            $message .= " Please contact the administrator for assistance.";
+            create_system_notification($user_id, $title, $message, true);
+        } catch (Exception $e) {
+            log_message('error', 'Failed to create rejection notification: ' . $e->getMessage());
+        }
+
+        return json_response(true, 'Registration rejected successfully');
     }
 
     // List all sections
@@ -1706,6 +1852,24 @@ class AdminController extends BaseController {
         }
         
         return false; // Invalid program name
+    }
+
+    private function generate_temporary_password($length = 12) {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@$!?';
+        $password = '';
+        $maxIndex = strlen($alphabet) - 1;
+
+        try {
+            for ($i = 0; $i < $length; $i++) {
+                $password .= $alphabet[random_int(0, $maxIndex)];
+            }
+        } catch (Exception $e) {
+            for ($i = 0; $i < $length; $i++) {
+                $password .= $alphabet[mt_rand(0, $maxIndex)];
+            }
+        }
+
+        return $password;
     }
 
 }

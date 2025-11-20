@@ -101,4 +101,17 @@ class User_model extends CI_Model {
     public function get_by_verification_token($token_hash) {
         return $this->db->get_where('users', ['email_verification_token' => $token_hash])->row_array();
     }
+
+    public function get_pending_registrations($role = null) {
+        $this->db->from('users')
+            ->where('status', 'pending_approval');
+
+        if ($role) {
+            $this->db->where('role', strtolower($role));
+        }
+
+        $this->db->order_by('created_at', 'ASC');
+
+        return $this->db->get()->result_array();
+    }
 } 

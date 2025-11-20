@@ -546,6 +546,78 @@ function send_system_email($user_id, $title, $message) {
 }
 
 /**
+ * Resolve default login URL for onboarding emails
+ */
+function get_scms_login_url() {
+    $fallback = getenv('EMAIL_VERIFICATION_REDIRECT_URL') ?: 'https://scmsupdatedbackup.vercel.app/auth/login';
+    $login_url = getenv('APP_LOGIN_URL') ?: $fallback;
+    return rtrim($login_url, '/');
+}
+
+/**
+ * Send "under review" email after verification
+ */
+function send_registration_under_review_email($full_name, $email, $role, $login_url = null) {
+    $login_url = $login_url ?: get_scms_login_url();
+    $subject = 'Your account is under review';
+    $message = "Hi {$full_name},\n\nThank you for verifying your {$role} account. "
+        . "Your registration is now under review by the administrator.\n\n"
+        . "What happens next:\n"
+        . "- An admin or chairperson will review and approve your details.\n"
+        . "- You will receive another email once a decision has been made.\n\n"
+        . "You can check back any time using the button below.\n\n"
+        . "Login link: {$login_url}";
+
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Go to login',
+        'action_url' => $login_url
+    ]);
+
+    return send_email($email, $subject, $html, $full_name);
+}
+
+/**
+ * Send approval email with temporary password
+ */
+function send_registration_approved_email($full_name, $email, $role, $temporary_password, $login_url = null) {
+    $login_url = $login_url ?: get_scms_login_url();
+    $subject = 'Your account has been approved';
+    $message = "Hi {$full_name},\n\nGreat news! Your {$role} account has been approved.\n\n"
+        . "Use the details below to sign in:\n"
+        . "- Email: {$email}\n"
+        . "- Temporary password: {$temporary_password}\n\n"
+        . "Security reminders:\n"
+        . "- Do not share this password.\n"
+        . "- Please change your password immediately after login.\n\n"
+        . "Login link: {$login_url}";
+
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Login to SCMS',
+        'action_url' => $login_url
+    ]);
+
+    return send_email($email, $subject, $html, $full_name);
+}
+
+/**
+ * Send rejection email
+ */
+function send_registration_rejected_email($full_name, $email, $role, $login_url = null) {
+    $login_url = $login_url ?: get_scms_login_url();
+    $subject = 'Your account registration was rejected';
+    $message = "Hi {$full_name},\n\nWe’re sorry, but your {$role} account registration has been rejected. "
+        . "Please contact the administrator or chairperson for assistance if you believe this was a mistake.\n\n"
+        . "Login link: {$login_url}";
+
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Contact administrator',
+        'action_url' => $login_url
+    ]);
+
+    return send_email($email, $subject, $html, $full_name);
+}
+
+/**
  * Log email notification
  */
 function log_email_notification($user_id, $type, $title, $success) {

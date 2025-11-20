@@ -158,6 +158,9 @@ $route['api/admin/semesters']['get'] = 'api/AdminController/semesters_get';
 $route['api/admin/academic-years']['get'] = 'api/AdminController/academic_years_get';
 $route['api/admin/students/available']['get'] = 'api/AdminController/available_students_get';
 $route['api/admin/students']['get'] = 'api/AdminController/all_students_get';
+$route['api/admin/registrations/pending']['get'] = 'api/AdminController/registrations_pending_get';
+$route['api/admin/registrations/(:any)/approve']['post'] = 'api/AdminController/registrations_approve_post/$1';
+$route['api/admin/registrations/(:any)/reject']['post'] = 'api/AdminController/registrations_reject_post/$1';
 
 // Teacher APIs
 $route['api/teacher/attendance']['post'] = 'teachercontroller/mark_attendance_qr';
