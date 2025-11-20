@@ -312,6 +312,7 @@ $route['api/teacher/classroom/(:any)/stream/(:num)/comment/(:num)']['delete'] = 
 $route['api/teacher/classroom/(:any)/stream/(:num)']['delete'] = 'api/TeacherController/classroom_stream_delete/$1/$2';
 
 // Teacher Classroom Student Management
+$route['api/teacher/classroom/(:any)/students/(:any)']['delete'] = 'api/TeacherController/classroom_students_delete/$1/$2';
 $route['api/teacher/classroom/(:any)/students']['get'] = 'api/TeacherController/classroom_students_get/$1';
 $route['api/teacher/classroom/(:any)/join-requests']['get'] = 'api/TeacherController/classroom_join_requests_get/$1';
 $route['api/teacher/classroom/(:any)/join-requests']['post'] = 'api/TeacherController/classroom_join_requests_post/$1';

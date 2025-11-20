@@ -1382,6 +1382,82 @@ class TeacherController extends BaseController
     }
 
     /**
+     * Remove/Delete a participant from classroom (Teacher only)
+     * DELETE /api/teacher/classroom/{class_code}/students/{student_id}
+     */
+    public function classroom_students_delete($class_code, $student_id) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+        
+        // Get classroom by code and verify teacher ownership
+        $this->load->model('Classroom_model');
+        $classroom = $this->Classroom_model->get_by_code($class_code);
+        if (!$classroom) {
+            return json_response(false, 'Classroom not found', null, 404);
+        }
+        
+        // Verify that this teacher owns the classroom
+        if ($classroom['teacher_id'] != $user_data['user_id']) {
+            return json_response(false, 'Access denied. You can only remove students from your own classes.', null, 403);
+        }
+        
+        // Verify student_id is provided
+        if (empty($student_id)) {
+            return json_response(false, 'Student ID is required', null, 400);
+        }
+        
+        // Check if enrollment exists
+        $enrollment = $this->db->where('classroom_id', $classroom['id'])
+            ->where('student_id', $student_id)
+            ->get('classroom_enrollments')->row_array();
+        
+        if (!$enrollment) {
+            return json_response(false, 'Student is not enrolled in this classroom', null, 404);
+        }
+        
+        // Check if already removed/dropped
+        if (strtolower($enrollment['status']) === 'dropped') {
+            return json_response(false, 'Student has already been removed from this classroom', null, 400);
+        }
+        
+        // Get student info for logging
+        $student = $this->db->where('user_id', $student_id)
+            ->get('users')->row_array();
+        
+        // Update enrollment status to 'dropped'
+        $this->db->where('id', $enrollment['id'])
+            ->update('classroom_enrollments', ['status' => 'dropped']);
+        
+        // Log the action
+        $this->load->model('Audit_model');
+        if (class_exists('Audit_model')) {
+            $this->Audit_model->create_log([
+                'user_id' => $user_data['user_id'],
+                'user_name' => $user_data['full_name'] ?? 'Unknown Teacher',
+                'user_role' => 'teacher',
+                'action_type' => 'student_removed_from_class',
+                'module' => 'classroom',
+                'table_name' => 'classroom_enrollments',
+                'record_id' => $enrollment['id'],
+                'details' => json_encode([
+                    'class_code' => $classroom['class_code'],
+                    'classroom_id' => $classroom['id'],
+                    'student_id' => $student_id,
+                    'student_name' => $student['full_name'] ?? 'Unknown Student',
+                    'removed_at' => date('Y-m-d H:i:s')
+                ])
+            ]);
+        }
+        
+        return json_response(true, 'Participant removed from classroom successfully', [
+            'class_code' => $classroom['class_code'],
+            'student_id' => $student_id,
+            'student_name' => $student['full_name'] ?? null,
+            'removed_at' => date('Y-m-d H:i:s')
+        ]);
+    }
+
+    /**
      * Get pending classroom join requests (Teacher only)
      * GET /api/teacher/classroom/{class_code}/join-requests
      */
