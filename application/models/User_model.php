@@ -17,6 +17,9 @@ class User_model extends CI_Model {
             $this->db->where('users.role', $role);
         }
         
+        // Exclude rejected accounts from user management
+        $this->db->where('users.status !=', 'rejected');
+        
         // For students, join with sections table to get section_name and year level
         if ($role === 'student') {
             $this->db->select('users.*, sections.section_name, sections.year_level')

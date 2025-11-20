@@ -213,6 +213,7 @@ class Section_model extends CI_Model {
             ->from('users')
             ->join('sections', 'users.section_id = sections.section_id', 'left')
             ->where('users.role', 'student')
+            ->where('users.status !=', 'rejected')
             ->order_by('users.full_name', 'ASC')
             ->get()->result_array();
     }
