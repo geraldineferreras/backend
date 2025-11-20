@@ -514,6 +514,23 @@ class StudentController extends BaseController {
             // Note: year_level is not stored in users table, it's retrieved from sections table
             if (isset($input['section_id'])) $update_data['section_id'] = $input['section_id'];
             
+            // Handle student_type update
+            if (isset($input['student_type']) && !empty($input['student_type'])) {
+                $student_type = strtolower(trim($input['student_type']));
+                if (in_array($student_type, ['regular', 'irregular'])) {
+                    $update_data['student_type'] = $student_type;
+                } else {
+                    $this->output
+                        ->set_status_header(400)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode([
+                            'status' => false,
+                            'message' => 'Student type must be either "regular" or "irregular"'
+                        ]));
+                    return;
+                }
+            }
+            
             // Handle password update if provided
             if (isset($input['password']) && !empty($input['password'])) {
                 $update_data['password'] = password_hash($input['password'], PASSWORD_BCRYPT);
