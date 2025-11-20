@@ -801,7 +801,7 @@ class StudentController extends BaseController {
             $enrollment_id = null;
 
             if ($existing_enrollment) {
-                $current_status = strtolower($existing_enrollment['status']);
+                $current_status = strtolower(trim($existing_enrollment['status'] ?? ''));
                 if ($current_status === 'active') {
                     $this->output
                         ->set_status_header(409)
@@ -818,20 +818,12 @@ class StudentController extends BaseController {
                     return;
                 }
 
-                if (in_array($current_status, ['dropped', 'rejected', 'cancelled'])) {
-                    $this->db->where('id', $existing_enrollment['id'])
-                        ->update('classroom_enrollments', [
-                            'status' => $enrollment_status,
-                            'enrolled_at' => $now
-                        ]);
-                    $enrollment_id = $existing_enrollment['id'];
-                } else {
-                    $this->output
-                        ->set_status_header(409)
-                        ->set_content_type('application/json')
-                        ->set_output(json_encode(['status' => false, 'message' => 'Unable to process your request at this time']));
-                    return;
-                }
+                $this->db->where('id', $existing_enrollment['id'])
+                    ->update('classroom_enrollments', [
+                        'status' => $enrollment_status,
+                        'enrolled_at' => $now
+                    ]);
+                $enrollment_id = $existing_enrollment['id'];
             } else {
                 // Enroll or queue the student
                 $enrollment_data = [
