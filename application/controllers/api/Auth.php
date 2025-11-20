@@ -185,6 +185,7 @@ class Auth extends BaseController {
             $student_num = $this->input->post('student_num');
             $section_id = $this->input->post('section_id');
             $qr_code = $this->input->post('qr_code');
+            $student_type = $this->input->post('student_type'); // regular or irregular
 
             // Debug logging
             log_message('debug', '=== REGISTER WITH IMAGES DEBUG ===');
@@ -197,6 +198,7 @@ class Auth extends BaseController {
             log_message('debug', 'Student Num: ' . $student_num);
             log_message('debug', 'Section ID: ' . $section_id);
             log_message('debug', 'QR Code: ' . $qr_code);
+            log_message('debug', 'Student Type: ' . ($student_type ?: 'not provided (will default to regular)'));
             log_message('debug', '================================');
 
             // Validate required fields
@@ -302,6 +304,22 @@ class Auth extends BaseController {
                 
                 // Students must have a program - it should already be validated above
                 $user_data['program'] = $program;
+                
+                // Add student_type (regular or irregular), default to 'regular' if not provided
+                if (!empty($student_type)) {
+                    $student_type = strtolower(trim($student_type));
+                    if (in_array($student_type, ['regular', 'irregular'])) {
+                        $user_data['student_type'] = $student_type;
+                    } else {
+                        $this->output
+                            ->set_status_header(400)
+                            ->set_content_type('application/json')
+                            ->set_output(json_encode(['status' => false, 'message' => 'Student type must be either "regular" or "irregular"']));
+                        return;
+                    }
+                } else {
+                    $user_data['student_type'] = 'regular'; // Default to regular
+                }
             } elseif ($role === 'admin') {
                 // Determine admin_type based on program and existing main_admin
                 $admin_type = $this->determine_admin_type($program);
@@ -541,6 +559,22 @@ class Auth extends BaseController {
             
             // Students must have a program - it should already be validated above
             $dataToInsert['program'] = $program;
+            
+            // Add student_type (regular or irregular), default to 'regular' if not provided
+            if (isset($data->student_type) && !empty($data->student_type)) {
+                $student_type = strtolower(trim($data->student_type));
+                if (in_array($student_type, ['regular', 'irregular'])) {
+                    $dataToInsert['student_type'] = $student_type;
+                } else {
+                    $this->output
+                        ->set_status_header(400)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Student type must be either "regular" or "irregular"']));
+                    return;
+                }
+            } else {
+                $dataToInsert['student_type'] = 'regular'; // Default to regular
+            }
         } elseif ($role === 'admin') {
             // Determine admin_type based on program and existing main_admin
             $admin_type = $this->determine_admin_type($program);
@@ -570,6 +604,9 @@ class Auth extends BaseController {
         log_message('debug', 'Role: ' . $role);
         log_message('debug', 'Program after validation: ' . ($program ?: 'NULL'));
         log_message('debug', 'Final program in dataToInsert: ' . ($dataToInsert['program'] ?: 'NULL'));
+        if ($role === 'student') {
+            log_message('debug', 'Student Type: ' . (isset($dataToInsert['student_type']) ? $dataToInsert['student_type'] : 'not set (will default to regular)'));
+        }
         log_message('debug', 'Data to insert: ' . json_encode($dataToInsert));
         log_message('debug', '================================');
         
@@ -1192,6 +1229,20 @@ class Auth extends BaseController {
                 if ($this->input->post('student_num')) $update_data['student_num'] = $this->input->post('student_num');
                 if ($this->input->post('section_id')) $update_data['section_id'] = $this->input->post('section_id');
                 if ($this->input->post('qr_code')) $update_data['qr_code'] = $this->input->post('qr_code');
+                
+                // Handle student_type update
+                if ($this->input->post('student_type')) {
+                    $student_type = strtolower(trim($this->input->post('student_type')));
+                    if (in_array($student_type, ['regular', 'irregular'])) {
+                        $update_data['student_type'] = $student_type;
+                    } else {
+                        $this->output
+                            ->set_status_header(400)
+                            ->set_content_type('application/json')
+                            ->set_output(json_encode(['status' => false, 'message' => 'Student type must be either "regular" or "irregular"']));
+                        return;
+                    }
+                }
             }
             
             if (empty($update_data)) {
@@ -1306,6 +1357,20 @@ class Auth extends BaseController {
             if (isset($data->student_num)) $update_data['student_num'] = $data->student_num;
             if (isset($data->section_id)) $update_data['section_id'] = $data->section_id;
             if (isset($data->qr_code)) $update_data['qr_code'] = $data->qr_code;
+            
+            // Handle student_type update
+            if (isset($data->student_type) && !empty($data->student_type)) {
+                $student_type = strtolower(trim($data->student_type));
+                if (in_array($student_type, ['regular', 'irregular'])) {
+                    $update_data['student_type'] = $student_type;
+                } else {
+                    $this->output
+                        ->set_status_header(400)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Student type must be either "regular" or "irregular"']));
+                    return;
+                }
+            }
         }
 
         if (empty($update_data)) {
