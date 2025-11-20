@@ -1418,7 +1418,8 @@ class TeacherController extends BaseController
                 stu_sec.section_name as student_section
             ')
             ->from('classroom_enrollments ce')
-            ->join('users u', 'ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci')
+            ->join('users u', 'ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci', 'inner', false)
+            ->join('users u', 'ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci', 'inner', false)
             ->join('sections stu_sec', 'u.section_id = stu_sec.section_id', 'left')
             ->where('ce.classroom_id', $classroom['id'])
             ->where('ce.status', 'pending')
