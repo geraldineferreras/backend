@@ -187,68 +187,19 @@ class AdminController extends BaseController {
             $status_filter = $this->input->get('status'); // pending, active, rejected, etc.
             $program_filter = $this->input->get('program'); // optional program filter
 
-            // Start building the query
-            $this->db->select('
-                ce.id as enrollment_id,
-                ce.student_id,
-                ce.status as request_status,
-                ce.enrolled_at as requested_at,
-                ce.updated_at as last_updated_at,
-                ce.created_at,
-                student.full_name as student_name,
-                student.student_num,
-                student.student_type,
-                student_section.section_name as student_section,
-                student_section.program as student_program,
-                c.class_code,
-                c.id as classroom_id,
-                subject.subject_name as class_subject_name,
-                class_section.section_name as class_section_name,
-                class_section.program as class_program,
-                teacher.user_id as teacher_id,
-                teacher.full_name as teacher_name,
-                teacher.email as teacher_email
-            ')
-            ->from('classroom_enrollments ce')
-            ->join('users student', 'ce.student_id = student.user_id COLLATE utf8mb4_unicode_ci', 'inner')
-            ->join('sections student_section', 'student.section_id = student_section.section_id', 'left')
-            ->join('classrooms c', 'ce.classroom_id = c.id', 'inner')
-            ->join('subjects subject', 'c.subject_id = subject.id', 'left')
-            ->join('sections class_section', 'c.section_id = class_section.section_id', 'left')
-            ->join('users teacher', 'c.teacher_id = teacher.user_id', 'left');
-
-            // Filter by chairperson's program if user is chairperson
-            if ($user_data['role'] === 'chairperson' && !empty($user_data['program'])) {
-                $chairperson_program = $user_data['program'];
-                // Filter by the class's program (since chairperson should see requests for classes in their program)
-                $this->db->where('class_section.program', $chairperson_program);
-            }
-
-            // Apply program filter if provided (for admin)
-            if (!empty($program_filter) && $user_data['role'] === 'admin') {
-                $this->db->where('class_section.program', $program_filter);
-            }
-
-            // Apply status filter if provided
-            if (!empty($status_filter)) {
-                $this->db->where('ce.status', $status_filter);
-            }
-
-            // Order by most recent first
-            $this->db->order_by('ce.enrolled_at', 'DESC');
-
-            // Get total count before pagination
-            // Build a separate count query with same filters
+            // Build count query first - reset query builder first
+            $this->db->reset_query();
             $this->db->select('COUNT(*) as total', false);
             $this->db->from('classroom_enrollments ce');
-            $this->db->join('users student', 'ce.student_id = student.user_id COLLATE utf8mb4_unicode_ci', 'inner');
+            // Use join with false to prevent escaping, allowing COLLATE to work
+            $this->db->join('users student', 'ce.student_id = student.user_id COLLATE utf8mb4_unicode_ci', 'inner', false);
             $this->db->join('sections student_section', 'student.section_id = student_section.section_id', 'left');
             $this->db->join('classrooms c', 'ce.classroom_id = c.id', 'inner');
             $this->db->join('subjects subject', 'c.subject_id = subject.id', 'left');
             $this->db->join('sections class_section', 'c.section_id = class_section.section_id', 'left');
             $this->db->join('users teacher', 'c.teacher_id = teacher.user_id', 'left');
             
-            // Re-apply filters for count query
+            // Apply filters for count query
             if ($user_data['role'] === 'chairperson' && !empty($user_data['program'])) {
                 $this->db->where('class_section.program', $user_data['program']);
             }
@@ -265,7 +216,7 @@ class AdminController extends BaseController {
             // Reset query builder for main query
             $this->db->reset_query();
 
-            // Rebuild the main query with all selects and joins
+            // Build main query with all selects
             $this->db->select('
                 ce.id as enrollment_id,
                 ce.student_id,
@@ -286,16 +237,17 @@ class AdminController extends BaseController {
                 teacher.user_id as teacher_id,
                 teacher.full_name as teacher_name,
                 teacher.email as teacher_email
-            ')
-            ->from('classroom_enrollments ce')
-            ->join('users student', 'ce.student_id = student.user_id COLLATE utf8mb4_unicode_ci', 'inner')
-            ->join('sections student_section', 'student.section_id = student_section.section_id', 'left')
-            ->join('classrooms c', 'ce.classroom_id = c.id', 'inner')
-            ->join('subjects subject', 'c.subject_id = subject.id', 'left')
-            ->join('sections class_section', 'c.section_id = class_section.section_id', 'left')
-            ->join('users teacher', 'c.teacher_id = teacher.user_id', 'left');
-
-            // Re-apply filters
+            ');
+            $this->db->from('classroom_enrollments ce');
+            // Use join with false to prevent escaping, allowing COLLATE to work
+            $this->db->join('users student', 'ce.student_id = student.user_id COLLATE utf8mb4_unicode_ci', 'inner', false);
+            $this->db->join('sections student_section', 'student.section_id = student_section.section_id', 'left');
+            $this->db->join('classrooms c', 'ce.classroom_id = c.id', 'inner');
+            $this->db->join('subjects subject', 'c.subject_id = subject.id', 'left');
+            $this->db->join('sections class_section', 'c.section_id = class_section.section_id', 'left');
+            $this->db->join('users teacher', 'c.teacher_id = teacher.user_id', 'left');
+            
+            // Apply filters for main query
             if ($user_data['role'] === 'chairperson' && !empty($user_data['program'])) {
                 $this->db->where('class_section.program', $user_data['program']);
             }
