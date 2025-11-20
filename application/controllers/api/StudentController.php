@@ -818,7 +818,7 @@ class StudentController extends BaseController {
                     return;
                 }
 
-                if (in_array($current_status, ['dropped', 'rejected'])) {
+                if (in_array($current_status, ['dropped', 'rejected', 'cancelled'])) {
                     $this->db->where('id', $existing_enrollment['id'])
                         ->update('classroom_enrollments', [
                             'status' => $enrollment_status,
@@ -915,6 +915,200 @@ class StudentController extends BaseController {
                 ->set_status_header(500)
                 ->set_content_type('application/json')
                 ->set_output(json_encode(['status' => false, 'message' => 'Failed to join class']));
+        }
+    }
+
+    /**
+     * Get pending join class requests for the authenticated student
+     * GET /api/student/join-requests
+     */
+    public function join_requests_get() {
+        $user_data = require_auth($this);
+        if (!$user_data) {
+            return;
+        }
+
+        if ($user_data['role'] !== 'student') {
+            $this->output
+                ->set_status_header(403)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+
+        try {
+            $requests = $this->db->select('
+                    ce.id as enrollment_id,
+                    ce.classroom_id,
+                    ce.enrolled_at as requested_at,
+                    c.class_code,
+                    c.semester,
+                    c.school_year,
+                    s.subject_name,
+                    sec.section_name,
+                    u.full_name as teacher_name,
+                    u.email as teacher_email
+                ')
+                ->from('classroom_enrollments ce')
+                ->join('classrooms c', 'ce.classroom_id = c.id')
+                ->join('subjects s', 'c.subject_id = s.id', 'left')
+                ->join('sections sec', 'c.section_id = sec.section_id', 'left')
+                ->join('users u', 'c.teacher_id = u.user_id', 'left')
+                ->where('ce.student_id', $user_data['user_id'])
+                ->where('ce.status', 'pending')
+                ->order_by('ce.enrolled_at', 'ASC')
+                ->get()
+                ->result_array();
+
+            $requests = array_map(function ($request) {
+                $request['requested_at_iso'] = $request['requested_at']
+                    ? date('c', strtotime($request['requested_at']))
+                    : null;
+                return $request;
+            }, $requests);
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Pending join requests retrieved successfully',
+                    'data' => [
+                        'total_requests' => count($requests),
+                        'requests' => $requests
+                    ]
+                ]));
+        } catch (Exception $e) {
+            log_message('error', 'join_requests_get error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Failed to retrieve join requests'
+                ]));
+        }
+    }
+
+    /**
+     * Cancel a pending join class request
+     * DELETE /api/student/join-requests/{class_code}
+     */
+    public function join_requests_delete($class_code = null) {
+        $user_data = require_auth($this);
+        if (!$user_data) {
+            return;
+        }
+
+        if ($user_data['role'] !== 'student') {
+            $this->output
+                ->set_status_header(403)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Access denied. Students only.']));
+            return;
+        }
+
+        $payload = json_decode(file_get_contents('php://input'), true);
+        if (empty($class_code)) {
+            $class_code = $payload['class_code'] ?? $this->input->get('class_code');
+        }
+
+        if (empty($class_code)) {
+            $this->output
+                ->set_status_header(400)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'Class code is required']));
+            return;
+        }
+
+        try {
+            $classroom = $this->db->where('class_code', $class_code)
+                ->where('is_active', 1)
+                ->get('classrooms')
+                ->row_array();
+
+            if (!$classroom) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Class not found']));
+                return;
+            }
+
+            $enrollment = $this->db->where('classroom_id', $classroom['id'])
+                ->where('student_id', $user_data['user_id'])
+                ->where('status', 'pending')
+                ->get('classroom_enrollments')
+                ->row_array();
+
+            if (!$enrollment) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'No pending join request found for this class']));
+                return;
+            }
+
+            $now = date('Y-m-d H:i:s');
+            $this->db->where('id', $enrollment['id'])
+                ->update('classroom_enrollments', [
+                    'status' => 'cancelled',
+                    'updated_at' => $now
+                ]);
+
+            $subject = $this->db->select('subject_name')
+                ->from('subjects')
+                ->where('id', $classroom['subject_id'])
+                ->get()
+                ->row_array();
+
+            $section = $this->db->select('section_name')
+                ->from('sections')
+                ->where('section_id', $classroom['section_id'])
+                ->get()
+                ->row_array();
+
+            // Log the cancellation for auditing
+            $this->load->model('Audit_model');
+            if (class_exists('Audit_model')) {
+                $this->Audit_model->create_log([
+                    'user_id' => $user_data['user_id'],
+                    'user_name' => $user_data['full_name'] ?? 'Unknown Student',
+                    'user_role' => 'student',
+                    'action_type' => 'join_request_cancelled',
+                    'module' => 'class',
+                    'table_name' => 'classroom_enrollments',
+                    'record_id' => $classroom['id'],
+                    'details' => json_encode([
+                        'class_code' => $classroom['class_code'],
+                        'classroom_id' => $classroom['id'],
+                        'cancelled_at' => $now
+                    ])
+                ]);
+            }
+
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'Join request cancelled successfully',
+                    'data' => [
+                        'class_code' => $classroom['class_code'],
+                        'subject_name' => $subject['subject_name'] ?? null,
+                        'section_name' => $section['section_name'] ?? null,
+                        'cancelled_at' => $now
+                    ]
+                ]));
+        } catch (Exception $e) {
+            log_message('error', 'join_requests_delete error: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Failed to cancel join request'
+                ]));
         }
     }
 

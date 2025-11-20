@@ -183,6 +183,9 @@ $route['api/attendance/excuse-letter-status/(:any)/(:any)']['get'] = 'api/Attend
 // Student APIs
 $route['api/student/grades']['get'] = 'api/StudentController/grades_get';
 $route['api/student/join-class']['post'] = 'api/StudentController/join_class';
+$route['api/student/join-requests']['get'] = 'api/StudentController/join_requests_get';
+$route['api/student/join-requests']['delete'] = 'api/StudentController/join_requests_delete';
+$route['api/student/join-requests/(:any)']['delete'] = 'api/StudentController/join_requests_delete/$1';
 $route['api/student/my-classes']['get'] = 'api/StudentController/my_classes';
 $route['api/student/classes']['get'] = 'api/StudentController/classes_get';
 $route['api/student/leave-class']['delete'] = 'api/StudentController/leave_class';
