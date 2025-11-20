@@ -743,29 +743,26 @@ class StudentController extends BaseController {
                 return;
             }
 
-            // Check if student is already enrolled
-            $existing_enrollment = $this->db->where('classroom_id', $classroom['id'])
-                ->where('student_id', $user_data['user_id'])
-                ->get('classroom_enrollments')->row_array();
-
-            if ($existing_enrollment) {
-                $this->output
-                    ->set_status_header(409)
-                    ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Already enrolled in this class']));
-                return;
-            }
+            // Determine student type (regular or irregular)
+            $student_type = strtolower($user_data['student_type'] ?? '');
 
             // Check if student is in the correct section for this class
             // Some tokens (e.g., Google sign-in) may not include section_id, so fetch from DB as fallback
-            $student_section_id = isset($user_data['section_id']) ? $user_data['section_id'] : null;
-            if (empty($student_section_id)) {
-                $student_row = $this->db->select('section_id')
+            $student_section_id = $user_data['section_id'] ?? null;
+            $student_db_row = null;
+            if (empty($student_section_id) || empty($student_type)) {
+                $student_db_row = $this->db->select('section_id, student_type')
                     ->from('users')
                     ->where('user_id', $user_data['user_id'])
                     ->get()->row_array();
-                $student_section_id = $student_row['section_id'] ?? null;
+                if (empty($student_section_id)) {
+                    $student_section_id = $student_db_row['section_id'] ?? null;
+                }
+                if (empty($student_type)) {
+                    $student_type = strtolower($student_db_row['student_type'] ?? '');
+                }
             }
+            $is_irregular_student = ($student_type === 'irregular');
 
             if (empty($student_section_id)) {
                 $this->output
@@ -783,15 +780,59 @@ class StudentController extends BaseController {
                 return;
             }
 
-            // Enroll the student
-            $enrollment_data = [
-                'classroom_id' => $classroom['id'],
-                'student_id' => $user_data['user_id'],
-                'enrolled_at' => date('Y-m-d H:i:s'),
-                'status' => 'active'
-            ];
+            // Check if student already has an enrollment record
+            $existing_enrollment = $this->db->where('classroom_id', $classroom['id'])
+                ->where('student_id', $user_data['user_id'])
+                ->get('classroom_enrollments')->row_array();
 
-            $this->db->insert('classroom_enrollments', $enrollment_data);
+            $now = date('Y-m-d H:i:s');
+            $enrollment_status = $is_irregular_student ? 'pending' : 'active';
+            $enrollment_id = null;
+
+            if ($existing_enrollment) {
+                $current_status = strtolower($existing_enrollment['status']);
+                if ($current_status === 'active') {
+                    $this->output
+                        ->set_status_header(409)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Already enrolled in this class']));
+                    return;
+                }
+
+                if ($current_status === 'pending') {
+                    $this->output
+                        ->set_status_header(409)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Join request already pending approval']));
+                    return;
+                }
+
+                if (in_array($current_status, ['dropped', 'rejected'])) {
+                    $this->db->where('id', $existing_enrollment['id'])
+                        ->update('classroom_enrollments', [
+                            'status' => $enrollment_status,
+                            'enrolled_at' => $now
+                        ]);
+                    $enrollment_id = $existing_enrollment['id'];
+                } else {
+                    $this->output
+                        ->set_status_header(409)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Unable to process your request at this time']));
+                    return;
+                }
+            } else {
+                // Enroll or queue the student
+                $enrollment_data = [
+                    'classroom_id' => $classroom['id'],
+                    'student_id' => $user_data['user_id'],
+                    'enrolled_at' => $now,
+                    'status' => $enrollment_status
+                ];
+
+                $this->db->insert('classroom_enrollments', $enrollment_data);
+                $enrollment_id = $this->db->insert_id();
+            }
 
             // Log the enrollment activity (use Audit_model::create_log for compatibility)
             $this->load->model('Audit_model');
@@ -805,14 +846,36 @@ class StudentController extends BaseController {
                     'table_name' => 'classroom_enrollments',
                     'record_id' => $classroom['id'] ?? null,
                     'details' => json_encode([
-                        'message' => 'Student joined class',
+                        'message' => $is_irregular_student ? 'Student requested to join class' : 'Student joined class',
                         'class_code' => $class_code,
                         'subject_name' => $classroom['subject_name'] ?? null,
                         'section_name' => $classroom['section_name'] ?? null
                     ])
                 ]);
             }
-            
+
+            if ($is_irregular_student) {
+                // Notify teacher about the pending join request
+                $this->send_student_join_request_notification($classroom['teacher_id'], $user_data, $classroom);
+
+                $this->output
+                    ->set_status_header(202)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode([
+                        'status' => true,
+                        'message' => 'Join request submitted. Waiting for teacher approval.',
+                        'data' => [
+                            'class_code' => $classroom['class_code'],
+                            'subject_name' => $classroom['subject_name'],
+                            'section_name' => $classroom['section_name'],
+                            'teacher_name' => $classroom['teacher_name'],
+                            'request_status' => 'pending',
+                            'requested_at' => $now
+                        ]
+                    ]));
+                return;
+            }
+
             // Send notification to teacher about new student enrollment
             $this->send_student_enrollment_notification($classroom['teacher_id'], $user_data, $classroom);
 
@@ -829,7 +892,7 @@ class StudentController extends BaseController {
                         'semester' => $classroom['semester'],
                         'school_year' => $classroom['school_year'],
                         'teacher_name' => $classroom['teacher_name'],
-                        'enrolled_at' => $enrollment_data['enrolled_at']
+                        'enrolled_at' => $now
                     ]
                 ]));
 
@@ -2366,6 +2429,37 @@ class StudentController extends BaseController {
     }
 
     /**
+     * Send notification to teacher about a pending join request
+     */
+    private function send_student_join_request_notification($teacher_id, $student_data, $classroom_data) {
+        try {
+            $this->load->helper('notification');
+
+            $teacher = $this->db->select('full_name')
+                ->from('users')
+                ->where('user_id', $teacher_id)
+                ->get()->row_array();
+
+            if (!$teacher) {
+                log_message('error', "Teacher not found for join request notification: {$teacher_id}");
+                return;
+            }
+
+            $student_name = $student_data['full_name'] ?? $student_data['user_id'];
+            $message = "{$student_name} is requesting to join your class.";
+
+            create_system_notification(
+                $teacher_id,
+                'Class Join Request',
+                $message,
+                false
+            );
+        } catch (Exception $e) {
+            log_message('error', "Failed to send join request notification: " . $e->getMessage());
+        }
+    }
+
+    /**
      * Send notification to teacher about new student enrollment
      */
     private function send_student_enrollment_notification($teacher_id, $student_data, $classroom_data) {
@@ -2388,11 +2482,8 @@ class StudentController extends BaseController {
             $section_name = $classroom_data['section_name'] ?? 'Unknown Section';
             $class_code = $classroom_data['class_code'] ?? 'Unknown Class';
             
-            $title = "New Student Enrollment";
-            $message = "Hello {$teacher['full_name']}, a new student has joined your class. ";
-            $message .= "{$student_name} has enrolled in {$subject_name} for Section {$section_name} ";
-            $message .= "({$classroom_data['semester']} Semester, {$classroom_data['school_year']}). ";
-            $message .= "You can now see them in your class roster and assign them tasks.";
+            $title = "Class Enrollment";
+            $message = "{$student_name} has joined your class.";
             
             create_system_notification($teacher_id, $title, $message, false);
             

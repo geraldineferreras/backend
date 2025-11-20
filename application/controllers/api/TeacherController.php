@@ -1382,6 +1382,144 @@ class TeacherController extends BaseController
     }
 
     /**
+     * Get pending classroom join requests (Teacher only)
+     * GET /api/teacher/classroom/{class_code}/join-requests
+     */
+    public function classroom_join_requests_get($class_code) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        $this->load->model('Classroom_model');
+        $classroom = $this->Classroom_model->get_by_code($class_code);
+        if (!$classroom || $classroom['teacher_id'] != $user_data['user_id']) {
+            return json_response(false, 'Classroom not found or access denied', null, 404);
+        }
+
+        $subject = $this->db->select('subject_name')
+            ->from('subjects')
+            ->where('id', $classroom['subject_id'])
+            ->get()->row_array();
+        $section = $this->db->select('section_name')
+            ->from('sections')
+            ->where('section_id', $classroom['section_id'])
+            ->get()->row_array();
+
+        $classroom['subject_name'] = $subject['subject_name'] ?? '';
+        $classroom['section_name'] = $section['section_name'] ?? '';
+
+        $requests = $this->db->select('
+                ce.id as enrollment_id,
+                ce.student_id,
+                ce.enrolled_at as requested_at,
+                u.full_name,
+                u.email,
+                u.student_num,
+                u.student_type,
+                stu_sec.section_name as student_section
+            ')
+            ->from('classroom_enrollments ce')
+            ->join('users u', 'ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci')
+            ->join('sections stu_sec', 'u.section_id = stu_sec.section_id', 'left')
+            ->where('ce.classroom_id', $classroom['id'])
+            ->where('ce.status', 'pending')
+            ->order_by('ce.enrolled_at', 'ASC')
+            ->get()->result_array();
+
+        return json_response(true, 'Pending join requests retrieved successfully', [
+            'class_code' => $classroom['class_code'],
+            'subject_name' => $classroom['subject_name'],
+            'section_name' => $classroom['section_name'],
+            'total_requests' => count($requests),
+            'requests' => $requests
+        ]);
+    }
+
+    /**
+     * Approve or reject a classroom join request
+     * POST /api/teacher/classroom/{class_code}/join-requests
+     * Body: { "student_id": "...", "decision": "approve|reject" }
+     */
+    public function classroom_join_requests_post($class_code) {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        $payload = json_decode(file_get_contents('php://input'), true);
+        $student_id = $payload['student_id'] ?? null;
+        $decision = strtolower($payload['decision'] ?? '');
+
+        if (empty($student_id) || !in_array($decision, ['approve', 'reject'])) {
+            return json_response(false, 'student_id and valid decision (approve/reject) are required', null, 400);
+        }
+
+        $this->load->model('Classroom_model');
+        $classroom = $this->Classroom_model->get_by_code($class_code);
+        if (!$classroom || $classroom['teacher_id'] != $user_data['user_id']) {
+            return json_response(false, 'Classroom not found or access denied', null, 404);
+        }
+
+        $subject = $this->db->select('subject_name')
+            ->from('subjects')
+            ->where('id', $classroom['subject_id'])
+            ->get()->row_array();
+        $section = $this->db->select('section_name')
+            ->from('sections')
+            ->where('section_id', $classroom['section_id'])
+            ->get()->row_array();
+
+        $classroom['subject_name'] = $subject['subject_name'] ?? '';
+        $classroom['section_name'] = $section['section_name'] ?? '';
+
+        $enrollment = $this->db->where('classroom_id', $classroom['id'])
+            ->where('student_id', $student_id)
+            ->get('classroom_enrollments')->row_array();
+
+        if (!$enrollment || strtolower($enrollment['status']) !== 'pending') {
+            return json_response(false, 'Pending join request not found for this student', null, 404);
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $new_status = $decision === 'approve' ? 'active' : 'rejected';
+        $update_data = ['status' => $new_status];
+        if ($decision === 'approve') {
+            $update_data['enrolled_at'] = $now;
+        }
+
+        $this->db->where('id', $enrollment['id'])->update('classroom_enrollments', $update_data);
+
+        // Log decision
+        $this->load->model('Audit_model');
+        if (class_exists('Audit_model')) {
+            $this->Audit_model->create_log([
+                'user_id' => $user_data['user_id'],
+                'user_name' => $user_data['full_name'] ?? 'Unknown Teacher',
+                'user_role' => 'teacher',
+                'action_type' => $decision === 'approve' ? 'class_join_approved' : 'class_join_rejected',
+                'module' => 'class',
+                'table_name' => 'classroom_enrollments',
+                'record_id' => $classroom['id'],
+                'details' => json_encode([
+                    'class_code' => $classroom['class_code'],
+                    'student_id' => $student_id,
+                    'decision' => $decision
+                ])
+            ]);
+        }
+
+        // Notify student about the decision
+        $this->notify_student_join_request_decision($student_id, $classroom, $decision);
+
+        $message = $decision === 'approve'
+            ? 'Join request approved successfully'
+            : 'Join request rejected successfully';
+
+        return json_response(true, $message, [
+            'student_id' => $student_id,
+            'decision' => $decision,
+            'status' => $new_status
+        ]);
+    }
+
+    /**
      * Get classroom enrollment statistics (Teacher only)
      * GET /api/teacher/classroom/{class_code}/enrollment-stats
      */
@@ -2257,6 +2395,41 @@ class TeacherController extends BaseController
         }
     }
     
+    /**
+     * Notify students when their join request is approved or rejected
+     */
+    private function notify_student_join_request_decision($student_id, $classroom, $decision) {
+        try {
+            $this->load->helper('notification');
+
+            $student = $this->db->select('full_name')
+                ->from('users')
+                ->where('user_id', $student_id)
+                ->get()->row_array();
+
+            if (!$student) {
+                log_message('error', "Student not found for join request decision notification: {$student_id}");
+                return;
+            }
+
+            $class_identifier = $classroom['subject_name'] && $classroom['section_name']
+                ? "{$classroom['subject_name']} ({$classroom['section_name']})"
+                : ($classroom['title'] ?? $classroom['class_code']);
+
+            if ($decision === 'approve') {
+                $title = 'Join Request Approved';
+                $message = "Your request to join {$class_identifier} has been approved.";
+            } else {
+                $title = 'Join Request Rejected';
+                $message = "Your request to join {$class_identifier} was rejected.";
+            }
+
+            create_system_notification($student_id, $title, $message, false);
+        } catch (Exception $e) {
+            log_message('error', 'Failed to send join request decision notification: ' . $e->getMessage());
+        }
+    }
+
     /**
      * Helper method to calculate category average
      */
