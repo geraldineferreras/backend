@@ -725,6 +725,8 @@ class StudentController extends BaseController {
                 c.*,
                 s.subject_name,
                 sec.section_name,
+                sec.program as class_program,
+                sec.year_level as class_year_level,
                 u.full_name as teacher_name
             ')
             ->from('classrooms c')
@@ -743,41 +745,50 @@ class StudentController extends BaseController {
                 return;
             }
 
-            // Determine student type (regular or irregular)
-            $student_type = strtolower($user_data['student_type'] ?? '');
+            // Load student academic info and type
+            $student_row = $this->db->select('section_id, student_type, program')
+                ->from('users')
+                ->where('user_id', $user_data['user_id'])
+                ->get()->row_array();
 
-            // Check if student is in the correct section for this class
-            // Some tokens (e.g., Google sign-in) may not include section_id, so fetch from DB as fallback
-            $student_section_id = $user_data['section_id'] ?? null;
-            $student_db_row = null;
-            if (empty($student_section_id) || empty($student_type)) {
-                $student_db_row = $this->db->select('section_id, student_type')
-                    ->from('users')
-                    ->where('user_id', $user_data['user_id'])
+            $student_section_id = $student_row['section_id'] ?? ($user_data['section_id'] ?? null);
+            $student_type = strtolower($student_row['student_type'] ?? $user_data['student_type'] ?? '');
+            $student_program = $student_row['program'] ?? ($user_data['program'] ?? null);
+
+            $student_section = null;
+            if (!empty($student_section_id)) {
+                $student_section = $this->db->select('section_id, program, year_level, section_name')
+                    ->from('sections')
+                    ->where('section_id', $student_section_id)
                     ->get()->row_array();
-                if (empty($student_section_id)) {
-                    $student_section_id = $student_db_row['section_id'] ?? null;
-                }
-                if (empty($student_type)) {
-                    $student_type = strtolower($student_db_row['student_type'] ?? '');
-                }
             }
+
+            $student_year_level = $student_section['year_level'] ?? null;
+            if (empty($student_program)) {
+                $student_program = $student_section['program'] ?? null;
+            }
+
+            $class_program = $classroom['class_program'] ?? null;
+            $class_year_level = $classroom['class_year_level'] ?? null;
+
+            if (empty($student_section_id) || empty($student_program) || empty($student_year_level) || empty($class_program) || empty($class_year_level)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Incomplete academic information. Please ensure your profile and section details are updated.']));
+                return;
+            }
+
+            $program_matches = strcasecmp(trim($student_program), trim($class_program)) === 0;
+            $year_matches = strcasecmp(trim($student_year_level), trim($class_year_level)) === 0;
+            $section_matches = (int)$student_section_id === (int)$classroom['section_id'];
+
             $is_irregular_student = ($student_type === 'irregular');
+            $all_matches = $program_matches && $year_matches && $section_matches;
 
-            if (empty($student_section_id)) {
-                $this->output
-                    ->set_status_header(403)
-                    ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Your account has no section assigned. Please update your profile or contact an administrator.']));
-                return;
-            }
-
-            if (!$is_irregular_student && $student_section_id != $classroom['section_id']) {
-                $this->output
-                    ->set_status_header(403)
-                    ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'You can only join classes for your assigned section']));
-                return;
+            $requires_approval = true;
+            if (!$is_irregular_student && $all_matches) {
+                $requires_approval = false;
             }
 
             // Check if student already has an enrollment record
@@ -786,7 +797,7 @@ class StudentController extends BaseController {
                 ->get('classroom_enrollments')->row_array();
 
             $now = date('Y-m-d H:i:s');
-            $enrollment_status = $is_irregular_student ? 'pending' : 'active';
+            $enrollment_status = $requires_approval ? 'pending' : 'active';
             $enrollment_id = null;
 
             if ($existing_enrollment) {
@@ -846,7 +857,7 @@ class StudentController extends BaseController {
                     'table_name' => 'classroom_enrollments',
                     'record_id' => $classroom['id'] ?? null,
                     'details' => json_encode([
-                        'message' => $is_irregular_student ? 'Student requested to join class' : 'Student joined class',
+                        'message' => $requires_approval ? 'Student requested to join class' : 'Student joined class',
                         'class_code' => $class_code,
                         'subject_name' => $classroom['subject_name'] ?? null,
                         'section_name' => $classroom['section_name'] ?? null
@@ -854,7 +865,7 @@ class StudentController extends BaseController {
                 ]);
             }
 
-            if ($is_irregular_student) {
+            if ($requires_approval) {
                 // Notify teacher about the pending join request
                 $this->send_student_join_request_notification($classroom['teacher_id'], $user_data, $classroom);
 
@@ -869,6 +880,7 @@ class StudentController extends BaseController {
                             'subject_name' => $classroom['subject_name'],
                             'section_name' => $classroom['section_name'],
                             'teacher_name' => $classroom['teacher_name'],
+                            'student_type' => $student_type ?: 'regular',
                             'request_status' => 'pending',
                             'requested_at' => $now
                         ]
@@ -892,7 +904,8 @@ class StudentController extends BaseController {
                         'semester' => $classroom['semester'],
                         'school_year' => $classroom['school_year'],
                         'teacher_name' => $classroom['teacher_name'],
-                        'enrolled_at' => $now
+                        'enrolled_at' => $now,
+                        'student_type' => $student_type ?: 'regular'
                     ]
                 ]));
 

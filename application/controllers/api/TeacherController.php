@@ -1339,7 +1339,8 @@ class TeacherController extends BaseController
                     u.contact_num,
                     u.program,
                     u.section_id,
-                    u.profile_pic
+                    u.profile_pic,
+                    u.student_type
                 FROM classroom_enrollments ce
                 JOIN users u ON ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci
                 WHERE ce.classroom_id = ?
@@ -1353,9 +1354,18 @@ class TeacherController extends BaseController
         foreach ($enrolled_students as $student) {
             // Get section name separately to avoid collation issues
             $section_name = '';
+            $section_year = '';
+            $section_program = '';
             if (!empty($student['section_id'])) {
-                $section = $this->db->get_where('sections', ['section_id' => $student['section_id']])->row_array();
-                $section_name = $section ? $section['section_name'] : '';
+                $section = $this->db->select('section_name, year_level, program')
+                    ->from('sections')
+                    ->where('section_id', $student['section_id'])
+                    ->get()->row_array();
+                if ($section) {
+                    $section_name = $section['section_name'] ?? '';
+                    $section_year = $section['year_level'] ?? '';
+                    $section_program = $section['program'] ?? '';
+                }
             }
             
             $students[] = [
@@ -1366,9 +1376,12 @@ class TeacherController extends BaseController
                 'contact_num' => $student['contact_num'],
                 'program' => $student['program'],
                 'section_name' => $section_name,
+                'section_year_level' => $section_year,
+                'section_program' => $section_program,
                 'enrolled_at' => $student['enrolled_at'],
                 'enrollment_status' => $student['enrollment_status'],
-                'profile_pic' => $student['profile_pic']
+                'profile_pic' => $student['profile_pic'],
+                'student_type' => $student['student_type'] ?? 'regular'
             ];
         }
         
@@ -1491,7 +1504,9 @@ class TeacherController extends BaseController
                 u.email,
                 u.student_num,
                 u.student_type,
-                stu_sec.section_name as student_section
+                stu_sec.section_name as student_section,
+                stu_sec.program as student_program,
+                stu_sec.year_level as student_year_level
             ')
             ->from('classroom_enrollments ce')
             ->join('users u', 'ce.student_id = u.user_id COLLATE utf8mb4_unicode_ci', 'inner', false)
@@ -1553,6 +1568,12 @@ class TeacherController extends BaseController
             return json_response(false, 'Pending join request not found for this student', null, 404);
         }
 
+        $student_row = $this->db->select('student_type')
+            ->from('users')
+            ->where('user_id', $student_id)
+            ->get()->row_array();
+        $student_type = $student_row['student_type'] ?? 'regular';
+
         $now = date('Y-m-d H:i:s');
         $new_status = $decision === 'approve' ? 'active' : 'rejected';
         $update_data = ['status' => $new_status];
@@ -1591,7 +1612,8 @@ class TeacherController extends BaseController
         return json_response(true, $message, [
             'student_id' => $student_id,
             'decision' => $decision,
-            'status' => $new_status
+            'status' => $new_status,
+            'student_type' => $student_type
         ]);
     }
 
