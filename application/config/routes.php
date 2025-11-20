@@ -313,6 +313,8 @@ $route['api/teacher/classroom/(:any)/stream/(:num)']['delete'] = 'api/TeacherCon
 
 // Teacher Classroom Student Management
 $route['api/teacher/classroom/(:any)/students']['get'] = 'api/TeacherController/classroom_students_get/$1';
+$route['api/teacher/classroom/(:any)/join-requests']['get'] = 'api/TeacherController/classroom_join_requests_get/$1';
+$route['api/teacher/classroom/(:any)/join-requests']['post'] = 'api/TeacherController/classroom_join_requests_post/$1';
 $route['api/teacher/classroom/(:any)/enrollment-stats']['get'] = 'api/TeacherController/classroom_enrollment_stats_get/$1';
 $route['api/teacher/classroom/(:any)/grades']['get'] = 'api/TeacherController/classroom_grades_get/$1';
 $route['api/teacher/classroom/(:any)/comprehensive-grades']['get'] = 'api/TeacherController/classroom_comprehensive_grades_get/$1';
