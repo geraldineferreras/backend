@@ -1113,6 +1113,15 @@ class StudentController extends BaseController {
     }
 
     /**
+     * Backward-compatible cancel endpoint for frontends using POST
+     * POST /api/student/join-requests
+     */
+    public function join_requests_post() {
+        // Reuse delete handler (reads payload internally)
+        $this->join_requests_delete();
+    }
+
+    /**
      * Leave a class
      * DELETE /api/student/leave-class
      */
