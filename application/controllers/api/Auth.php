@@ -202,8 +202,8 @@ class Auth extends BaseController {
             log_message('debug', 'Student Type: ' . ($student_type ?: 'not provided (will default to regular)'));
             log_message('debug', '================================');
 
-            // Validate required fields
-            if (empty($role) || empty($full_name) || empty($email) || empty($password)) {
+            // Validate required fields (password is optional)
+            if (empty($role) || empty($full_name) || empty($email)) {
                 $this->output
                     ->set_status_header(400)
                     ->set_content_type('application/json')
@@ -269,7 +269,10 @@ class Auth extends BaseController {
             }
 
             // Prepare user data
-            $hashed_password = password_hash($password, PASSWORD_BCRYPT);
+            // Password is optional - if not provided, set placeholder (will be set during approval)
+            $hashed_password = !empty($password) 
+                ? password_hash($password, PASSWORD_BCRYPT) 
+                : password_hash(uniqid('pending_', true), PASSWORD_BCRYPT); // Placeholder password
             $user_id = generate_user_id(strtoupper(substr($role, 0, 3)));
             
             $user_data = [
@@ -470,9 +473,8 @@ class Auth extends BaseController {
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Invalid email format.';
         }
-        if (empty($password)) {
-            $errors[] = 'Password is required.';
-        } elseif (strlen($password) < 6) {
+        // Password is optional - if provided, validate length
+        if (!empty($password) && strlen($password) < 6) {
             $errors[] = 'Password must be at least 6 characters.';
         }
         if (empty($contact_num)) {
@@ -522,7 +524,10 @@ class Auth extends BaseController {
             $program = $program_shortcut; // Use standardized program name
         }
 
-        $hashed_password = password_hash($password, PASSWORD_BCRYPT);
+        // Password is optional - if not provided, set placeholder (will be set during approval)
+        $hashed_password = !empty($password) 
+            ? password_hash($password, PASSWORD_BCRYPT) 
+            : password_hash(uniqid('pending_', true), PASSWORD_BCRYPT); // Placeholder password
         $user_id = generate_user_id(strtoupper(substr($role, 0, 3)));
         $dataToInsert = [
             'user_id' => $user_id,
