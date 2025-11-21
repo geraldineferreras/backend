@@ -107,13 +107,11 @@ class Section_model extends CI_Model {
             ->get()->result_array();
     }
 
-    public function get_programs() {
-        return $this->db->select('DISTINCT(program) as program', false)
-            ->from('sections')
-            ->where('program IS NOT NULL')
-            ->where('program !=', '')
-            ->order_by('program', 'ASC')
-            ->get()->result_array();
+    public function get_programs($include_archived = false) {
+        $this->load->model('Program_model');
+        return $this->Program_model->get_all([
+            'include_archived' => $include_archived
+        ]);
     }
 
     public function get_year_levels() {

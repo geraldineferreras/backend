@@ -7,7 +7,7 @@ class StudentController extends BaseController {
 
     public function __construct() {
         parent::__construct();
-        $this->load->model(['Section_model', 'User_model']);
+        $this->load->model(['Section_model', 'User_model', 'Program_model']);
         $this->load->helper(['response', 'auth']);
     }
 
@@ -107,7 +107,7 @@ class StudentController extends BaseController {
         }
 
         try {
-            $programs = $this->Section_model->get_programs();
+            $programs = $this->Program_model->get_active();
             
             $this->output
                 ->set_status_header(200)
@@ -156,11 +156,17 @@ class StudentController extends BaseController {
         }
 
         try {
-            // Map short program name to full program name for database lookup
-            $full_program_name = map_program_name($program);
-            
+            $program_row = $this->Program_model->normalize_program_input($program);
+            if (!$program_row) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Program not found']));
+                return;
+            }
+
             // Get sections for the specific program
-            $sections = $this->Section_model->get_by_program($full_program_name);
+            $sections = $this->Section_model->get_by_program($program_row['code']);
             
             // Extract unique year levels
             $year_levels = [];
@@ -179,7 +185,7 @@ class StudentController extends BaseController {
                 ->set_content_type('application/json')
                 ->set_output(json_encode([
                     'status' => true,
-                    'message' => "Year levels for $program retrieved successfully",
+                    'message' => "Year levels for {$program_row['code']} retrieved successfully",
                     'data' => $year_levels
                 ]));
 
@@ -221,18 +227,24 @@ class StudentController extends BaseController {
         }
 
         try {
-            // Map short program name to full program name for database lookup
-            $full_program_name = map_program_name($program);
-            
+            $program_row = $this->Program_model->normalize_program_input($program);
+            if (!$program_row) {
+                $this->output
+                    ->set_status_header(404)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Program not found']));
+                return;
+            }
+
             // Get sections for the specific program and year level
-            $sections = $this->Section_model->get_by_program_and_year_level($full_program_name, $year_level);
+            $sections = $this->Section_model->get_by_program_and_year_level($program_row['code'], $year_level);
             
             $this->output
                 ->set_status_header(200)
                 ->set_content_type('application/json')
                 ->set_output(json_encode([
                     'status' => true,
-                    'message' => "Sections for $program $year_level year retrieved successfully",
+                    'message' => "Sections for {$program_row['code']} $year_level year retrieved successfully",
                     'data' => $sections
                 ]));
             
@@ -267,7 +279,7 @@ class StudentController extends BaseController {
 
         try {
             // Get all programs, year levels, semesters, and academic years
-            $programs = $this->Section_model->get_programs();
+            $programs = $this->Program_model->get_active();
             $year_levels = $this->Section_model->get_year_levels();
             $semesters = $this->Section_model->get_semesters();
             $academic_years = $this->Section_model->get_academic_years();

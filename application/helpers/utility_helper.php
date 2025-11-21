@@ -40,17 +40,18 @@ function format_year_level_display($year_level) {
  * @param string $program_name The program name (e.g., "BSIS", "BSCS", "BSIT", "ACT")
  * @return string The program name as stored in database
  */
-function map_program_name($program_name) {
-    $program_name = strtoupper(trim($program_name));
-    
-    // Now the database stores shortcuts, so return as-is
-    $known_programs = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
-    
-    if (in_array($program_name, $known_programs)) {
-        return $program_name; // Return the shortcut as stored in database
+function map_program_name($program_name, $allow_archived = false) {
+    if (empty($program_name)) {
+        return null;
     }
-    
-    return $program_name; // Return as-is if not recognized
+
+    $CI =& get_instance();
+    if (!isset($CI->Program_model)) {
+        $CI->load->model('Program_model');
+    }
+
+    $program = $CI->Program_model->normalize_program_input($program_name, $allow_archived);
+    return $program ? $program['code'] : null;
 }
 
 /**
@@ -60,15 +61,16 @@ function map_program_name($program_name) {
  * @return string The full program name for display
  */
 function program_shortcut_to_full_name($shortcut) {
-    $shortcut = strtoupper(trim($shortcut));
-    
-    $mapping = [
-        'BSIT' => 'Bachelor of Science in Information Technology',
-        'BSIS' => 'Bachelor of Science in Information Systems',
-        'BSCS' => 'Bachelor of Science in Computer Science',
-        'ACT' => 'Associate in Computer Technology'
-    ];
-    
-    return isset($mapping[$shortcut]) ? $mapping[$shortcut] : $shortcut;
+    if (empty($shortcut)) {
+        return '';
+    }
+
+    $CI =& get_instance();
+    if (!isset($CI->Program_model)) {
+        $CI->load->model('Program_model');
+    }
+
+    $program = $CI->Program_model->get_by_code($shortcut, true);
+    return $program ? $program['name'] : strtoupper(trim($shortcut));
 }
 ?>

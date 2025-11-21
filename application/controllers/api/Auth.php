@@ -15,7 +15,7 @@ class Auth extends BaseController {
     public function __construct() {
         parent::__construct();
         error_reporting(0);
-        $this->load->model('User_model');
+        $this->load->model(['User_model', 'Program_model']);
         $this->load->helper(['response', 'auth', 'audit', 'notification', 'email_notification', 'url']);
         $this->load->library(['Token_lib', 'session']);
 
@@ -852,56 +852,17 @@ class Auth extends BaseController {
      * @param string $program_name The program name (can be full name or shortcut)
      * @return string|false The standardized shortcut or false if invalid
      */
-    private function standardize_program_name($program_name) {
-        $program_name = trim($program_name);
-        log_message('debug', 'Standardizing program: "' . $program_name . '"');
-        
-        // Direct shortcuts
-        $shortcuts = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
-        if (in_array(strtoupper($program_name), $shortcuts)) {
-            log_message('debug', 'Found direct shortcut match: ' . strtoupper($program_name));
-            return strtoupper($program_name);
+    private function standardize_program_name($program_name, $allow_archived = false) {
+        if (empty($program_name)) {
+            return false;
         }
-        
-        // Map full names to shortcuts
-        $full_to_short = [
-            'Bachelor of Science in Information Technology' => 'BSIT',
-            'Bachelor of Science in Information Systems' => 'BSIS',
-            'Bachelor of Science in Information System' => 'BSIS', // Handle singular "System"
-            'Bachelor of Science in Computer Science' => 'BSCS',
-            'Associate in Computer Technology' => 'ACT'
-        ];
-        
-        // Check exact matches
-        if (isset($full_to_short[$program_name])) {
-            log_message('debug', 'Found exact full name match: ' . $full_to_short[$program_name]);
-            return $full_to_short[$program_name];
+
+        $program = $this->Program_model->normalize_program_input($program_name, $allow_archived);
+        if ($program) {
+            log_message('debug', 'Program normalized to code: ' . $program['code']);
+            return $program['code'];
         }
-        
-        // Check case-insensitive matches
-        foreach ($full_to_short as $full_name => $shortcut) {
-            if (strcasecmp($program_name, $full_name) === 0) {
-                log_message('debug', 'Found case-insensitive match: ' . $shortcut);
-                return $shortcut;
-            }
-        }
-        
-        // Check partial matches (for flexibility)
-        $program_lower = strtolower($program_name);
-        if (strpos($program_lower, 'information technology') !== false) {
-            log_message('debug', 'Found partial match for IT: BSIT');
-            return 'BSIT';
-        } elseif (strpos($program_lower, 'information system') !== false) {
-            log_message('debug', 'Found partial match for IS: BSIS');
-            return 'BSIS'; // Handles both "System" and "Systems"
-        } elseif (strpos($program_lower, 'computer science') !== false) {
-            log_message('debug', 'Found partial match for CS: BSCS');
-            return 'BSCS';
-        } elseif (strpos($program_lower, 'computer technology') !== false) {
-            log_message('debug', 'Found partial match for CT: ACT');
-            return 'ACT';
-        }
-        
+
         log_message('debug', 'No match found for program: "' . $program_name . '"');
         return false; // Invalid program name
     }

@@ -6,7 +6,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 class AdminController extends BaseController {
     public function __construct() {
         parent::__construct();
-        $this->load->model(['Section_model', 'User_model']);
+        $this->load->model(['Section_model', 'User_model', 'Program_model']);
         $this->load->helper(['response', 'auth', 'notification', 'utility', 'email_notification', 'audit']);
         $this->load->library('Token_lib');
         // CORS headers are already handled by BaseController
@@ -636,8 +636,223 @@ class AdminController extends BaseController {
     public function programs_get() {
         $user_data = require_admin($this);
         if (!$user_data) return;
-        $programs = $this->Section_model->get_programs();
+
+        $include_archived = filter_var($this->input->get('include_archived'), FILTER_VALIDATE_BOOLEAN);
+        $with_usage = filter_var($this->input->get('with_usage'), FILTER_VALIDATE_BOOLEAN);
+        $status = $this->input->get('status');
+        $search = $this->input->get('search');
+
+        $options = [
+            'include_archived' => $include_archived,
+            'with_usage' => $with_usage
+        ];
+
+        if (!empty($status)) {
+            $options['status'] = strtolower($status);
+        }
+
+        if (!empty($search)) {
+            $options['search'] = $search;
+        }
+
+        $programs = $this->Program_model->get_all($options);
         return json_response(true, 'Programs retrieved successfully', $programs);
+    }
+
+    // Create a new program
+    public function programs_post() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+
+        $payload = json_decode(file_get_contents('php://input'));
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return json_response(false, 'Invalid JSON body', null, 400);
+        }
+
+        $code = isset($payload->code) ? $this->format_program_code($payload->code) : null;
+        $name = isset($payload->name) ? trim($payload->name) : null;
+        $description = isset($payload->description) ? trim($payload->description) : null;
+        if ($description === '') {
+            $description = null;
+        }
+
+        if (!$code && $name) {
+            $code = $this->format_program_code($name);
+        }
+
+        if (!$name && $code) {
+            $name = $code;
+        }
+
+        if (empty($code) || empty($name)) {
+            return json_response(false, 'Program code or name is required', null, 422);
+        }
+
+        if ($this->Program_model->exists_by_code($code)) {
+            return json_response(false, 'Program code already exists', null, 409);
+        }
+
+        $program = $this->Program_model->create([
+            'code' => $code,
+            'name' => $name,
+            'description' => $description
+        ]);
+
+        if (!$program) {
+            return json_response(false, 'Failed to create program', null, 500);
+        }
+
+        log_audit_event(
+            'PROGRAM CREATED',
+            'ADMINISTRATION',
+            "Program {$program['code']} created by {$user_data['user_id']}",
+            [
+                'program' => $program,
+                'action_by' => $user_data['user_id']
+            ]
+        );
+
+        return json_response(true, 'Program created successfully', $program, 201);
+    }
+
+    // Update program
+    public function programs_put($program_id = null) {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+
+        if (empty($program_id)) {
+            return json_response(false, 'Program ID is required', null, 400);
+        }
+
+        $program = $this->Program_model->get_by_id($program_id);
+        if (!$program) {
+            return json_response(false, 'Program not found', null, 404);
+        }
+
+        $payload = json_decode(file_get_contents('php://input'));
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return json_response(false, 'Invalid JSON body', null, 400);
+        }
+
+        $updates = [];
+
+        if (isset($payload->code)) {
+            $new_code = $this->format_program_code($payload->code);
+            if (empty($new_code)) {
+                return json_response(false, 'Program code cannot be empty', null, 422);
+            }
+            if ($this->Program_model->exists_by_code($new_code, $program_id)) {
+                return json_response(false, 'Program code already exists', null, 409);
+            }
+            $updates['code'] = $new_code;
+        }
+
+        if (isset($payload->name)) {
+            $new_name = trim($payload->name);
+            if (empty($new_name)) {
+                return json_response(false, 'Program name cannot be empty', null, 422);
+            }
+            $updates['name'] = $new_name;
+        }
+
+        if (isset($payload->description)) {
+            $desc = trim($payload->description);
+            $updates['description'] = $desc === '' ? null : $desc;
+        }
+
+        if (empty($updates)) {
+            return json_response(false, 'No changes provided', null, 400);
+        }
+
+        $updated_program = $this->Program_model->update($program_id, $updates);
+        if (!$updated_program) {
+            return json_response(false, 'Failed to update program', null, 500);
+        }
+
+        log_audit_event(
+            'PROGRAM UPDATED',
+            'ADMINISTRATION',
+            "Program {$program['code']} updated by {$user_data['user_id']}",
+            [
+                'program_before' => $program,
+                'program_after' => $updated_program,
+                'action_by' => $user_data['user_id']
+            ]
+        );
+
+        return json_response(true, 'Program updated successfully', $updated_program);
+    }
+
+    // Archive program
+    public function programs_archive_post($program_id = null) {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+
+        if (empty($program_id)) {
+            return json_response(false, 'Program ID is required', null, 400);
+        }
+
+        $program = $this->Program_model->get_by_id($program_id);
+        if (!$program) {
+            return json_response(false, 'Program not found', null, 404);
+        }
+
+        if ($program['status'] === 'archived') {
+            return json_response(false, 'Program is already archived', null, 409);
+        }
+
+        $archived = $this->Program_model->archive($program_id);
+        if (!$archived) {
+            return json_response(false, 'Failed to archive program', null, 500);
+        }
+
+        log_audit_event(
+            'PROGRAM ARCHIVED',
+            'ADMINISTRATION',
+            "Program {$program['code']} archived by {$user_data['user_id']}",
+            [
+                'program' => $archived,
+                'action_by' => $user_data['user_id']
+            ]
+        );
+
+        return json_response(true, 'Program archived successfully', $archived);
+    }
+
+    // Restore program
+    public function programs_restore_post($program_id = null) {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+
+        if (empty($program_id)) {
+            return json_response(false, 'Program ID is required', null, 400);
+        }
+
+        $program = $this->Program_model->get_by_id($program_id);
+        if (!$program) {
+            return json_response(false, 'Program not found', null, 404);
+        }
+
+        if ($program['status'] === 'active') {
+            return json_response(false, 'Program is already active', null, 409);
+        }
+
+        $restored = $this->Program_model->restore($program_id);
+        if (!$restored) {
+            return json_response(false, 'Failed to restore program', null, 500);
+        }
+
+        log_audit_event(
+            'PROGRAM RESTORED',
+            'ADMINISTRATION',
+            "Program {$program['code']} restored by {$user_data['user_id']}",
+            [
+                'program' => $restored,
+                'action_by' => $user_data['user_id']
+            ]
+        );
+
+        return json_response(true, 'Program restored successfully', $restored);
     }
 
     // Get all year levels
@@ -2007,53 +2222,28 @@ class AdminController extends BaseController {
     }
 
     /**
-     * Standardize program name to shortcut format
-     * 
-     * @param string $program_name The program name (can be full name or shortcut)
-     * @return string|false The standardized shortcut or false if invalid
+     * Normalize user input into a valid program code
      */
-    private function standardize_program_name($program_name) {
-        $program_name = trim($program_name);
-        
-        // Direct shortcuts
-        $shortcuts = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
-        if (in_array(strtoupper($program_name), $shortcuts)) {
-            return strtoupper($program_name);
+    private function standardize_program_name($program_name, $allow_archived = false) {
+        if (empty($program_name)) {
+            return false;
         }
-        
-        // Map full names to shortcuts
-        $full_to_short = [
-            'Bachelor of Science in Information Technology' => 'BSIT',
-            'Bachelor of Science in Information Systems' => 'BSIS',
-            'Bachelor of Science in Computer Science' => 'BSCS',
-            'Associate in Computer Technology' => 'ACT'
-        ];
-        
-        // Check exact matches
-        if (isset($full_to_short[$program_name])) {
-            return $full_to_short[$program_name];
+
+        $program = $this->Program_model->normalize_program_input($program_name, $allow_archived);
+        return $program ? $program['code'] : false;
+    }
+
+    /**
+     * Format program code strings (uppercased, whitespace stripped)
+     */
+    private function format_program_code($code) {
+        if ($code === null) {
+            return null;
         }
-        
-        // Check case-insensitive matches
-        foreach ($full_to_short as $full_name => $shortcut) {
-            if (strcasecmp($program_name, $full_name) === 0) {
-                return $shortcut;
-            }
-        }
-        
-        // Check partial matches (for flexibility)
-        $program_lower = strtolower($program_name);
-        if (strpos($program_lower, 'information technology') !== false) {
-            return 'BSIT';
-        } elseif (strpos($program_lower, 'information systems') !== false) {
-            return 'BSIS';
-        } elseif (strpos($program_lower, 'computer science') !== false) {
-            return 'BSCS';
-        } elseif (strpos($program_lower, 'computer technology') !== false) {
-            return 'ACT';
-        }
-        
-        return false; // Invalid program name
+
+        $formatted = strtoupper(trim($code));
+        $formatted = preg_replace('/\s+/', '', $formatted);
+        return $formatted ?: null;
     }
 
     private function generate_temporary_password($length = 12) {
