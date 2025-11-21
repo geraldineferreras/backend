@@ -7,7 +7,7 @@ class AdminController extends BaseController {
     public function __construct() {
         parent::__construct();
         $this->load->model(['Section_model', 'User_model']);
-        $this->load->helper(['response', 'auth', 'notification', 'utility', 'email_notification']);
+        $this->load->helper(['response', 'auth', 'notification', 'utility', 'email_notification', 'audit']);
         $this->load->library('Token_lib');
         // CORS headers are already handled by BaseController
     }
@@ -130,11 +130,6 @@ class AdminController extends BaseController {
             $reason = trim($data->reason);
         }
 
-        $success = $this->User_model->update($user_id, ['status' => 'rejected']);
-        if (!$success) {
-            return json_response(false, 'Failed to reject registration', null, 500);
-        }
-
         if (function_exists('send_registration_rejected_email')) {
             try {
                 send_registration_rejected_email($user['full_name'], $user['email'], $user['role']);
@@ -143,17 +138,22 @@ class AdminController extends BaseController {
             }
         }
 
-        try {
-            $title = 'Registration rejected';
-            $message = "Hello {$user['full_name']}, your {$user['role']} account registration has been rejected.";
-            if ($reason) {
-                $message .= " Reason: {$reason}.";
-            }
-            $message .= " Please contact the administrator for assistance.";
-            create_system_notification($user_id, $title, $message, true);
-        } catch (Exception $e) {
-            log_message('error', 'Failed to create rejection notification: ' . $e->getMessage());
+        $deleted = $this->User_model->delete($user_id);
+        if (!$deleted) {
+            return json_response(false, 'Failed to remove rejected registration', null, 500);
         }
+
+        log_audit_event(
+            'REGISTRATION REJECTED',
+            'ADMINISTRATION',
+            "Registration for {$user['full_name']} ({$user['email']}) was rejected and removed.",
+            [
+                'user_id' => $user_id,
+                'role' => $user['role'],
+                'reason' => $reason,
+                'action_by' => $user_data['user_id']
+            ]
+        );
 
         return json_response(true, 'Registration rejected successfully');
     }
