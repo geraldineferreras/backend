@@ -106,7 +106,8 @@ class User_model extends CI_Model {
     }
 
     public function get_pending_registrations($role = null) {
-        $this->db->from('users')
+        $this->db->select('users.*, users.program as assigned_program')
+            ->from('users')
             ->where('status', 'pending_approval');
 
         if ($role) {

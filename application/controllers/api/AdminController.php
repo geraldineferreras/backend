@@ -28,12 +28,13 @@ class AdminController extends BaseController {
 
         $registrations = $this->User_model->get_pending_registrations($role_filter ?: null);
         $payload = array_map(function($user) {
+            $program = $user['assigned_program'] ?? $user['program'] ?? null;
             return [
                 'user_id' => $user['user_id'],
                 'full_name' => $user['full_name'],
                 'email' => $user['email'],
                 'role' => $user['role'],
-                'program' => $user['role'] === 'student' ? ($user['program'] ?? null) : null,
+                'program' => $program,
                 'submitted_at' => $user['created_at'] ?? null
             ];
         }, $registrations);
