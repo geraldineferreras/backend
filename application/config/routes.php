@@ -57,6 +57,9 @@ $route['translate_uri_dashes'] = FALSE;
 $route['api/login']['post'] = 'api/auth/login';
 $route['api/register']['post'] = 'api/auth/register';
 $route['api/test']['post'] = 'api/auth/test_password';
+
+// Public endpoints (no authentication required)
+$route['api/programs']['get'] = 'api/PublicController/programs_get';
 $route['api/refresh-token']['post'] = 'api/auth/refresh_token';
 $route['api/validate-token']['get'] = 'api/auth/validate_token';
 $route['api/logout']['post'] = 'api/auth/logout';
