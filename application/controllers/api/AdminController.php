@@ -2264,4 +2264,496 @@ class AdminController extends BaseController {
         return $password;
     }
 
+    /**
+     * Bulk upload students
+     * POST /api/admin/students/bulk-upload
+     */
+    public function students_bulk_upload_post() {
+        $user_data = require_role($this, ['admin', 'chairperson']);
+        if (!$user_data) {
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return json_response(false, 'Invalid JSON format', null, 400);
+        }
+
+        if (!isset($data['students']) || !is_array($data['students']) || empty($data['students'])) {
+            return json_response(false, 'students array is required and must not be empty', null, 400);
+        }
+
+        $students = $data['students'];
+        $total = count($students);
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+
+        // Start transaction
+        $this->db->trans_start();
+
+        // Get user's assigned program if chairperson
+        $user_program = null;
+        if ($user_data['role'] === 'chairperson') {
+            $user_program = $user_data['program'] ?? null;
+            if (!$user_program) {
+                $this->db->trans_rollback();
+                return json_response(false, 'Chairperson must have an assigned program', null, 403);
+            }
+        }
+
+        // Pre-fetch existing student numbers and emails for batch checking
+        $student_numbers = array_filter(array_map('trim', array_column($students, 'student_num')));
+        $emails = array_filter(array_map('trim', array_column($students, 'email')));
+        $existing_student_nums = $this->get_existing_student_numbers($student_numbers);
+        $existing_emails = $this->get_existing_emails($emails);
+
+        // Track processed student numbers and emails within this batch to prevent duplicates
+        $batch_student_nums = [];
+        $batch_emails = [];
+
+        // Pre-fetch all programs for validation
+        $programs = $this->Program_model->get_all(['include_archived' => false]);
+        $valid_programs = array_column($programs, 'code');
+
+        foreach ($students as $index => $student) {
+            $row = $index + 1;
+            $student_num = isset($student['student_num']) ? trim($student['student_num']) : '';
+            $email = isset($student['email']) ? trim($student['email']) : '';
+
+            // Check for duplicates within the batch
+            $combined_student_nums = array_merge($existing_student_nums, $batch_student_nums);
+            $combined_emails = array_merge($existing_emails, $batch_emails);
+
+            $validation_result = $this->validate_student_data($student, $row, $user_program, $valid_programs, $combined_student_nums, $combined_emails);
+
+            if (!$validation_result['valid']) {
+                $errors[] = [
+                    'row' => $row,
+                    'student_number' => $student_num ?: 'N/A',
+                    'error' => $validation_result['error']
+                ];
+                $skipped++;
+                continue;
+            }
+
+            // Generate QR code if not provided
+            if (empty($student['qr_code'])) {
+                $student['qr_code'] = $this->generate_qr_code($student_num, trim($student['full_name']), $student['program']);
+            }
+
+            // Prepare student data for insertion
+            $student_data = [
+                'role' => 'student',
+                'full_name' => trim($student['full_name']),
+                'email' => $email,
+                'student_num' => $student_num,
+                'program' => $this->standardize_program_name($student['program']),
+                'student_type' => isset($student['student_type']) ? strtolower(trim($student['student_type'])) : 'regular',
+                'qr_code' => $student['qr_code'],
+                'status' => isset($student['status']) ? strtolower(trim($student['status'])) : 'active',
+                'password' => password_hash($this->generate_temporary_password(), PASSWORD_BCRYPT),
+                'created_at' => date('Y-m-d H:i:s')
+            ];
+
+            // Add section_id if provided
+            if (!empty($student['section_id'])) {
+                $section = $this->Section_model->get_by_id($student['section_id']);
+                if ($section) {
+                    // Validate section matches program
+                    $section_program = $this->standardize_program_name($section['program']);
+                    if ($section_program === $student_data['program']) {
+                        $student_data['section_id'] = $student['section_id'];
+                    } else {
+                        $errors[] = [
+                            'row' => $row,
+                            'student_number' => $student_num,
+                            'error' => 'Section does not match program'
+                        ];
+                        $skipped++;
+                        continue;
+                    }
+                } else {
+                    $errors[] = [
+                        'row' => $row,
+                        'student_number' => $student_num,
+                        'error' => 'Section not found'
+                    ];
+                    $skipped++;
+                    continue;
+                }
+            }
+
+            // Insert student
+            if ($this->User_model->insert($student_data)) {
+                $imported++;
+                // Add to batch arrays to prevent duplicates within the same batch
+                $batch_student_nums[] = $student_data['student_num'];
+                $batch_emails[] = $student_data['email'];
+            } else {
+                $db_error = $this->db->error();
+                $errors[] = [
+                    'row' => $row,
+                    'student_number' => $student_num,
+                    'error' => 'Database error: ' . ($db_error['message'] ?? 'Unknown error')
+                ];
+                $skipped++;
+            }
+        }
+
+        // Complete transaction
+        if ($this->db->trans_status() === FALSE) {
+            $this->db->trans_rollback();
+            return json_response(false, 'Transaction failed. No students were imported.', null, 500);
+        }
+
+        $this->db->trans_commit();
+
+        // Log audit event
+        log_audit_event(
+            'BULK STUDENT UPLOAD',
+            'ADMINISTRATION',
+            "Bulk upload performed: {$imported} imported, {$skipped} skipped out of {$total} total",
+            [
+                'uploader_id' => $user_data['user_id'],
+                'uploader_role' => $user_data['role'],
+                'total_rows' => $total,
+                'imported' => $imported,
+                'skipped' => $skipped,
+                'error_count' => count($errors),
+                'programs_affected' => array_unique(array_column($students, 'program'))
+            ]
+        );
+
+        return json_response(true, 'Bulk upload completed', [
+            'total' => $total,
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'errors' => $errors
+        ]);
+    }
+
+    /**
+     * Check for duplicate student numbers
+     * POST /api/admin/students/check-duplicates
+     */
+    public function students_check_duplicates_post() {
+        $user_data = require_role($this, ['admin', 'chairperson']);
+        if (!$user_data) {
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return json_response(false, 'Invalid JSON format', null, 400);
+        }
+
+        if (!isset($data['student_numbers']) || !is_array($data['student_numbers'])) {
+            return json_response(false, 'student_numbers array is required', null, 400);
+        }
+
+        $student_numbers = array_filter(array_map('trim', $data['student_numbers']));
+        if (empty($student_numbers)) {
+            return json_response(true, 'No student numbers to check', ['duplicates' => []]);
+        }
+
+        $duplicates = $this->get_existing_student_numbers($student_numbers);
+
+        return json_response(true, 'Duplicate check completed', [
+            'duplicates' => $duplicates
+        ]);
+    }
+
+    /**
+     * Check for duplicate emails
+     * POST /api/admin/students/check-duplicate-emails
+     */
+    public function students_check_duplicate_emails_post() {
+        $user_data = require_role($this, ['admin', 'chairperson']);
+        if (!$user_data) {
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return json_response(false, 'Invalid JSON format', null, 400);
+        }
+
+        if (!isset($data['emails']) || !is_array($data['emails'])) {
+            return json_response(false, 'emails array is required', null, 400);
+        }
+
+        $emails = array_filter(array_map('trim', $data['emails']));
+        if (empty($emails)) {
+            return json_response(true, 'No emails to check', ['duplicates' => []]);
+        }
+
+        $duplicates = $this->get_existing_emails($emails);
+
+        return json_response(true, 'Duplicate email check completed', [
+            'duplicates' => $duplicates
+        ]);
+    }
+
+    /**
+     * Validate bulk upload data without inserting
+     * POST /api/admin/students/validate-bulk-upload
+     */
+    public function students_validate_bulk_upload_post() {
+        $user_data = require_role($this, ['admin', 'chairperson']);
+        if (!$user_data) {
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return json_response(false, 'Invalid JSON format', null, 400);
+        }
+
+        if (!isset($data['students']) || !is_array($data['students']) || empty($data['students'])) {
+            return json_response(false, 'students array is required and must not be empty', null, 400);
+        }
+
+        $students = $data['students'];
+        $errors = [];
+
+        // Get user's assigned program if chairperson
+        $user_program = null;
+        if ($user_data['role'] === 'chairperson') {
+            $user_program = $user_data['program'] ?? null;
+            if (!$user_program) {
+                return json_response(false, 'Chairperson must have an assigned program', null, 403);
+            }
+        }
+
+        // Pre-fetch existing student numbers and emails for batch checking
+        $student_numbers = array_filter(array_map('trim', array_column($students, 'student_num')));
+        $emails = array_filter(array_map('trim', array_column($students, 'email')));
+        $existing_student_nums = $this->get_existing_student_numbers($student_numbers);
+        $existing_emails = $this->get_existing_emails($emails);
+
+        // Track processed student numbers and emails within this batch to prevent duplicates
+        $batch_student_nums = [];
+        $batch_emails = [];
+
+        // Pre-fetch all programs for validation
+        $programs = $this->Program_model->get_all(['include_archived' => false]);
+        $valid_programs = array_column($programs, 'code');
+
+        foreach ($students as $index => $student) {
+            $row = $index + 1;
+            
+            // Check for duplicates within the batch
+            $combined_student_nums = array_merge($existing_student_nums, $batch_student_nums);
+            $combined_emails = array_merge($existing_emails, $batch_emails);
+
+            $validation_result = $this->validate_student_data($student, $row, $user_program, $valid_programs, $combined_student_nums, $combined_emails);
+
+            if (!$validation_result['valid']) {
+                $errors[] = [
+                    'row' => $row,
+                    'field' => $validation_result['field'] ?? 'general',
+                    'error' => $validation_result['error']
+                ];
+            } else {
+                // Add to batch arrays if valid (to catch duplicates within batch)
+                $student_num = isset($student['student_num']) ? trim($student['student_num']) : '';
+                $email = isset($student['email']) ? trim($student['email']) : '';
+                if ($student_num) {
+                    $batch_student_nums[] = $student_num;
+                }
+                if ($email) {
+                    $batch_emails[] = $email;
+                }
+            }
+        }
+
+        $valid = empty($errors);
+
+        return json_response(true, $valid ? 'All students are valid' : 'Validation completed with errors', [
+            'valid' => $valid,
+            'errors' => $errors,
+            'total' => count($students),
+            'valid_count' => count($students) - count($errors),
+            'error_count' => count($errors)
+        ]);
+    }
+
+    /**
+     * Validate student data
+     * @param array $student
+     * @param int $row
+     * @param string|null $user_program
+     * @param array $valid_programs
+     * @param array $existing_student_nums
+     * @param array $existing_emails
+     * @return array
+     */
+    private function validate_student_data($student, $row, $user_program, $valid_programs, $existing_student_nums, $existing_emails) {
+        // Validate required fields
+        $required_fields = ['full_name', 'email', 'student_num', 'program'];
+        foreach ($required_fields as $field) {
+            if (!isset($student[$field]) || empty(trim($student[$field]))) {
+                return [
+                    'valid' => false,
+                    'field' => $field,
+                    'error' => ucfirst(str_replace('_', ' ', $field)) . ' is required'
+                ];
+            }
+        }
+
+        $student_num = trim($student['student_num']);
+        $email = trim($student['email']);
+        $program = trim($student['program']);
+
+        // Validate student number format (exactly 10 digits)
+        if (!preg_match('/^\d{10}$/', $student_num)) {
+            return [
+                'valid' => false,
+                'field' => 'student_num',
+                'error' => 'Student number must be exactly 10 digits'
+            ];
+        }
+
+        // Check for duplicate student number
+        if (in_array($student_num, $existing_student_nums)) {
+            return [
+                'valid' => false,
+                'field' => 'student_num',
+                'error' => 'Student number already exists'
+            ];
+        }
+
+        // Validate email format
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return [
+                'valid' => false,
+                'field' => 'email',
+                'error' => 'Invalid email format'
+            ];
+        }
+
+        // Check for duplicate email (case-insensitive)
+        $email_lower = strtolower($email);
+        $existing_emails_lower = array_map('strtolower', $existing_emails);
+        if (in_array($email_lower, $existing_emails_lower)) {
+            return [
+                'valid' => false,
+                'field' => 'email',
+                'error' => 'Email already registered'
+            ];
+        }
+
+        // Validate program
+        $program_shortcut = $this->standardize_program_name($program);
+        if (!$program_shortcut || !in_array($program_shortcut, $valid_programs)) {
+            return [
+                'valid' => false,
+                'field' => 'program',
+                'error' => 'Program does not exist'
+            ];
+        }
+
+        // Check permission: Chairperson can only upload for their assigned program
+        if ($user_program && $program_shortcut !== $user_program) {
+            return [
+                'valid' => false,
+                'field' => 'program',
+                'error' => 'You can only upload students for your assigned program'
+            ];
+        }
+
+        // Validate student_type if provided
+        if (isset($student['student_type']) && !empty($student['student_type'])) {
+            $student_type = strtolower(trim($student['student_type']));
+            if (!in_array($student_type, ['regular', 'irregular'])) {
+                return [
+                    'valid' => false,
+                    'field' => 'student_type',
+                    'error' => 'Student type must be either "regular" or "irregular"'
+                ];
+            }
+        }
+
+        // Validate section_id if provided
+        if (!empty($student['section_id'])) {
+            $section = $this->Section_model->get_by_id($student['section_id']);
+            if (!$section) {
+                return [
+                    'valid' => false,
+                    'field' => 'section_id',
+                    'error' => 'Section not found'
+                ];
+            }
+
+            // Validate section belongs to the program
+            $section_program = $this->standardize_program_name($section['program']);
+            if ($section_program !== $program_shortcut) {
+                return [
+                    'valid' => false,
+                    'field' => 'section_id',
+                    'error' => 'Section not found for this program/year'
+                ];
+            }
+        }
+
+        return ['valid' => true];
+    }
+
+    /**
+     * Get existing student numbers from database
+     * @param array $student_numbers
+     * @return array
+     */
+    private function get_existing_student_numbers($student_numbers) {
+        if (empty($student_numbers)) {
+            return [];
+        }
+
+        $this->db->select('student_num')
+            ->from('users')
+            ->where('role', 'student')
+            ->where_in('student_num', $student_numbers);
+
+        $results = $this->db->get()->result_array();
+        return array_column($results, 'student_num');
+    }
+
+    /**
+     * Get existing emails from database
+     * @param array $emails
+     * @return array
+     */
+    private function get_existing_emails($emails) {
+        if (empty($emails)) {
+            return [];
+        }
+
+        // Use case-insensitive comparison
+        $lower_emails = array_map('strtolower', $emails);
+        $this->db->select('email')
+            ->from('users');
+        
+        $this->db->group_start();
+        foreach ($lower_emails as $email) {
+            $this->db->or_where('LOWER(email)', $email);
+        }
+        $this->db->group_end();
+
+        $results = $this->db->get()->result_array();
+        return array_column($results, 'email');
+    }
+
+    /**
+     * Generate QR code string for student
+     * @param string $student_num
+     * @param string $full_name
+     * @param string $program
+     * @return string
+     */
+    private function generate_qr_code($student_num, $full_name, $program) {
+        $program_shortcut = $this->standardize_program_name($program);
+        return "IDNo: {$student_num}\nFull Name: {$full_name}\nProgram: {$program_shortcut}";
+    }
+
 }
