@@ -514,8 +514,27 @@ class StudentController extends BaseController {
             // Prepare update data - only update fields that are provided
             $update_data = [];
             
+            // Handle atomic name fields
+            $name_changed = false;
+            if (isset($input['first_name']) || isset($input['middle_name']) || isset($input['last_name'])) {
+                $this->load->helper('utility');
+                
+                // Use provided values or keep existing
+                $first_name = isset($input['first_name']) ? trim($input['first_name']) : ($user_data['first_name'] ?? '');
+                $middle_name = isset($input['middle_name']) ? (!empty($input['middle_name']) ? trim($input['middle_name']) : null) : ($user_data['middle_name'] ?? null);
+                $last_name = isset($input['last_name']) ? trim($input['last_name']) : ($user_data['last_name'] ?? '');
+                
+                // Update atomic fields
+                $update_data['first_name'] = $first_name;
+                $update_data['middle_name'] = $middle_name;
+                $update_data['last_name'] = $last_name;
+                
+                // Generate full_name from atomic fields
+                $update_data['full_name'] = generate_full_name($first_name, $middle_name, $last_name, false);
+                $name_changed = true;
+            }
+            
             // Common fields
-            if (isset($input['full_name'])) $update_data['full_name'] = trim($input['full_name']);
             if (isset($input['email'])) $update_data['email'] = trim($input['email']);
             if (isset($input['address'])) $update_data['address'] = trim($input['address']);
             if (isset($input['contact_num'])) $update_data['contact_num'] = trim($input['contact_num']);
@@ -548,19 +567,20 @@ class StudentController extends BaseController {
                 $update_data['password'] = password_hash($input['password'], PASSWORD_BCRYPT);
             }
 
-            // Generate QR code based on student information if student_num is being updated
-            if (isset($input['student_num']) && isset($input['full_name']) && isset($input['program'])) {
-                $qr_data = "IDNo: {$input['student_num']}\nFull Name: {$input['full_name']}\nProgram: {$input['program']}";
-                $update_data['qr_code'] = $qr_data;
-            } elseif (isset($input['student_num']) || isset($input['full_name']) || isset($input['program'])) {
-                // If any of the QR components are being updated, regenerate QR
+            // Generate QR code based on student information if name or student_num is being updated
+            if ($name_changed || isset($input['student_num']) || isset($input['program'])) {
+                // Get current user data for QR code generation
                 $current_user = $this->User_model->get_by_id($user_data['user_id']);
+                
+                // Use updated values or existing ones
                 $student_num = $input['student_num'] ?? $current_user['student_num'];
-                $full_name = $input['full_name'] ?? $current_user['full_name'];
                 $program = $input['program'] ?? $current_user['program'];
                 
-                if ($student_num && $full_name && $program) {
-                    $qr_data = "IDNo: {$student_num}\nFull Name: {$full_name}\nProgram: {$program}";
+                // Use generated full_name if name was changed, otherwise use existing
+                $full_name_for_qr = $name_changed ? $update_data['full_name'] : ($current_user['full_name'] ?? '');
+                
+                if ($student_num && $full_name_for_qr && $program) {
+                    $qr_data = "IDNo: {$student_num}\nFull Name: {$full_name_for_qr}\nProgram: {$program}";
                     $update_data['qr_code'] = $qr_data;
                 }
             }

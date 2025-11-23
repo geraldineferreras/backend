@@ -177,7 +177,9 @@ class Auth extends BaseController {
         try {
             // Get form data
             $role = $this->input->post('role');
-            $full_name = $this->input->post('full_name');
+            $first_name = $this->input->post('first_name');
+            $middle_name = $this->input->post('middle_name');
+            $last_name = $this->input->post('last_name');
             $email = $this->input->post('email');
             $password = $this->input->post('password');
             $contact_num = $this->input->post('contact_num');
@@ -188,9 +190,16 @@ class Auth extends BaseController {
             $qr_code = $this->input->post('qr_code');
             $student_type = $this->input->post('student_type'); // regular or irregular
 
+            // Generate full_name from atomic fields
+            $this->load->helper('utility');
+            $full_name = generate_full_name($first_name, $middle_name, $last_name, false);
+
             // Debug logging
             log_message('debug', '=== REGISTER WITH IMAGES DEBUG ===');
             log_message('debug', 'Role: ' . $role);
+            log_message('debug', 'First Name: ' . $first_name);
+            log_message('debug', 'Middle Name: ' . ($middle_name ?: 'N/A'));
+            log_message('debug', 'Last Name: ' . $last_name);
             log_message('debug', 'Full Name: ' . $full_name);
             log_message('debug', 'Email: ' . $email);
             log_message('debug', 'Contact: ' . $contact_num);
@@ -203,11 +212,11 @@ class Auth extends BaseController {
             log_message('debug', '================================');
 
             // Validate required fields (password is optional)
-            if (empty($role) || empty($full_name) || empty($email)) {
+            if (empty($role) || empty($first_name) || empty($last_name) || empty($email)) {
                 $this->output
                     ->set_status_header(400)
                     ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Required fields are missing']));
+                    ->set_output(json_encode(['status' => false, 'message' => 'Required fields are missing: first_name, last_name, email, and role']));
                 return;
             }
             
@@ -278,6 +287,9 @@ class Auth extends BaseController {
             $user_data = [
                 'user_id' => $user_id,
                 'role' => $role,
+                'first_name' => trim($first_name),
+                'middle_name' => !empty($middle_name) ? trim($middle_name) : null,
+                'last_name' => trim($last_name),
                 'full_name' => $full_name,
                 'email' => $email,
                 'password' => $hashed_password,
@@ -452,7 +464,9 @@ class Auth extends BaseController {
         }
 
         $role = isset($data->role) ? strtolower($data->role) : null;
-        $full_name = isset($data->full_name) ? $data->full_name : null;
+        $first_name = isset($data->first_name) ? trim($data->first_name) : null;
+        $middle_name = isset($data->middle_name) ? trim($data->middle_name) : null;
+        $last_name = isset($data->last_name) ? trim($data->last_name) : null;
         $email = isset($data->email) ? $data->email : null;
         $password = isset($data->password) ? $data->password : null;
         $program = isset($data->program) ? $data->program : null;
@@ -460,13 +474,20 @@ class Auth extends BaseController {
         $address = isset($data->address) ? $data->address : null;
         $errors = [];
 
+        // Generate full_name from atomic fields
+        $this->load->helper('utility');
+        $full_name = generate_full_name($first_name, $middle_name, $last_name, false);
+
         if (empty($role)) {
             $errors[] = 'Role is required.';
         } elseif (strtolower($role) === 'chairperson') {
             $errors[] = 'Chairperson creation is not allowed.';
         }
-        if (empty($full_name)) {
-            $errors[] = 'Full name is required.';
+        if (empty($first_name)) {
+            $errors[] = 'First name is required.';
+        }
+        if (empty($last_name)) {
+            $errors[] = 'Last name is required.';
         }
         if (empty($email)) {
             $errors[] = 'Email is required.';
@@ -532,6 +553,9 @@ class Auth extends BaseController {
         $dataToInsert = [
             'user_id' => $user_id,
             'role' => $role,
+            'first_name' => $first_name,
+            'middle_name' => !empty($middle_name) ? $middle_name : null,
+            'last_name' => $last_name,
             'full_name' => $full_name,
             'email' => $email,
             'password' => $hashed_password,
@@ -1165,8 +1189,31 @@ class Auth extends BaseController {
                 }
             }
             
+            // Handle atomic name fields
+            $name_changed = false;
+            $first_name = $this->input->post('first_name');
+            $middle_name = $this->input->post('middle_name');
+            $last_name = $this->input->post('last_name');
+            
+            if ($first_name !== false || $middle_name !== false || $last_name !== false) {
+                $this->load->helper('utility');
+                
+                // Use existing values if not provided
+                $first_name = $first_name !== false ? trim($first_name) : ($user['first_name'] ?? '');
+                $middle_name = $middle_name !== false ? (!empty($middle_name) ? trim($middle_name) : null) : ($user['middle_name'] ?? null);
+                $last_name = $last_name !== false ? trim($last_name) : ($user['last_name'] ?? '');
+                
+                // Update atomic fields
+                $update_data['first_name'] = $first_name;
+                $update_data['middle_name'] = $middle_name;
+                $update_data['last_name'] = $last_name;
+                
+                // Generate full_name from atomic fields
+                $update_data['full_name'] = generate_full_name($first_name, $middle_name, $last_name, false);
+                $name_changed = true;
+            }
+            
             // Handle other form fields
-            if ($this->input->post('full_name')) $update_data['full_name'] = $this->input->post('full_name');
             if ($this->input->post('email')) $update_data['email'] = $this->input->post('email');
             if ($this->input->post('password')) $update_data['password'] = password_hash($this->input->post('password'), PASSWORD_BCRYPT);
             
@@ -1290,9 +1337,39 @@ class Auth extends BaseController {
             return;
         }
 
+        // Get current user data to preserve existing values
+        $current_user = $this->User_model->get_by_id($user_id);
+        if (!$current_user) {
+            $this->output
+                ->set_status_header(404)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['status' => false, 'message' => 'User not found']));
+            return;
+        }
+        
         $update_data = [];
+        
+        // Handle atomic name fields
+        $name_changed = false;
+        if (isset($data->first_name) || isset($data->middle_name) || isset($data->last_name)) {
+            $this->load->helper('utility');
+            
+            // Use provided values or keep existing
+            $first_name = isset($data->first_name) ? trim($data->first_name) : ($current_user['first_name'] ?? '');
+            $middle_name = isset($data->middle_name) ? (!empty($data->middle_name) ? trim($data->middle_name) : null) : ($current_user['middle_name'] ?? null);
+            $last_name = isset($data->last_name) ? trim($data->last_name) : ($current_user['last_name'] ?? '');
+            
+            // Update atomic fields
+            $update_data['first_name'] = $first_name;
+            $update_data['middle_name'] = $middle_name;
+            $update_data['last_name'] = $last_name;
+            
+            // Generate full_name from atomic fields
+            $update_data['full_name'] = generate_full_name($first_name, $middle_name, $last_name, false);
+            $name_changed = true;
+        }
+        
         // Common fields
-        if (isset($data->full_name)) $update_data['full_name'] = $data->full_name;
         if (isset($data->email)) $update_data['email'] = $data->email;
         if (isset($data->password)) $update_data['password'] = password_hash($data->password, PASSWORD_BCRYPT);
         
@@ -2019,6 +2096,17 @@ class Auth extends BaseController {
                 'google_id' => $data->google_id
             ];
             
+            // Parse name from Google into atomic fields
+            $this->load->helper('utility');
+            $name_parts = preg_split('/\s+/', trim($google_user_data['name']));
+            
+            $first_name = !empty($name_parts) ? $name_parts[0] : '';
+            $last_name = count($name_parts) > 1 ? end($name_parts) : '';
+            $middle_name = count($name_parts) > 2 ? implode(' ', array_slice($name_parts, 1, -1)) : null;
+            
+            // Generate full_name from atomic fields
+            $full_name = generate_full_name($first_name, $middle_name, $last_name, false);
+            
             // Check if user exists by email
             $user = $this->User_model->get_by_email($google_user_data['email']);
             
@@ -2028,7 +2116,10 @@ class Auth extends BaseController {
                 $user_data = [
                     'user_id' => $user_id,
                     'email' => $google_user_data['email'],
-                    'full_name' => $google_user_data['name'],
+                    'first_name' => $first_name,
+                    'middle_name' => $middle_name,
+                    'last_name' => $last_name,
+                    'full_name' => $full_name,
                     'role' => 'student', // Default role, can be changed later
                     'status' => 'active',
                     'password' => password_hash('google_oauth_' . uniqid(), PASSWORD_DEFAULT), // Placeholder password for OAuth users
@@ -2060,7 +2151,7 @@ class Auth extends BaseController {
                 $user = $this->User_model->get_by_id($user_id);
                 
                 // Send welcome notification
-                $this->send_welcome_notification($user_id, $user_data['full_name'], $user_data['role'], $user_data['email']);
+                $this->send_welcome_notification($user_id, $full_name, $user_data['role'], $user_data['email']);
                 
             } else {
                 // User exists - check if they have a local account

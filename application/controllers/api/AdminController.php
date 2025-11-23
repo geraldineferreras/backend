@@ -2337,9 +2337,18 @@ class AdminController extends BaseController {
                 continue;
             }
 
+            // Extract atomic name fields
+            $first_name = trim($student['first_name']);
+            $middle_name = isset($student['middle_name']) ? trim($student['middle_name']) : null;
+            $last_name = trim($student['last_name']);
+            
+            // Generate full_name from atomic fields with middle name as initial
+            $this->load->helper('utility');
+            $full_name = generate_full_name($first_name, $middle_name, $last_name, false);
+            
             // Generate QR code if not provided
             if (empty($student['qr_code'])) {
-                $student['qr_code'] = $this->generate_qr_code($student_num, trim($student['full_name']), $student['program']);
+                $student['qr_code'] = $this->generate_qr_code($student_num, $full_name, $student['program']);
             }
 
             // Generate unique user_id for student
@@ -2349,7 +2358,10 @@ class AdminController extends BaseController {
             $student_data = [
                 'user_id' => $user_id,
                 'role' => 'student',
-                'full_name' => trim($student['full_name']),
+                'first_name' => $first_name,
+                'middle_name' => $middle_name,
+                'last_name' => $last_name,
+                'full_name' => $full_name,
                 'email' => $email,
                 'student_num' => $student_num,
                 'program' => $this->standardize_program_name($student['program']),
@@ -2594,8 +2606,8 @@ class AdminController extends BaseController {
      * @return array
      */
     private function validate_student_data($student, $row, $user_program, $valid_programs, $existing_student_nums, $existing_emails) {
-        // Validate required fields
-        $required_fields = ['full_name', 'email', 'student_num', 'program'];
+        // Validate required fields - use atomic name fields
+        $required_fields = ['first_name', 'last_name', 'email', 'student_num', 'program'];
         foreach ($required_fields as $field) {
             if (!isset($student[$field]) || empty(trim($student[$field]))) {
                 return [
