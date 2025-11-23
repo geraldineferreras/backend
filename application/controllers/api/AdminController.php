@@ -2342,8 +2342,12 @@ class AdminController extends BaseController {
                 $student['qr_code'] = $this->generate_qr_code($student_num, trim($student['full_name']), $student['program']);
             }
 
+            // Generate unique user_id for student
+            $user_id = generate_user_id('STD');
+
             // Prepare student data for insertion
             $student_data = [
+                'user_id' => $user_id,
                 'role' => 'student',
                 'full_name' => trim($student['full_name']),
                 'email' => $email,
