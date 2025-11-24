@@ -1,21 +1,39 @@
 <?php
 class Section_model extends CI_Model {
-    public function get_all() {
-        return $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic,
+    private $supportsArchive = false;
+
+    public function __construct() {
+        parent::__construct();
+        $this->supportsArchive = $this->db->field_exists('is_archived', 'sections');
+    }
+    public function get_all($options = []) {
+        $include_archived = $this->include_archived_flag($options);
+
+        $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic,
                                  (SELECT COUNT(*) FROM users WHERE users.section_id = sections.section_id AND users.role = "student") as enrolled_count')
             ->from('sections')
-            ->join('users', 'sections.adviser_id = users.user_id', 'left')
-            ->order_by('sections.academic_year', 'DESC')
+            ->join('users', 'sections.adviser_id = users.user_id', 'left');
+
+        if ($this->supportsArchive && !$include_archived) {
+            $this->db->where('sections.is_archived', 0);
+        }
+
+        return $this->db->order_by('sections.academic_year', 'DESC')
             ->order_by('sections.semester', 'ASC')
             ->order_by('sections.year_level', 'ASC')
             ->order_by('sections.section_name', 'ASC')
             ->get()->result_array();
     }
 
-    public function get_by_year_level($year_level = null) {
+    public function get_by_year_level($year_level = null, $options = []) {
+        $include_archived = $this->include_archived_flag($options);
         $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic')
             ->from('sections')
             ->join('users', 'sections.adviser_id = users.user_id', 'left');
+
+        if ($this->supportsArchive && !$include_archived) {
+            $this->db->where('sections.is_archived', 0);
+        }
         
         if ($year_level && $year_level !== 'all') {
             // Handle different possible formats
@@ -30,10 +48,15 @@ class Section_model extends CI_Model {
         return $this->db->get()->result_array();
     }
 
-    public function get_by_semester_and_year($semester = null, $academic_year = null) {
+    public function get_by_semester_and_year($semester = null, $academic_year = null, $options = []) {
+        $include_archived = $this->include_archived_flag($options);
         $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic')
             ->from('sections')
             ->join('users', 'sections.adviser_id = users.user_id', 'left');
+
+        if ($this->supportsArchive && !$include_archived) {
+            $this->db->where('sections.is_archived', 0);
+        }
         
         if ($semester && $semester !== 'all') {
             $this->db->where('sections.semester', $semester);
@@ -115,29 +138,44 @@ class Section_model extends CI_Model {
     }
 
     public function get_year_levels() {
-        return $this->db->select('DISTINCT(year_level) as year_level', false)
+        $this->db->select('DISTINCT(year_level) as year_level', false)
             ->from('sections')
             ->where('year_level IS NOT NULL')
-            ->where('year_level !=', '')
-            ->order_by('year_level', 'ASC')
+            ->where('year_level !=', '');
+
+        if ($this->supportsArchive) {
+            $this->db->where('is_archived', 0);
+        }
+
+        return $this->db->order_by('year_level', 'ASC')
             ->get()->result_array();
     }
 
     public function get_semesters() {
-        return $this->db->select('DISTINCT(semester) as semester', false)
+        $this->db->select('DISTINCT(semester) as semester', false)
             ->from('sections')
             ->where('semester IS NOT NULL')
-            ->where('semester !=', '')
-            ->order_by('semester', 'ASC')
+            ->where('semester !=', '');
+
+        if ($this->supportsArchive) {
+            $this->db->where('is_archived', 0);
+        }
+
+        return $this->db->order_by('semester', 'ASC')
             ->get()->result_array();
     }
 
     public function get_academic_years() {
-        return $this->db->select('DISTINCT(academic_year) as academic_year', false)
+        $this->db->select('DISTINCT(academic_year) as academic_year', false)
             ->from('sections')
             ->where('academic_year IS NOT NULL')
-            ->where('academic_year !=', '')
-            ->order_by('academic_year', 'DESC')
+            ->where('academic_year !=', '');
+
+        if ($this->supportsArchive) {
+            $this->db->where('is_archived', 0);
+        }
+
+        return $this->db->order_by('academic_year', 'DESC')
             ->get()->result_array();
     }
 
@@ -217,8 +255,8 @@ class Section_model extends CI_Model {
     }
 
     // Get all sections grouped by program
-    public function get_sections_grouped_by_program() {
-        $sections = $this->get_all();
+    public function get_sections_grouped_by_program($options = []) {
+        $sections = $this->get_all($options);
         $grouped = [];
         foreach ($sections as $section) {
             $program = $section['program'];
@@ -231,13 +269,20 @@ class Section_model extends CI_Model {
     }
 
     // Get all sections for a specific program
-    public function get_by_program($program) {
-        return $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic,
+    public function get_by_program($program, $options = []) {
+        $include_archived = $this->include_archived_flag($options);
+
+        $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic,
                                  (SELECT COUNT(*) FROM users WHERE users.section_id = sections.section_id AND users.role = "student") as enrolled_count')
             ->from('sections')
             ->join('users', 'sections.adviser_id = users.user_id', 'left')
-            ->where('sections.program', $program)
-            ->order_by('sections.academic_year', 'DESC')
+            ->where('sections.program', $program);
+
+        if ($this->supportsArchive && !$include_archived) {
+            $this->db->where('sections.is_archived', 0);
+        }
+
+        return $this->db->order_by('sections.academic_year', 'DESC')
             ->order_by('sections.semester', 'ASC')
             ->order_by('sections.year_level', 'ASC')
             ->order_by('sections.section_name', 'ASC')
@@ -245,8 +290,8 @@ class Section_model extends CI_Model {
     }
 
     // Get sections grouped by program and year level
-    public function get_by_program_grouped_by_year($program) {
-        $sections = $this->get_by_program($program);
+    public function get_by_program_grouped_by_year($program, $options = []) {
+        $sections = $this->get_by_program($program, $options);
         $grouped = [];
         
         foreach ($sections as $section) {
@@ -264,12 +309,17 @@ class Section_model extends CI_Model {
     }
 
     // Get sections by program and specific year level
-    public function get_by_program_and_year_level($program, $year_level = null) {
+    public function get_by_program_and_year_level($program, $year_level = null, $options = []) {
+        $include_archived = $this->include_archived_flag($options);
         $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic,
                           (SELECT COUNT(*) FROM users WHERE users.section_id = sections.section_id AND users.role = "student") as enrolled_count')
             ->from('sections')
             ->join('users', 'sections.adviser_id = users.user_id', 'left')
             ->where('sections.program', $program);
+
+        if ($this->supportsArchive && !$include_archived) {
+            $this->db->where('sections.is_archived', 0);
+        }
         
         if ($year_level && $year_level !== 'all') {
             // Handle different possible formats
@@ -292,5 +342,70 @@ class Section_model extends CI_Model {
             ->where('classes.section_id', $section_id)
             ->limit(1);
         return $this->db->get()->row_array();
+    }
+
+    public function set_archive_status($section_id, $is_archived, $reason = null) {
+        if (!$this->supportsArchive) {
+            return false;
+        }
+
+        $data = [
+            'is_archived' => $is_archived ? 1 : 0,
+            'archived_at' => $is_archived ? date('Y-m-d H:i:s') : null,
+            'archive_reason' => $reason
+        ];
+
+        $this->db->where('section_id', $section_id)->update('sections', $data);
+        return $this->db->affected_rows() > 0;
+    }
+
+    public function get_management_overview($filters = []) {
+        $include_archived = !empty($filters['include_archived']);
+
+        $base = $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic,
+                                 (SELECT COUNT(*) FROM users WHERE users.section_id = sections.section_id AND users.role = "student") as enrolled_count')
+            ->from('sections')
+            ->join('users', 'sections.adviser_id = users.user_id', 'left');
+
+        if (!empty($filters['program'])) {
+            $base->where('sections.program', $filters['program']);
+        }
+
+        $active_query = clone $base;
+        $archived_query = clone $base;
+
+        if ($this->supportsArchive) {
+            $active_query->where('sections.is_archived', 0);
+            $archived_query->where('sections.is_archived', 1);
+        }
+
+        $active = $active_query->order_by('sections.academic_year', 'DESC')
+            ->order_by('sections.year_level', 'ASC')
+            ->order_by('sections.section_name', 'ASC')
+            ->get()->result_array();
+
+        $archived = $include_archived
+            ? $archived_query->order_by('sections.academic_year', 'DESC')
+                ->order_by('sections.year_level', 'ASC')
+                ->order_by('sections.section_name', 'ASC')
+                ->get()->result_array()
+            : [];
+
+        return [
+            'active' => $active,
+            'archived' => $archived
+        ];
+    }
+
+    private function include_archived_flag($options) {
+        if (is_array($options)) {
+            return !empty($options['include_archived']);
+        }
+
+        if (is_bool($options)) {
+            return $options;
+        }
+
+        return false;
     }
 }
