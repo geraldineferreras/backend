@@ -166,6 +166,7 @@ $route['api/admin/academic-years']['get'] = 'api/AdminController/academic_years_
 $route['api/admin/academic-year-management']['get'] = 'api/AcademicYearController/index_get';
 $route['api/admin/academic-year-management']['post'] = 'api/AcademicYearController/create_post';
 $route['api/admin/academic-year-management/active']['get'] = 'api/AcademicYearController/active_get';
+$route['api/teacher/academic-year-management/active']['get'] = 'api/AcademicYearController/active_get';
 $route['api/admin/academic-year-management/archived']['get'] = 'api/AcademicYearController/archived_get';
 $route['api/admin/academic-year-management/(:num)']['get'] = 'api/AcademicYearController/show_get/$1';
 $route['api/admin/academic-year-management/(:num)/activate']['post'] = 'api/AcademicYearController/activate_post/$1';

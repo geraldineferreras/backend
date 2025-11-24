@@ -18,7 +18,7 @@ class AcademicYearController extends BaseController
 
     public function active_get()
     {
-        $user = require_role($this, ['admin', 'chairperson']);
+        $user = require_role($this, ['admin', 'chairperson', 'teacher']);
         if (!$user) {
             return;
         }
@@ -35,7 +35,7 @@ class AcademicYearController extends BaseController
 
     public function index_get()
     {
-        $user = require_role($this, ['admin', 'chairperson']);
+        $user = require_role($this, ['admin', 'chairperson', 'teacher']);
         if (!$user) {
             return;
         }
