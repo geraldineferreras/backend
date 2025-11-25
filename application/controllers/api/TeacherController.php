@@ -3107,6 +3107,23 @@ class TeacherController extends BaseController
         return $mime_types[$type] ?? 'text/plain';
     }
 
+    /**
+     * Resolve a teacher's program either from the JWT payload or the database.
+     */
+    private function resolve_teacher_program($user_id, $program_from_token = null) {
+        if (!empty($program_from_token)) {
+            return trim($program_from_token);
+        }
+
+        $teacher = $this->db->select('program')
+            ->from('users')
+            ->where('user_id', $user_id)
+            ->get()
+            ->row_array();
+
+        return $teacher['program'] ?? null;
+    }
+
     // ==================== BULK CLASSROOM CREATION ENDPOINTS ====================
 
     /**
@@ -3194,7 +3211,7 @@ class TeacherController extends BaseController
         $user_data = require_teacher($this);
         if (!$user_data) return;
 
-        $teacher_program = $user_data['program'] ?? null;
+        $teacher_program = $this->resolve_teacher_program($user_data['user_id'], $user_data['program'] ?? null);
         
         if (empty($teacher_program)) {
             return json_response(true, 'No assigned programs', [], 200);
@@ -3232,7 +3249,7 @@ class TeacherController extends BaseController
         $year_levels = $this->input->get('year_levels'); // Can be comma-separated or array
         $academic_year_id = $this->input->get('academic_year_id');
 
-        $teacher_program = $user_data['program'] ?? null;
+        $teacher_program = $this->resolve_teacher_program($user_data['user_id'], $user_data['program'] ?? null);
         
         if (empty($teacher_program)) {
             return json_response(false, 'Teacher has no assigned program', null, 403);
@@ -3323,7 +3340,7 @@ class TeacherController extends BaseController
         $school_year = $input['school_year'];
         $academic_year_id = $input['academic_year_id'] ?? null;
         $teacher_id = $user_data['user_id'];
-        $teacher_program = $user_data['program'] ?? null;
+        $teacher_program = $this->resolve_teacher_program($teacher_id, $user_data['program'] ?? null);
 
         // Check teacher's assigned program
         if (empty($teacher_program) || $program !== $teacher_program) {
@@ -3539,7 +3556,7 @@ class TeacherController extends BaseController
         $classroom_id = $input['classroom_id'];
         $section_ids = is_array($input['section_ids']) ? $input['section_ids'] : explode(',', $input['section_ids']);
         $teacher_id = $user_data['user_id'];
-        $teacher_program = $user_data['program'] ?? null;
+        $teacher_program = $this->resolve_teacher_program($teacher_id, $user_data['program'] ?? null);
 
         // Verify classroom exists and belongs to teacher
         $classroom = $this->Classroom_model->get_by_id($classroom_id);
