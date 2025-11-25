@@ -3106,4 +3106,542 @@ class TeacherController extends BaseController
         
         return $mime_types[$type] ?? 'text/plain';
     }
+
+    // ==================== BULK CLASSROOM CREATION ENDPOINTS ====================
+
+    /**
+     * Check for duplicate classroom name
+     * POST /api/teacher/classrooms/check-duplicate
+     */
+    public function classrooms_check_duplicate_post() {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return json_response(false, 'Invalid JSON format', null, 400);
+        }
+
+        if (empty($input['class_name'])) {
+            return json_response(false, 'class_name is required', null, 400);
+        }
+
+        $class_name = trim($input['class_name']);
+        $teacher_id = $user_data['user_id'];
+
+        // Check for active classroom with same name
+        $this->db->select('classrooms.*')
+            ->from('classrooms')
+            ->where('classrooms.teacher_id', $teacher_id)
+            ->where('classrooms.title', $class_name);
+        
+        if ($this->db->field_exists('status', 'classrooms')) {
+            $this->db->where("(classrooms.status = 'active' OR classrooms.status IS NULL)", null, false);
+        }
+        
+        $active_classroom = $this->db->get()->row_array();
+
+        if ($active_classroom && ($active_classroom['status'] === 'active' || empty($active_classroom['status']))) {
+            return json_response(true, 'Duplicate found', [
+                'exists' => true,
+                'is_active' => true,
+                'classroom' => [
+                    'id' => $active_classroom['id'],
+                    'class_code' => $active_classroom['class_code'] ?? null,
+                    'title' => $active_classroom['title'] ?? null,
+                    'status' => $active_classroom['status'] ?? 'active'
+                ]
+            ], 200);
+        }
+
+        // Check for archived/inactive classroom with same name
+        $this->db->select('classrooms.*')
+            ->from('classrooms')
+            ->where('classrooms.teacher_id', $teacher_id)
+            ->where('classrooms.title', $class_name);
+        
+        if ($this->db->field_exists('status', 'classrooms')) {
+            $this->db->where("(classrooms.status = 'archived' OR classrooms.status = 'inactive')", null, false);
+        }
+        
+        $archived_classroom = $this->db->get()->row_array();
+
+        if ($archived_classroom) {
+            return json_response(true, 'Archived classroom found', [
+                'exists' => true,
+                'is_active' => false,
+                'classroom' => [
+                    'id' => $archived_classroom['id'],
+                    'class_code' => $archived_classroom['class_code'] ?? null,
+                    'title' => $archived_classroom['title'] ?? null,
+                    'status' => $archived_classroom['status'] ?? 'archived'
+                ]
+            ], 200);
+        }
+
+        return json_response(true, 'No duplicate found', [
+            'exists' => false,
+            'is_active' => false,
+            'classroom' => null
+        ], 200);
+    }
+
+    /**
+     * Get teacher's assigned programs
+     * GET /api/teacher/assigned-programs
+     */
+    public function assigned_programs_get() {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        $teacher_program = $user_data['program'] ?? null;
+        
+        if (empty($teacher_program)) {
+            return json_response(true, 'No assigned programs', [], 200);
+        }
+
+        // Get program details from programs table if it exists
+        $this->load->model('Program_model');
+        $program = $this->Program_model->get_by_code($teacher_program);
+        
+        if ($program) {
+            $result = [[
+                'program' => $program['name'],
+                'program_code' => $program['code']
+            ]];
+        } else {
+            // Fallback: use program from user table
+            $result = [[
+                'program' => $teacher_program,
+                'program_code' => $teacher_program
+            ]];
+        }
+
+        return json_response(true, 'Assigned programs retrieved successfully', $result, 200);
+    }
+
+    /**
+     * Get sections by criteria (filtered by teacher's assigned program)
+     * GET /api/teacher/sections-by-criteria
+     */
+    public function sections_by_criteria_get() {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        $program = $this->input->get('program');
+        $year_levels = $this->input->get('year_levels'); // Can be comma-separated or array
+        $academic_year_id = $this->input->get('academic_year_id');
+
+        $teacher_program = $user_data['program'] ?? null;
+        
+        if (empty($teacher_program)) {
+            return json_response(false, 'Teacher has no assigned program', null, 403);
+        }
+
+        $this->load->model('Section_model');
+
+        // Build query
+        $this->db->select('sections.section_id, sections.section_name, sections.program, sections.year_level, sections.academic_year, sections.semester,
+                          (SELECT COUNT(*) FROM users WHERE users.section_id = sections.section_id AND users.role = "student" AND users.status = "active") as student_count')
+            ->from('sections')
+            ->where('sections.program', $teacher_program);
+
+        // Filter by requested program (must match teacher's program)
+        if (!empty($program) && $program !== $teacher_program) {
+            return json_response(false, 'You can only create classes for your assigned program(s)', null, 403);
+        }
+
+        // Filter by year levels
+        if (!empty($year_levels)) {
+            if (is_string($year_levels)) {
+                $year_levels = array_map('trim', explode(',', $year_levels));
+            }
+            if (is_array($year_levels) && !empty($year_levels)) {
+                $this->db->where_in('sections.year_level', $year_levels);
+            }
+        }
+
+        // Filter by academic year
+        if (!empty($academic_year_id)) {
+            // If academic_year_id is provided, we might need to join with academic_years table
+            // For now, assuming sections.academic_year matches the ID or we can filter by year string
+            $this->db->where('sections.academic_year', $academic_year_id);
+        }
+
+        // Only active sections
+        if ($this->db->field_exists('is_archived', 'sections')) {
+            $this->db->where('sections.is_archived', 0);
+        }
+
+        $sections = $this->db->order_by('sections.year_level', 'ASC')
+            ->order_by('sections.section_name', 'ASC')
+            ->get()->result_array();
+
+        $result = [];
+        foreach ($sections as $section) {
+            $result[] = [
+                'id' => $section['section_id'],
+                'name' => $section['section_name'],
+                'program' => $section['program'],
+                'year_level' => $section['year_level'],
+                'student_count' => (int)$section['student_count']
+            ];
+        }
+
+        return json_response(true, 'Sections retrieved successfully', $result, 200);
+    }
+
+    /**
+     * Bulk create classroom with multiple sections
+     * POST /api/teacher/classrooms/bulk-create
+     */
+    public function classrooms_bulk_create_post() {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        $this->load->helper('notification');
+        $this->load->model('Classroom_model');
+        $this->load->model('Section_model');
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return json_response(false, 'Invalid JSON format', null, 400);
+        }
+
+        // Validate required fields
+        $required = ['class_name', 'program', 'section_ids', 'semester', 'school_year'];
+        foreach ($required as $field) {
+            if (empty($input[$field])) {
+                return json_response(false, "$field is required", null, 400);
+            }
+        }
+
+        $class_name = trim($input['class_name']);
+        $program = trim($input['program']);
+        $section_ids = is_array($input['section_ids']) ? $input['section_ids'] : explode(',', $input['section_ids']);
+        $semester = $input['semester'];
+        $school_year = $input['school_year'];
+        $academic_year_id = $input['academic_year_id'] ?? null;
+        $teacher_id = $user_data['user_id'];
+        $teacher_program = $user_data['program'] ?? null;
+
+        // Check teacher's assigned program
+        if (empty($teacher_program) || $program !== $teacher_program) {
+            return json_response(false, 'You can only create classes for your assigned program(s)', null, 403);
+        }
+
+        // Check for duplicate active classroom
+        $this->db->select('classrooms.*')
+            ->from('classrooms')
+            ->where('classrooms.teacher_id', $teacher_id)
+            ->where('classrooms.title', $class_name);
+        
+        // Handle different status values (active/inactive or active/archived)
+        if ($this->db->field_exists('status', 'classrooms')) {
+            $this->db->where("(classrooms.status = 'active' OR classrooms.status IS NULL)", null, false);
+        }
+        
+        $existing_active = $this->db->get()->row_array();
+
+        if ($existing_active && ($existing_active['status'] === 'active' || empty($existing_active['status']))) {
+            return json_response(false, "A classroom named {$class_name} already exists. Please archive it first before creating a new one with the same name.", null, 409);
+        }
+
+        // Check for archived/inactive classroom (re-tagging)
+        $this->db->select('classrooms.*')
+            ->from('classrooms')
+            ->where('classrooms.teacher_id', $teacher_id)
+            ->where('classrooms.title', $class_name);
+        
+        if ($this->db->field_exists('status', 'classrooms')) {
+            $this->db->where("(classrooms.status = 'archived' OR classrooms.status = 'inactive')", null, false);
+        }
+        
+        $existing_archived = $this->db->get()->row_array();
+
+        $classroom_id = null;
+        $is_retagging = false;
+
+        if ($existing_archived) {
+            // Re-tagging: reactivate and update
+            $classroom_id = $existing_archived['id'];
+            $is_retagging = true;
+            
+            $update_data = [
+                'semester' => $semester,
+                'school_year' => $school_year
+            ];
+            
+            // Update status if field exists
+            if ($this->db->field_exists('status', 'classrooms')) {
+                $update_data['status'] = 'active';
+            }
+            
+            // Update academic_year_id if field exists
+            if ($academic_year_id && $this->db->field_exists('academic_year_id', 'classrooms')) {
+                $update_data['academic_year_id'] = $academic_year_id;
+            }
+            
+            if ($this->db->field_exists('updated_at', 'classrooms')) {
+                $update_data['updated_at'] = date('Y-m-d H:i:s');
+            }
+            
+            $this->Classroom_model->update($classroom_id, $update_data);
+        } else {
+            // Create new classroom
+            $classroom_data = [
+                'teacher_id' => $teacher_id,
+                'title' => $class_name,
+                'semester' => $semester,
+                'school_year' => $school_year,
+                'subject_id' => $input['subject_id'] ?? null, // Optional
+                'section_id' => $section_ids[0] ?? null // Primary section (for compatibility)
+            ];
+            
+            // Add optional fields if they exist in the table
+            if ($this->db->field_exists('status', 'classrooms')) {
+                $classroom_data['status'] = 'active';
+            }
+            if ($this->db->field_exists('program', 'classrooms')) {
+                $classroom_data['program'] = $program;
+            }
+            if ($academic_year_id && $this->db->field_exists('academic_year_id', 'classrooms')) {
+                $classroom_data['academic_year_id'] = $academic_year_id;
+            }
+            
+            $classroom_id = $this->Classroom_model->insert($classroom_data);
+        }
+
+        if (!$classroom_id) {
+            return json_response(false, 'Failed to create or update classroom', null, 500);
+        }
+
+        // Get classroom for class_code
+        $classroom = $this->Classroom_model->get_by_id($classroom_id);
+        $class_code = $classroom['class_code'] ?? null;
+
+        // Process each section
+        $summary = [
+            'students_added' => 0,
+            'students_skipped' => 0,
+            'sections_processed' => 0
+        ];
+        $details = [];
+
+        foreach ($section_ids as $section_id) {
+            $section = $this->Section_model->get_by_id($section_id);
+            if (!$section) {
+                continue;
+            }
+
+            // Verify section belongs to teacher's program
+            if ($section['program'] !== $teacher_program) {
+                continue; // Skip unauthorized sections
+            }
+
+            // Get active students in this section
+            $students = $this->db->select('user_id, full_name, email, program')
+                ->from('users')
+                ->where('section_id', $section_id)
+                ->where('role', 'student')
+                ->where('status', 'active')
+                ->get()->result_array();
+
+            $section_added = 0;
+            $section_skipped = 0;
+
+            foreach ($students as $student) {
+                // Check program match
+                if ($student['program'] !== $teacher_program) {
+                    continue; // Skip students from other programs
+                }
+
+                // Check if already enrolled
+                $existing_enrollment = $this->db->select('id')
+                    ->from('classroom_enrollments')
+                    ->where('classroom_id', $classroom_id)
+                    ->where('student_id', $student['user_id'])
+                    ->where('status', 'active')
+                    ->get()->row_array();
+
+                if ($existing_enrollment) {
+                    $section_skipped++;
+                    continue;
+                }
+
+                // Enroll student
+                $enrollment_data = [
+                    'classroom_id' => $classroom_id,
+                    'student_id' => $student['user_id'],
+                    'enrolled_at' => date('Y-m-d H:i:s'),
+                    'status' => 'active'
+                ];
+
+                $this->db->insert('classroom_enrollments', $enrollment_data);
+
+                if ($this->db->affected_rows() > 0) {
+                    $section_added++;
+                    
+                    // Send notification
+                    create_notification(
+                        $student['user_id'],
+                        'classroom',
+                        'Added to Class',
+                        "You have been added to the class {$class_name}.",
+                        $classroom_id,
+                        'classroom',
+                        $class_code,
+                        false
+                    );
+                }
+            }
+
+            $summary['students_added'] += $section_added;
+            $summary['students_skipped'] += $section_skipped;
+            $summary['sections_processed']++;
+
+            $details["section_{$section_id}"] = [
+                'name' => $section['section_name'],
+                'students_added' => $section_added,
+                'students_skipped' => $section_skipped
+            ];
+        }
+
+        return json_response(true, $is_retagging ? 'Classroom re-tagged and students enrolled successfully' : 'Classroom created and students enrolled successfully', [
+            'classroom_id' => $classroom_id,
+            'class_code' => $class_code,
+            'summary' => $summary,
+            'details' => $details
+        ], 201);
+    }
+
+    /**
+     * Bulk add students to existing classroom (re-tagging)
+     * POST /api/teacher/classrooms/bulk-add-students
+     */
+    public function classrooms_bulk_add_students_post() {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        $this->load->helper('notification');
+        $this->load->model('Classroom_model');
+        $this->load->model('Section_model');
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return json_response(false, 'Invalid JSON format', null, 400);
+        }
+
+        if (empty($input['classroom_id']) || empty($input['section_ids'])) {
+            return json_response(false, 'classroom_id and section_ids are required', null, 400);
+        }
+
+        $classroom_id = $input['classroom_id'];
+        $section_ids = is_array($input['section_ids']) ? $input['section_ids'] : explode(',', $input['section_ids']);
+        $teacher_id = $user_data['user_id'];
+        $teacher_program = $user_data['program'] ?? null;
+
+        // Verify classroom exists and belongs to teacher
+        $classroom = $this->Classroom_model->get_by_id($classroom_id);
+        if (!$classroom || $classroom['teacher_id'] !== $teacher_id) {
+            return json_response(false, 'Classroom not found or access denied', null, 404);
+        }
+
+        $class_name = $classroom['title'] ?? 'Unknown Class';
+        $class_code = $classroom['class_code'] ?? null;
+
+        // Process each section
+        $summary = [
+            'students_added' => 0,
+            'students_skipped' => 0,
+            'sections_processed' => 0
+        ];
+        $details = [];
+
+        foreach ($section_ids as $section_id) {
+            $section = $this->Section_model->get_by_id($section_id);
+            if (!$section) {
+                continue;
+            }
+
+            // Verify section belongs to teacher's program
+            if ($section['program'] !== $teacher_program) {
+                continue; // Skip unauthorized sections
+            }
+
+            // Get active students in this section
+            $students = $this->db->select('user_id, full_name, email, program')
+                ->from('users')
+                ->where('section_id', $section_id)
+                ->where('role', 'student')
+                ->where('status', 'active')
+                ->get()->result_array();
+
+            $section_added = 0;
+            $section_skipped = 0;
+
+            foreach ($students as $student) {
+                // Check program match
+                if ($student['program'] !== $teacher_program) {
+                    continue; // Skip students from other programs
+                }
+
+                // Check if already enrolled
+                $existing_enrollment = $this->db->select('id')
+                    ->from('classroom_enrollments')
+                    ->where('classroom_id', $classroom_id)
+                    ->where('student_id', $student['user_id'])
+                    ->where('status', 'active')
+                    ->get()->row_array();
+
+                if ($existing_enrollment) {
+                    $section_skipped++;
+                    continue;
+                }
+
+                // Enroll student
+                $enrollment_data = [
+                    'classroom_id' => $classroom_id,
+                    'student_id' => $student['user_id'],
+                    'enrolled_at' => date('Y-m-d H:i:s'),
+                    'status' => 'active'
+                ];
+
+                $this->db->insert('classroom_enrollments', $enrollment_data);
+
+                if ($this->db->affected_rows() > 0) {
+                    $section_added++;
+                    
+                    // Send notification
+                    create_notification(
+                        $student['user_id'],
+                        'classroom',
+                        'Added to Class',
+                        "You have been added to the class {$class_name}.",
+                        $classroom_id,
+                        'classroom',
+                        $class_code,
+                        false
+                    );
+                }
+            }
+
+            $summary['students_added'] += $section_added;
+            $summary['students_skipped'] += $section_skipped;
+            $summary['sections_processed']++;
+
+            $details["section_{$section_id}"] = [
+                'name' => $section['section_name'],
+                'students_added' => $section_added,
+                'students_skipped' => $section_skipped
+            ];
+        }
+
+        return json_response(true, 'Students added to classroom successfully', [
+            'classroom_id' => $classroom_id,
+            'class_code' => $class_code,
+            'summary' => $summary,
+            'details' => $details
+        ], 200);
+    }
 }

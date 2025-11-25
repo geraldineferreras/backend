@@ -402,6 +402,13 @@ $route['api/teacher/assigned-subjects']['get'] = 'api/TeacherController/assigned
 $route['api/teacher/available-subjects']['get'] = 'api/TeacherController/available_subjects_get';
 $route['api/teacher/available-sections/(:num)']['get'] = 'api/TeacherController/available_sections_get/$1';
 
+// Teacher Bulk Classroom Creation
+$route['api/teacher/classrooms/check-duplicate']['post'] = 'api/TeacherController/classrooms_check_duplicate_post';
+$route['api/teacher/classrooms/bulk-create']['post'] = 'api/TeacherController/classrooms_bulk_create_post';
+$route['api/teacher/classrooms/bulk-add-students']['post'] = 'api/TeacherController/classrooms_bulk_add_students_post';
+$route['api/teacher/assigned-programs']['get'] = 'api/TeacherController/assigned_programs_get';
+$route['api/teacher/sections-by-criteria']['get'] = 'api/TeacherController/sections_by_criteria_get';
+
 // Attendance Logs API
 $route['api/attendance-logs/logs']['get'] = 'api/AttendanceLogController/logs_get';
 $route['api/attendance-logs/log/(:num)']['get'] = 'api/AttendanceLogController/log_get/$1';
