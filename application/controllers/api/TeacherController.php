@@ -3280,9 +3280,17 @@ class TeacherController extends BaseController
 
         // Filter by academic year
         if (!empty($academic_year_id)) {
-            // If academic_year_id is provided, we might need to join with academic_years table
-            // For now, assuming sections.academic_year matches the ID or we can filter by year string
-            $this->db->where('sections.academic_year', $academic_year_id);
+            if (is_numeric($academic_year_id) && $this->db->field_exists('academic_year_id', 'sections')) {
+                $this->db->where('sections.academic_year_id', (int)$academic_year_id);
+            } else {
+                // Allow requesting by actual academic year value (e.g., "AY 2025-2026")
+                $this->db->group_start()
+                    ->where('sections.academic_year', $academic_year_id);
+                if ($this->db->field_exists('academic_year_id', 'sections')) {
+                    $this->db->or_where('sections.academic_year_id', $academic_year_id);
+                }
+                $this->db->group_end();
+            }
         }
 
         // Only active sections
