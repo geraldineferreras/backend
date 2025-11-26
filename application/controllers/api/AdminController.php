@@ -2540,6 +2540,10 @@ class AdminController extends BaseController {
 
         foreach ($students as $index => $student) {
             $row = $index + 1;
+            
+            // Normalize student data keys (convert Excel column names to expected format)
+            $student = $this->normalize_student_data_keys($student);
+            
             $student_num = isset($student['student_num']) ? trim($student['student_num']) : '';
             $email = isset($student['email']) ? trim($student['email']) : '';
 
@@ -2781,6 +2785,9 @@ class AdminController extends BaseController {
         foreach ($students as $index => $student) {
             $row = $index + 1;
             
+            // Normalize student data keys (convert Excel column names to expected format)
+            $student = $this->normalize_student_data_keys($student);
+            
             // Check for duplicates within the batch
             $combined_student_nums = array_merge($existing_student_nums, $batch_student_nums);
             $combined_emails = array_merge($existing_emails, $batch_emails);
@@ -2818,6 +2825,112 @@ class AdminController extends BaseController {
     }
 
     /**
+     * Normalize student data keys from Excel column names to expected format
+     * @param array $student
+     * @return array
+     */
+    private function normalize_student_data_keys($student) {
+        // Mapping of Excel column names to expected keys
+        $key_mapping = [
+            'First Name' => 'first_name',
+            'first name' => 'first_name',
+            'FirstName' => 'first_name',
+            'firstname' => 'first_name',
+            'Middle Name' => 'middle_name',
+            'middle name' => 'middle_name',
+            'MiddleName' => 'middle_name',
+            'middlename' => 'middle_name',
+            'Middle Na' => 'middle_name', // Handle truncated headers
+            'Last Name' => 'last_name',
+            'last name' => 'last_name',
+            'LastName' => 'last_name',
+            'lastname' => 'last_name',
+            'Student ID / LRN' => 'student_num',
+            'Student ID/LRN' => 'student_num',
+            'student id / lrn' => 'student_num',
+            'Student ID' => 'student_num',
+            'student id' => 'student_num',
+            'StudentID' => 'student_num',
+            'studentid' => 'student_num',
+            'LRN' => 'student_num',
+            'lrn' => 'student_num',
+            'Email' => 'email',
+            'email' => 'email',
+            'Program' => 'program',
+            'program' => 'program',
+            'Year Level' => 'year_level',
+            'year level' => 'year_level',
+            'YearLevel' => 'year_level',
+            'yearlevel' => 'year_level',
+            'Section' => 'section',
+            'section' => 'section',
+            'Student Status' => 'student_type',
+            'Student Sta' => 'student_type', // Handle truncated headers
+            'student status' => 'student_type',
+            'StudentStatus' => 'student_type',
+            'studentstatus' => 'student_type',
+        ];
+        
+        $normalized = [];
+        foreach ($student as $key => $value) {
+            // Trim the key to handle whitespace issues
+            $trimmed_key = trim($key);
+            
+            // Check if we have a mapping for this key (exact match)
+            if (isset($key_mapping[$trimmed_key])) {
+                $normalized[$key_mapping[$trimmed_key]] = $value;
+                continue;
+            }
+            
+            // Try case-insensitive matching
+            $lower_key = strtolower($trimmed_key);
+            $found_mapping = false;
+            foreach ($key_mapping as $map_key => $map_value) {
+                if (strtolower($map_key) === $lower_key) {
+                    $normalized[$map_value] = $value;
+                    $found_mapping = true;
+                    break;
+                }
+            }
+            
+            if ($found_mapping) {
+                continue;
+            }
+            
+            // If no mapping, try to convert common patterns
+            // Convert "First Name" style to "first_name" style
+            $normalized_key = strtolower(str_replace([' ', '/'], ['_', '_'], $trimmed_key));
+            // Remove special characters but keep underscores
+            $normalized_key = preg_replace('/[^a-z0-9_]/', '', $normalized_key);
+            
+            // Handle special cases
+            if (preg_match('/student.*id.*lrn|lrn|student.*num/i', $trimmed_key)) {
+                $normalized_key = 'student_num';
+            } elseif (preg_match('/first.*name/i', $trimmed_key)) {
+                $normalized_key = 'first_name';
+            } elseif (preg_match('/middle.*name/i', $trimmed_key)) {
+                $normalized_key = 'middle_name';
+            } elseif (preg_match('/last.*name/i', $trimmed_key)) {
+                $normalized_key = 'last_name';
+            } elseif (preg_match('/student.*status|student.*sta/i', $trimmed_key)) {
+                $normalized_key = 'student_type';
+            } elseif (preg_match('/year.*level/i', $trimmed_key)) {
+                $normalized_key = 'year_level';
+            }
+            
+            // Only use normalized key if it's a valid field name
+            if (in_array($normalized_key, ['first_name', 'middle_name', 'last_name', 'student_num', 'email', 'program', 'year_level', 'section', 'student_type', 'section_id'])) {
+                $normalized[$normalized_key] = $value;
+            } else {
+                // Keep original key if we can't normalize it
+                $normalized[$trimmed_key] = $value;
+            }
+        }
+        
+        return $normalized;
+    }
+
+    /**
      * Validate student data
      * @param array $student
      * @param int $row
@@ -2828,6 +2941,9 @@ class AdminController extends BaseController {
      * @return array
      */
     private function validate_student_data($student, $row, $user_program, $valid_programs, $existing_student_nums, $existing_emails) {
+        // Normalize student data keys first
+        $student = $this->normalize_student_data_keys($student);
+        
         // Validate required fields - use atomic name fields
         $required_fields = ['first_name', 'last_name', 'email', 'student_num', 'program'];
         foreach ($required_fields as $field) {
