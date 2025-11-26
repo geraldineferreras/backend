@@ -498,6 +498,71 @@ class AcademicYear_model extends CI_Model
         ];
     }
 
+    public function update_year($year_id, $payload, $updated_by = null)
+    {
+        $year = $this->db->get_where($this->table, ['id' => $year_id])->row_array();
+        if (!$year) {
+            return ['status' => false, 'message' => 'Academic year not found'];
+        }
+
+        if ((int)$year['lock_data'] === 1 || $year['status'] === 'closed') {
+            return ['status' => false, 'message' => 'This academic year is locked and cannot be edited'];
+        }
+
+        $allowed = [
+            'name',
+            'start_date',
+            'end_date',
+            'sem1_start_date',
+            'sem1_end_date',
+            'sem2_start_date',
+            'sem2_end_date'
+        ];
+
+        $update = [];
+        foreach ($allowed as $field) {
+            if (array_key_exists($field, $payload)) {
+                $update[$field] = $payload[$field];
+            }
+        }
+
+        if (empty($update)) {
+            return ['status' => false, 'message' => 'No editable fields were provided'];
+        }
+
+        if (isset($update['name']) && $update['name'] !== $year['name']) {
+            $conflict = $this->db->select('id')
+                ->from($this->table)
+                ->where('name', $update['name'])
+                ->where('id !=', $year_id)
+                ->get()
+                ->row_array();
+
+            if ($conflict) {
+                return ['status' => false, 'message' => 'Another academic year already uses this name'];
+            }
+        }
+
+        $merged = array_merge($year, $update);
+        $validation = $this->validate_date_sequence($merged);
+        if (!$validation['status']) {
+            return $validation;
+        }
+
+        $update['updated_by'] = $updated_by;
+        $this->db->where('id', $year_id)->update($this->table, $update);
+
+        if ($this->db->affected_rows() === 0) {
+            return ['status' => false, 'message' => 'No changes were saved'];
+        }
+
+        return [
+            'status' => true,
+            'message' => 'Academic year updated successfully',
+            'data' => $this->get_year($year_id)
+        ];
+    }
+
     public function activate_year($year_id, $activated_by = null, $options = [])
     {
         $year = $this->db->get_where($this->table, ['id' => $year_id])->row_array();
@@ -675,6 +740,53 @@ class AcademicYear_model extends CI_Model
         if (!empty($filters['program'])) {
             $builder->where('sections.program', $filters['program']);
         }
+    }
+
+    private function validate_date_sequence(array $data)
+    {
+        $required = [
+            'start_date',
+            'end_date',
+            'sem1_start_date',
+            'sem1_end_date',
+            'sem2_start_date',
+            'sem2_end_date'
+        ];
+
+        foreach ($required as $field) {
+            if (empty($data[$field])) {
+                return ['status' => false, 'message' => ucfirst(str_replace('_', ' ', $field)) . ' is required'];
+            }
+        }
+
+        $start = strtotime($data['start_date']);
+        $end = strtotime($data['end_date']);
+        $sem1_start = strtotime($data['sem1_start_date']);
+        $sem1_end = strtotime($data['sem1_end_date']);
+        $sem2_start = strtotime($data['sem2_start_date']);
+        $sem2_end = strtotime($data['sem2_end_date']);
+
+        if ($start === false || $end === false || $sem1_start === false || $sem1_end === false || $sem2_start === false || $sem2_end === false) {
+            return ['status' => false, 'message' => 'Invalid date values provided'];
+        }
+
+        if ($start > $end) {
+            return ['status' => false, 'message' => 'Start date must be before end date'];
+        }
+
+        if ($sem1_start > $sem1_end) {
+            return ['status' => false, 'message' => 'Semester 1 start date must be before its end date'];
+        }
+
+        if ($sem2_start > $sem2_end) {
+            return ['status' => false, 'message' => 'Semester 2 start date must be before its end date'];
+        }
+
+        if ($sem1_end > $sem2_start) {
+            return ['status' => false, 'message' => 'Semester 1 must end before Semester 2 begins'];
+        }
+
+        return ['status' => true];
     }
 
     /**

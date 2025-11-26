@@ -125,6 +125,32 @@ class AcademicYearController extends BaseController
         return json_response($result['status'], $result['message'], $result['data'] ?? null, $status_code);
     }
 
+    public function update_put($year_id = null)
+    {
+        $user = require_admin($this);
+        if (!$user) {
+            return;
+        }
+
+        if (empty($year_id) || !is_numeric($year_id)) {
+            return json_response(false, 'Academic year ID is required', null, 400);
+        }
+
+        $payloadResult = $this->decode_request_body();
+        if ($payloadResult['error']) {
+            return json_response(false, 'Invalid JSON payload', null, 400);
+        }
+
+        $payload = $payloadResult['data'];
+        if (empty($payload)) {
+            return json_response(false, 'No fields provided for update', null, 400);
+        }
+
+        $result = $this->AcademicYear_model->update_year($year_id, $payload, $user['user_id']);
+        $status_code = $result['status'] ? 200 : 400;
+        return json_response($result['status'], $result['message'], $result['data'] ?? null, $status_code);
+    }
+
     public function activate_post($year_id = null)
     {
         $user = require_admin($this);
