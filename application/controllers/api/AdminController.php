@@ -28,7 +28,7 @@ class AdminController extends BaseController {
 
         $registrations = $this->User_model->get_pending_registrations($role_filter ?: null);
         $payload = array_map(function($user) {
-            $program = $user['assigned_program'] ?? $user['program'] ?? null;
+            $program = $user['program'] ?? null;
             return [
                 'user_id' => $user['user_id'],
                 'full_name' => $user['full_name'],
@@ -2373,7 +2373,7 @@ class AdminController extends BaseController {
             'all' => []
         ];
 
-        $teachers = $this->db->select('user_id, program, assigned_program')
+        $teachers = $this->db->select('user_id, program')
             ->from('users')
             ->where('role', 'teacher')
             ->where('status', 'active')
@@ -2383,7 +2383,7 @@ class AdminController extends BaseController {
         foreach ($teachers as $teacher) {
             $pool['all'][] = $teacher['user_id'];
 
-            $program_code = strtoupper($teacher['assigned_program'] ?? $teacher['program'] ?? '');
+            $program_code = strtoupper($teacher['program'] ?? '');
             if (!empty($program_code)) {
                 if (!isset($pool['by_program'][$program_code])) {
                     $pool['by_program'][$program_code] = [];
