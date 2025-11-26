@@ -474,7 +474,33 @@ class Auth extends BaseController {
         $address = isset($data->address) ? $data->address : null;
         $errors = [];
 
-        // Generate full_name from atomic fields
+        // If first_name/last_name are missing but full_name is provided,
+        // try to derive atomic name fields from full_name to support legacy clients
+        $full_name_input = isset($data->full_name) ? trim($data->full_name) : null;
+        if ((empty($first_name) || empty($last_name)) && !empty($full_name_input)) {
+            $name_parts = preg_split('/\s+/', $full_name_input);
+
+            if (count($name_parts) === 1) {
+                // Single word name - treat as first_name if missing
+                if (empty($first_name)) {
+                    $first_name = $name_parts[0];
+                }
+            } else {
+                // Assume "First [Middle ...] Last"
+                if (empty($first_name)) {
+                    $first_name = array_shift($name_parts);
+                }
+                if (empty($last_name)) {
+                    $last_name = array_pop($name_parts);
+                }
+                // Whatever remains (if any) is treated as middle_name if it's not already provided
+                if (empty($middle_name) && !empty($name_parts)) {
+                    $middle_name = implode(' ', $name_parts);
+                }
+            }
+        }
+
+        // Generate full_name from atomic fields (ensures consistent formatting)
         $this->load->helper('utility');
         $full_name = generate_full_name($first_name, $middle_name, $last_name, false);
 
