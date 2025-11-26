@@ -6,7 +6,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 class AdminController extends BaseController {
     public function __construct() {
         parent::__construct();
-        $this->load->model(['Section_model', 'User_model', 'Program_model']);
+        $this->load->model(['Section_model', 'User_model', 'Program_model', 'AcademicYear_model']);
         $this->load->helper(['response', 'auth', 'notification', 'utility', 'email_notification', 'audit']);
         $this->load->library('Token_lib');
         // CORS headers are already handled by BaseController
@@ -2136,23 +2136,42 @@ class AdminController extends BaseController {
     }
     
     /**
-     * Auto-create sections for all programs and year levels (Admin only)
+     * Auto-create sections for all active programs and year levels (Admin only)
      * POST /api/admin/sections/auto-create
-     * Creates sections without advisers, academic year, or semester
+     * Creates sections for every active program, assigns random advisers, and pre-fills active academic year & semester
      */
     public function auto_create_sections_post() {
         $user_data = require_admin($this);
         if (!$user_data) return;
 
         try {
-            // Define programs and year levels
-            $programs = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
+            $active_context = $this->get_active_academic_context();
+            if (empty($active_context['academic_year']) || empty($active_context['semester'])) {
+                $this->send_error('No active academic year/semester found. Activate an academic year first.', 409);
+                return;
+            }
+
+            $sections_has_academic_year_id = $this->db->field_exists('academic_year_id', 'sections');
+
+            $programs = $this->get_active_program_codes();
+            if (empty($programs)) {
+                $this->send_error('No active programs found. Please add programs in Program Management first.', 409);
+                return;
+            }
+
+            $adviser_pool = $this->build_adviser_pool();
+            $programs_without_advisers = [];
+            $programs_with_fallback_advisers = [];
+            $global_adviser_shortage = empty($adviser_pool['all']);
+
             $year_levels = [1, 2, 3, 4]; // Changed to numeric values
             $sections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
+            $target_section_total = count($programs) * count($year_levels) * count($sections);
             
             $created_count = 0;
             $existing_count = 0;
             $errors = [];
+            $warnings = [];
             
             // Start transaction
             $this->db->trans_start();
@@ -2168,17 +2187,28 @@ class AdminController extends BaseController {
                         ])->row_array();
                         
                         if (!$existing) {
-                            // Create section without adviser, academic year, or semester
+                            $adviser_pick = $this->select_random_adviser($program, $adviser_pool);
+                            if ($adviser_pick['strategy'] === 'none') {
+                                $programs_without_advisers[$program] = true;
+                            } elseif ($adviser_pick['strategy'] === 'global') {
+                                $programs_with_fallback_advisers[$program] = true;
+                            }
+
+                            // Create section with active academic context
                             // Only use columns that actually exist in the table
                             $section_data = [
                                 'section_name' => $section_name,
                                 'program' => $program,
                                 'year_level' => $year_level,
-                                'adviser_id' => null,
-                                'semester' => null,
-                                'academic_year' => null
+                                'adviser_id' => $adviser_pick['adviser_id'],
+                                'semester' => $active_context['semester'],
+                                'academic_year' => $active_context['academic_year']
                                 // Note: created_at has a default value, so we don't need to set it
                             ];
+
+                            if ($sections_has_academic_year_id) {
+                                $section_data['academic_year_id'] = $active_context['academic_year_id'];
+                            }
                             
                             $this->db->insert('sections', $section_data);
                             if ($this->db->affected_rows() > 0) {
@@ -2203,17 +2233,69 @@ class AdminController extends BaseController {
             $this->db->trans_commit();
             
             $total_sections = $created_count + $existing_count;
+            if ($created_count === 0) {
+                $warnings[] = 'All sections for the target academic term already exist. No new sections were created.';
+            }
+
+            if ($global_adviser_shortage) {
+                $warnings[] = 'No active teachers were found, so adviser assignment was skipped.';
+            } elseif (!empty($programs_without_advisers)) {
+                $warnings[] = 'Programs without available advisers: ' . implode(', ', array_keys($programs_without_advisers)) . '. Sections were created without advisers.';
+            }
+
+            if (!empty($programs_with_fallback_advisers)) {
+                $warnings[] = 'Programs using cross-program advisers: ' . implode(', ', array_keys($programs_with_fallback_advisers)) . '.';
+            }
+
+            foreach ($warnings as &$warning) {
+                $warning = trim($warning);
+            }
+            unset($warning);
+            $warnings = array_values(array_filter(array_unique($warnings)));
+
+            $target_term_label = sprintf(
+                'A.Y. %s %s',
+                $active_context['academic_year'],
+                $active_context['semester']
+            );
+
             $response_data = [
                 'created_sections' => $created_count,
                 'existing_sections' => $existing_count,
                 'total_sections' => $total_sections,
+                'academic_year' => $active_context['academic_year'],
+                'semester' => $active_context['semester'],
+                'target_term' => $target_term_label,
                 'programs' => $programs,
                 'year_levels' => $year_levels, // Now contains [1, 2, 3, 4]
                 'sections_per_year' => count($sections),
-                'errors' => $errors
+                'target_section_total' => $target_section_total,
+                'adviser_stats' => [
+                    'teachers_considered' => count($adviser_pool['all']),
+                    'programs_without_advisers' => array_keys($programs_without_advisers),
+                    'programs_with_fallback_advisers' => array_keys($programs_with_fallback_advisers)
+                ],
+                'warnings' => $warnings,
+                'errors' => $errors,
+                'alert_level' => $created_count > 0 ? 'success' : 'warning',
+                'summary' => sprintf(
+                    'This generated up to %d sections (%d program(s) × %d year levels × %d sections) for %s. Each new section received a random adviser when available.',
+                    $target_section_total,
+                    count($programs),
+                    count($year_levels),
+                    count($sections),
+                    $target_term_label
+                )
             ];
             
-            $this->send_success($response_data, "Successfully created $created_count new sections. $existing_count sections already existed.");
+            $message = $created_count > 0
+                ? "Successfully created $created_count new sections and linked advisers where available. $existing_count sections already existed."
+                : "No new sections were created; existing sections already cover {$target_term_label}.";
+            if (!empty($warnings)) {
+                $message .= ' Please review warnings.';
+            }
+
+            $this->send_success($response_data, $message);
             
         } catch (Exception $e) {
             $this->db->trans_rollback();
@@ -2262,6 +2344,146 @@ class AdminController extends BaseController {
         }
 
         return $password;
+    }
+
+    private function get_active_program_codes() {
+        $program_rows = $this->Program_model->get_all([
+            'status' => 'active',
+            'include_archived' => false
+        ]);
+
+        if (empty($program_rows)) {
+            return [];
+        }
+
+        $codes = [];
+        foreach ($program_rows as $program) {
+            $code = strtoupper($program['code'] ?? '');
+            if (!empty($code)) {
+                $codes[$code] = true;
+            }
+        }
+
+        return array_keys($codes);
+    }
+
+    private function build_adviser_pool() {
+        $pool = [
+            'by_program' => [],
+            'all' => []
+        ];
+
+        $teachers = $this->db->select('user_id, program, assigned_program')
+            ->from('users')
+            ->where('role', 'teacher')
+            ->where('status', 'active')
+            ->get()
+            ->result_array();
+
+        foreach ($teachers as $teacher) {
+            $pool['all'][] = $teacher['user_id'];
+
+            $program_code = strtoupper($teacher['assigned_program'] ?? $teacher['program'] ?? '');
+            if (!empty($program_code)) {
+                if (!isset($pool['by_program'][$program_code])) {
+                    $pool['by_program'][$program_code] = [];
+                }
+                $pool['by_program'][$program_code][] = $teacher['user_id'];
+            }
+        }
+
+        return $pool;
+    }
+
+    private function select_random_adviser($program_code, array $pool) {
+        $result = [
+            'adviser_id' => null,
+            'strategy' => 'none'
+        ];
+
+        $normalized_program = strtoupper($program_code);
+
+        if (!empty($pool['by_program'][$normalized_program])) {
+            $choices = $pool['by_program'][$normalized_program];
+            $result['adviser_id'] = $choices[array_rand($choices)];
+            $result['strategy'] = 'program';
+            return $result;
+        }
+
+        if (!empty($pool['all'])) {
+            $result['adviser_id'] = $pool['all'][array_rand($pool['all'])];
+            $result['strategy'] = 'global';
+            return $result;
+        }
+
+        return $result;
+    }
+
+    private function get_active_academic_context() {
+        try {
+            $active_year = $this->AcademicYear_model->get_active_year();
+        } catch (Exception $e) {
+            log_message('error', 'Failed to fetch active academic year: ' . $e->getMessage());
+            $active_year = null;
+        }
+
+        if (!$active_year) {
+            return [
+                'academic_year' => null,
+                'academic_year_id' => null,
+                'semester' => null
+            ];
+        }
+
+        return [
+            'academic_year' => $active_year['name'] ?? null,
+            'academic_year_id' => $active_year['id'] ?? null,
+            'semester' => $this->determine_active_semester_label($active_year)
+        ];
+    }
+
+    private function determine_active_semester_label(array $year) {
+        foreach (['current_semester', 'active_semester'] as $key) {
+            if (!empty($year[$key])) {
+                return $year[$key];
+            }
+        }
+
+        $today = strtotime(date('Y-m-d'));
+        $sem1_start = !empty($year['sem1_start_date']) ? strtotime($year['sem1_start_date']) : null;
+        $sem1_end = !empty($year['sem1_end_date']) ? strtotime($year['sem1_end_date']) : null;
+        $sem2_start = !empty($year['sem2_start_date']) ? strtotime($year['sem2_start_date']) : null;
+        $sem2_end = !empty($year['sem2_end_date']) ? strtotime($year['sem2_end_date']) : null;
+
+        if ($sem1_start && $sem1_end && $today >= $sem1_start && $today <= $sem1_end) {
+            return '1st Semester';
+        }
+
+        if ($sem2_start && $sem2_end && $today >= $sem2_start && $today <= $sem2_end) {
+            return '2nd Semester';
+        }
+
+        if ($sem1_start && $today < $sem1_start) {
+            return '1st Semester';
+        }
+
+        if ($sem2_start && $sem1_end && $today > $sem1_end && $today < $sem2_start) {
+            return '2nd Semester';
+        }
+
+        if ($sem2_end && $today > $sem2_end) {
+            return '2nd Semester';
+        }
+
+        if ($sem1_end && $today > $sem1_end && !$sem2_start) {
+            return '1st Semester';
+        }
+
+        if ($sem2_start && !$sem2_end) {
+            return '2nd Semester';
+        }
+
+        return '1st Semester';
     }
 
     /**
