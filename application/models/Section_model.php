@@ -147,14 +147,16 @@ class Section_model extends CI_Model {
 
         $history = [];
         if ($this->hasSectionHistory) {
+            $academic_year_escaped = $this->db->escape($section['academic_year']);
+            $semester_escaped = $this->db->escape($section['semester']);
             $history = $this->db->select('h.student_id as user_id, u.full_name, u.email, u.student_num, u.contact_num, u.address, h.program, "archived" as status, u.email_verified_at, u.email_verification_status, u.created_source')
                 ->from('section_student_history h')
                 ->join('users u', 'h.student_id = u.user_id', 'left')
                 ->where('h.section_id', $section_id)
-                ->where('h.academic_year_name COLLATE utf8mb4_unicode_ci =', $section['academic_year'], false)
+                ->where("h.academic_year_name COLLATE utf8mb4_unicode_ci = {$academic_year_escaped}", null, false)
                 ->group_start()
                     ->where('h.semester IS NULL')
-                    ->or_where('h.semester COLLATE utf8mb4_unicode_ci =', $section['semester'], false)
+                    ->or_where("h.semester COLLATE utf8mb4_unicode_ci = {$semester_escaped}", null, false)
                 ->group_end()
                 ->get()->result_array();
         }
