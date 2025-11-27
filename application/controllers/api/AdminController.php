@@ -1184,10 +1184,10 @@ class AdminController extends BaseController {
                     ->from('section_student_history h')
                     ->join('users u', 'h.student_id = u.user_id', 'left')
                     ->where('h.section_id', $section['section_id'])
-                    ->where("BINARY h.academic_year_name = BINARY {$academic_year_escaped}", null, false)
+                    ->where("CONVERT(h.academic_year_name USING utf8mb4) = CONVERT({$academic_year_escaped} USING utf8mb4)", null, false)
                     ->group_start()
                         ->where('h.semester IS NULL')
-                        ->or_where("BINARY h.semester = BINARY {$semester_escaped}", null, false)
+                        ->or_where("CONVERT(h.semester USING utf8mb4) = CONVERT({$semester_escaped} USING utf8mb4)", null, false)
                     ->group_end();
                 $historical_students = $this->db->get()->result_array();
             }
