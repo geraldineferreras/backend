@@ -899,6 +899,11 @@ class AcademicYear_model extends CI_Model
             ->get()
             ->row_array();
 
+        $preservedMap = [];
+        if (!empty($preservedDecisions)) {
+            $preservedMap = $this->map_preserved_decisions($preservedDecisions);
+        }
+
         if ((int)$existing['total'] === 0) {
             $this->seed_promotion_students($promotion['id'], $year, $options);
             if (!empty($preservedDecisions)) {
@@ -912,6 +917,10 @@ class AcademicYear_model extends CI_Model
             ->order_by('student_name', 'ASC')
             ->get()
             ->result_array();
+
+        if (!empty($preservedMap)) {
+            $students = $this->apply_preserved_decisions($students, $preservedMap);
+        }
 
         if (!empty($options['program'])) {
             $students = array_filter($students, function ($student) use ($options) {
@@ -1317,6 +1326,53 @@ class AcademicYear_model extends CI_Model
                 ->where('student_id', $record['student_id'])
                 ->update($this->promotionStudentsTable, $updates);
         }
+    }
+
+    private function map_preserved_decisions(array $records)
+    {
+        $map = [];
+        foreach ($records as $record) {
+            if (!empty($record['student_id'])) {
+                $map[$record['student_id']] = $record;
+            }
+        }
+        return $map;
+    }
+
+    private function apply_preserved_decisions(array $students, array $preservedMap)
+    {
+        if (empty($students) || empty($preservedMap)) {
+            return $students;
+        }
+
+        $preserveFields = [
+            'decision_status',
+            'decision_notes',
+            'decision_by',
+            'decision_at',
+            'target_year_level',
+            'target_section_id',
+            'target_section_name',
+            'target_academic_year_id',
+            'target_academic_year_name'
+        ];
+
+        foreach ($students as &$student) {
+            $studentId = $student['student_id'] ?? null;
+
+            if (!$studentId || !isset($preservedMap[$studentId])) {
+                continue;
+            }
+
+            $record = $preservedMap[$studentId];
+            foreach ($preserveFields as $field) {
+                if (isset($record[$field]) && $record[$field] !== null && $record[$field] !== '') {
+                    $student[$field] = $record[$field];
+                }
+            }
+        }
+
+        return $students;
     }
 
     private function resolve_target_section(array $student, ?string $targetSectionName, $targetYearLevel, array $targetYear)
