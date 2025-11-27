@@ -796,11 +796,15 @@ class Auth extends BaseController {
         }
 
         if ($this->User_model->update($user['user_id'], $update_data)) {
-            $this->send_verification_success_notification($user['user_id'], $user['full_name'], $user['role']);
+            // Determine display role for notifications (use 'chairperson' for admin-created chairpersons)
+            $display_role = $is_admin_created_chairperson ? 'chairperson' : $user['role'];
+            
             $response_message = 'Email verified successfully. You can now log in.';
 
             if ($requires_manual_approval) {
-                $this->notify_account_pending_approval($user['user_id'], $user['full_name'], $user['role'], $user['email']);
+                // Don't send "you can log in" message for users requiring approval
+                // Instead, send pending approval notification
+                $this->notify_account_pending_approval($user['user_id'], $user['full_name'], $display_role, $user['email']);
                 
                 // Notify all admins/chairpersons about the new pending registration
                 if (function_exists('notify_admins_pending_approval')) {
@@ -808,7 +812,7 @@ class Auth extends BaseController {
                         notify_admins_pending_approval(
                             $user['full_name'],
                             $user['email'],
-                            $user['role'],
+                            $display_role,
                             $user['program'] ?? null
                         );
                     } catch (Exception $e) {
@@ -817,8 +821,12 @@ class Auth extends BaseController {
                 }
                 
                 $response_message = 'Email verified successfully. Your account is now pending approval.';
-            } elseif ($this->should_require_verification($user['role'])) {
-                $this->send_welcome_notification($user['user_id'], $user['full_name'], $user['role'], $user['email']);
+            } else {
+                // Only send verification success/welcome for users who don't need approval
+                $this->send_verification_success_notification($user['user_id'], $user['full_name'], $display_role);
+                if ($this->should_require_verification($user['role'])) {
+                    $this->send_welcome_notification($user['user_id'], $user['full_name'], $display_role, $user['email']);
+                }
             }
 
             if ($is_bulk_upload && $bulk_temporary_password) {
