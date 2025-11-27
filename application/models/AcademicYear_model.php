@@ -938,6 +938,15 @@ class AcademicYear_model extends CI_Model
             }
         }
 
+        $decisionCounts = $this->db->select([
+                'SUM(CASE WHEN decision_status = "promoted" THEN 1 ELSE 0 END) as promoted_total',
+                'SUM(CASE WHEN decision_status = "retained" THEN 1 ELSE 0 END) as retained_total'
+            ])
+            ->from($this->promotionStudentsTable)
+            ->where('promotion_id', $promotion['id'])
+            ->get()
+            ->row_array();
+
         return [
             'status' => true,
             'message' => 'Promotion snapshot retrieved successfully',
@@ -948,8 +957,8 @@ class AcademicYear_model extends CI_Model
                 'totals' => [
                     'eligible' => count($eligible),
                     'issues' => count($issues),
-                    'promoted' => (int)$promotion['promoted_count'],
-                    'retained' => (int)$promotion['retained_count']
+                    'promoted' => (int)($decisionCounts['promoted_total'] ?? 0),
+                    'retained' => (int)($decisionCounts['retained_total'] ?? 0)
                 ]
             ]
         ];
