@@ -884,7 +884,12 @@ class AcademicYear_model extends CI_Model
             return ['status' => false, 'message' => 'Unable to prepare promotion cycle'];
         }
 
+        $preservedDecisions = [];
         if (!empty($options['force_refresh'])) {
+            $preservedDecisions = $this->db->get_where($this->promotionStudentsTable, [
+                'promotion_id' => $promotion['id']
+            ])->result_array();
+
             $this->db->where('promotion_id', $promotion['id'])->delete($this->promotionStudentsTable);
         }
 
@@ -896,6 +901,9 @@ class AcademicYear_model extends CI_Model
 
         if ((int)$existing['total'] === 0) {
             $this->seed_promotion_students($promotion['id'], $year, $options);
+            if (!empty($preservedDecisions)) {
+                $this->restore_promotion_decisions($promotion['id'], $preservedDecisions);
+            }
         }
 
         $students = $this->db->select('*')
@@ -1273,6 +1281,42 @@ class AcademicYear_model extends CI_Model
                 'promotion_id' => $promotion['id']
             ]
         ];
+    }
+
+    private function restore_promotion_decisions($promotionId, array $records)
+    {
+        if (empty($records)) {
+            return;
+        }
+
+        $preserveFields = [
+            'decision_status',
+            'decision_notes',
+            'decision_by',
+            'decision_at',
+            'target_year_level',
+            'target_section_id',
+            'target_section_name',
+            'target_academic_year_id',
+            'target_academic_year_name'
+        ];
+
+        foreach ($records as $record) {
+            $updates = [];
+            foreach ($preserveFields as $field) {
+                if (array_key_exists($field, $record) && $record[$field] !== null && $record[$field] !== '') {
+                    $updates[$field] = $record[$field];
+                }
+            }
+
+            if (empty($updates)) {
+                continue;
+            }
+
+            $this->db->where('promotion_id', $promotionId)
+                ->where('student_id', $record['student_id'])
+                ->update($this->promotionStudentsTable, $updates);
+        }
     }
 
     private function resolve_target_section(array $student, ?string $targetSectionName, $targetYearLevel, array $targetYear)
