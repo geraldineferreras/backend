@@ -15,7 +15,7 @@ class Auth extends BaseController {
     public function __construct() {
         parent::__construct();
         error_reporting(0);
-        $this->load->model(['User_model', 'Program_model']);
+        $this->load->model(['User_model', 'Program_model', 'Section_model', 'AcademicYear_model']);
         $this->load->helper(['response', 'auth', 'audit', 'notification', 'email_notification', 'url']);
         $this->load->library(['Token_lib', 'session']);
 
@@ -3608,5 +3608,70 @@ class Auth extends BaseController {
         
         echo json_encode($response, JSON_PRETTY_PRINT);
         exit;
+    }
+
+    /**
+     * Get sections for dropdown (filtered by active academic year and semester)
+     * GET /api/auth/sections-dropdown
+     * 
+     * Returns sections that match the active academic year and current semester.
+     * Can optionally accept academic_year and semester as query parameters.
+     */
+    public function sections_dropdown_get() {
+        $academic_year = $this->input->get('academic_year');
+        $semester = $this->input->get('semester');
+
+        // If not provided, use active academic year and current semester
+        if (empty($academic_year) || empty($semester)) {
+            $active_year = $this->AcademicYear_model->get_active_year();
+            if (!$active_year) {
+                return json_response(false, 'No active academic year found. Please specify academic_year and semester.', null, 404);
+            }
+            
+            // Use active year if not provided
+            if (empty($academic_year)) {
+                $academic_year = $active_year['name'];
+            }
+            
+            // Determine current semester based on today's date
+            if (empty($semester)) {
+                $today = date('Y-m-d');
+                $sem1_start = strtotime($active_year['sem1_start_date']);
+                $sem1_end = strtotime($active_year['sem1_end_date']);
+                $sem2_start = !empty($active_year['sem2_start_date']) ? strtotime($active_year['sem2_start_date']) : null;
+                $sem2_end = !empty($active_year['sem2_end_date']) ? strtotime($active_year['sem2_end_date']) : null;
+                $today_timestamp = strtotime($today);
+                
+                if ($today_timestamp >= $sem1_start && $today_timestamp <= $sem1_end) {
+                    $semester = '1st';
+                } elseif ($sem2_start && $sem2_end && $today_timestamp >= $sem2_start && $today_timestamp <= $sem2_end) {
+                    $semester = '2nd';
+                } else {
+                    // Default to 1st semester if date doesn't fall in either range
+                    $semester = '1st';
+                }
+            }
+        }
+
+        // Get sections filtered by semester and academic year
+        $sections = $this->Section_model->get_by_semester_and_year($semester, $academic_year);
+
+        // Format for dropdown
+        $dropdown_sections = [];
+        foreach ($sections as $section) {
+            $dropdown_sections[] = [
+                'value' => $section['section_id'],
+                'label' => $section['section_name'],
+                'section_id' => $section['section_id'],
+                'section_name' => $section['section_name'],
+                'program' => $section['program'],
+                'year_level' => $section['year_level'],
+                'semester' => $section['semester'],
+                'academic_year' => $section['academic_year'],
+                'adviser_name' => $section['adviser_name'] ?? null
+            ];
+        }
+
+        return json_response(true, 'Sections retrieved successfully', $dropdown_sections);
     }
 }

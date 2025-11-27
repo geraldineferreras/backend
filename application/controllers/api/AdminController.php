@@ -45,7 +45,20 @@ class AdminController extends BaseController {
             return json_response(false, 'Role filter must be teacher, student, or chairperson', null, 400);
         }
 
+        // Chairpersons cannot view chairperson registrations (only admins can)
+        if ($user_data['role'] === 'chairperson' && $role_filter === 'chairperson') {
+            return json_response(false, 'Only administrators can view chairperson registrations', null, 403);
+        }
+
         $registrations = $this->User_model->get_pending_registrations($role_filter ?: null);
+        
+        // Filter out chairperson registrations if viewer is a chairperson
+        if ($user_data['role'] === 'chairperson') {
+            $registrations = array_filter($registrations, function($user) {
+                return $user['role'] !== 'chairperson';
+            });
+            $registrations = array_values($registrations); // Re-index array
+        }
         $payload = array_map(function($user) {
             $program = $user['program'] ?? null;
             return [
@@ -77,6 +90,11 @@ class AdminController extends BaseController {
         $user = $this->User_model->get_by_id($user_id);
         if (!$user || !in_array($user['role'], ['teacher', 'student', 'chairperson'])) {
             return json_response(false, 'Pending registration not found for this user', null, 404);
+        }
+
+        // Only admins can approve chairperson accounts
+        if ($user['role'] === 'chairperson' && $user_data['role'] !== 'admin') {
+            return json_response(false, 'Only administrators can approve chairperson accounts', null, 403);
         }
 
         if ($user['status'] !== 'pending_approval') {
@@ -138,6 +156,11 @@ class AdminController extends BaseController {
         $user = $this->User_model->get_by_id($user_id);
         if (!$user || !in_array($user['role'], ['teacher', 'student', 'chairperson'])) {
             return json_response(false, 'Pending registration not found for this user', null, 404);
+        }
+
+        // Only admins can reject chairperson accounts
+        if ($user['role'] === 'chairperson' && $user_data['role'] !== 'admin') {
+            return json_response(false, 'Only administrators can reject chairperson accounts', null, 403);
         }
 
         if ($user['status'] !== 'pending_approval') {
@@ -1184,10 +1207,10 @@ class AdminController extends BaseController {
                     ->from('section_student_history h')
                     ->join('users u', 'h.student_id = u.user_id', 'left')
                     ->where('h.section_id', $section['section_id'])
-                    ->where("CONVERT(h.academic_year_name USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT({$academic_year_escaped} USING utf8mb4) COLLATE utf8mb4_unicode_ci", null, false)
+                    ->where("h.academic_year_name COLLATE utf8mb4_unicode_ci = {$academic_year_escaped} COLLATE utf8mb4_unicode_ci", null, false)
                     ->group_start()
                         ->where('h.semester IS NULL')
-                        ->or_where("CONVERT(h.semester USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT({$semester_escaped} USING utf8mb4) COLLATE utf8mb4_unicode_ci", null, false)
+                        ->or_where("h.semester COLLATE utf8mb4_unicode_ci = {$semester_escaped} COLLATE utf8mb4_unicode_ci", null, false)
                     ->group_end();
                 $historical_students = $this->db->get()->result_array();
             }
