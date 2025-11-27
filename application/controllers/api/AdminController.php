@@ -1127,6 +1127,37 @@ class AdminController extends BaseController {
         return json_response(true, $message, $sections);
     }
 
+    // Get sections for dropdown (filtered by academic year and semester)
+    public function sections_dropdown_get() {
+        $user_data = require_admin($this);
+        if (!$user_data) return;
+
+        $academic_year = $this->input->get('academic_year');
+        $semester = $this->input->get('semester');
+
+        if (empty($academic_year) || empty($semester)) {
+            return json_response(false, 'Academic year and semester are required', null, 400);
+        }
+
+        $sections = $this->Section_model->get_by_semester_and_year($semester, $academic_year);
+
+        // Format for dropdown: simple id/name pairs
+        $dropdown_sections = array_map(function($section) {
+            return [
+                'value' => $section['section_id'],
+                'label' => $section['section_name'],
+                'section_id' => $section['section_id'],
+                'section_name' => $section['section_name'],
+                'program' => $section['program'],
+                'year_level' => $section['year_level'],
+                'semester' => $section['semester'],
+                'academic_year' => $section['academic_year']
+            ];
+        }, $sections);
+
+        return json_response(true, 'Sections retrieved successfully', $dropdown_sections);
+    }
+
     // Get all sections grouped by program
     public function sections_by_program_get($program = null) {
         $user_data = require_admin($this);

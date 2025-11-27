@@ -153,6 +153,7 @@ $route['api/admin/sections/semester/(:any)/year/(:any)']['get'] = 'api/AdminCont
 $route['api/admin/sections/semester/(:any)']['get'] = 'api/AdminController/sections_by_semester_year_get/$1';
 $route['api/admin/sections/semester']['get'] = 'api/AdminController/sections_by_semester_year_get';
 $route['api/admin/sections/debug']['get'] = 'api/AdminController/sections_debug_get';
+$route['api/admin/sections/dropdown']['get'] = 'api/AdminController/sections_dropdown_get';
 $route['api/admin/sections/auto-create']['post'] = 'api/AdminController/auto_create_sections_post';
 $route['api/admin/advisers']['get'] = 'api/AdminController/advisers_get';
 $route['api/admin/programs']['get'] = 'api/AdminController/programs_get';
