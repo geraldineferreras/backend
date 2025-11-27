@@ -408,6 +408,7 @@ $route['api/teacher/available-sections/(:num)']['get'] = 'api/TeacherController/
 $route['api/teacher/classrooms/check-duplicate']['post'] = 'api/TeacherController/classrooms_check_duplicate_post';
 $route['api/teacher/classrooms/bulk-create']['post'] = 'api/TeacherController/classrooms_bulk_create_post';
 $route['api/teacher/classrooms/bulk-add-students']['post'] = 'api/TeacherController/classrooms_bulk_add_students_post';
+$route['api/teacher/programs']['get'] = 'api/TeacherController/programs_get';
 $route['api/teacher/assigned-programs']['get'] = 'api/TeacherController/assigned_programs_get';
 $route['api/teacher/sections-by-criteria']['get'] = 'api/TeacherController/sections_by_criteria_get';
 

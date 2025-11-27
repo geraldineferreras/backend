@@ -3238,6 +3238,36 @@ class TeacherController extends BaseController
     }
 
     /**
+     * Get all active programs
+     * GET /api/teacher/programs
+     */
+    public function programs_get() {
+        $user_data = require_teacher($this);
+        if (!$user_data) return;
+
+        try {
+            $this->load->model('Program_model');
+            $programs = $this->Program_model->get_active();
+            
+            // Format response for frontend compatibility
+            $formatted_programs = array_map(function($program) {
+                return [
+                    'program_id' => $program['program_id'],
+                    'code' => $program['code'],
+                    'name' => $program['name'],
+                    'description' => $program['description'] ?? null,
+                    'program' => $program['code'] // Alias for backward compatibility
+                ];
+            }, $programs);
+            
+            return json_response(true, 'Active programs retrieved successfully', $formatted_programs);
+        } catch (Exception $e) {
+            log_message('error', 'Teacher programs_get error: ' . $e->getMessage());
+            return json_response(false, 'Failed to retrieve programs', null, 500);
+        }
+    }
+
+    /**
      * Get sections by criteria (filtered by teacher's assigned program)
      * GET /api/teacher/sections-by-criteria
      */
