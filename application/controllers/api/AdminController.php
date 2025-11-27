@@ -3242,9 +3242,9 @@ class AdminController extends BaseController {
                 ];
             }
 
-            // Validate section belongs to the program
-            $section_program = $this->standardize_program_name($section['program']);
-            if ($section_program !== $program_shortcut) {
+            // Validate section belongs to the program when section has a defined program
+            $section_program = $this->standardize_program_name($section['program'] ?? null);
+            if (!empty($section_program) && $section_program !== $program_shortcut) {
                 return [
                     'valid' => false,
                     'field' => 'section_id',
