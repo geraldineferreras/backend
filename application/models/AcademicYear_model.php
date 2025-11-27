@@ -1541,7 +1541,6 @@ class AcademicYear_model extends CI_Model
                         'semester' => '1st',
                         'academic_year' => $year['name'],
                         'academic_year_id' => $year['id'],
-                        'status' => 'active',
                         'created_at' => date('Y-m-d H:i:s')
                     ];
 
