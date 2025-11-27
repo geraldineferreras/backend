@@ -1135,8 +1135,36 @@ class AdminController extends BaseController {
         $academic_year = $this->input->get('academic_year');
         $semester = $this->input->get('semester');
 
+        // If not provided, use active academic year and current semester
         if (empty($academic_year) || empty($semester)) {
-            return json_response(false, 'Academic year and semester are required', null, 400);
+            $active_year = $this->AcademicYear_model->get_active_year();
+            if (!$active_year) {
+                return json_response(false, 'No active academic year found. Please specify academic_year and semester.', null, 404);
+            }
+            
+            // Use active year if not provided
+            if (empty($academic_year)) {
+                $academic_year = $active_year['name'];
+            }
+            
+            // Determine current semester based on today's date
+            if (empty($semester)) {
+                $today = date('Y-m-d');
+                $sem1_start = strtotime($active_year['sem1_start_date']);
+                $sem1_end = strtotime($active_year['sem1_end_date']);
+                $sem2_start = !empty($active_year['sem2_start_date']) ? strtotime($active_year['sem2_start_date']) : null;
+                $sem2_end = !empty($active_year['sem2_end_date']) ? strtotime($active_year['sem2_end_date']) : null;
+                $today_timestamp = strtotime($today);
+                
+                if ($today_timestamp >= $sem1_start && $today_timestamp <= $sem1_end) {
+                    $semester = '1st';
+                } elseif ($sem2_start && $sem2_end && $today_timestamp >= $sem2_start && $today_timestamp <= $sem2_end) {
+                    $semester = '2nd';
+                } else {
+                    // Default to 1st semester if date doesn't fall in either range
+                    $semester = '1st';
+                }
+            }
         }
 
         $sections = $this->Section_model->get_by_semester_and_year($semester, $academic_year);
@@ -1156,10 +1184,10 @@ class AdminController extends BaseController {
                     ->from('section_student_history h')
                     ->join('users u', 'h.student_id = u.user_id', 'left')
                     ->where('h.section_id', $section['section_id'])
-                    ->where("h.academic_year_name COLLATE utf8mb4_unicode_ci = {$academic_year_escaped}", null, false)
+                    ->where("BINARY h.academic_year_name = BINARY {$academic_year_escaped}", null, false)
                     ->group_start()
-                        ->where("h.semester COLLATE utf8mb4_unicode_ci = {$semester_escaped}", null, false)
-                        ->or_where('h.semester IS NULL')
+                        ->where('h.semester IS NULL')
+                        ->or_where("BINARY h.semester = BINARY {$semester_escaped}", null, false)
                     ->group_end();
                 $historical_students = $this->db->get()->result_array();
             }
