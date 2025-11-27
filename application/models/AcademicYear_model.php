@@ -1035,6 +1035,11 @@ class AcademicYear_model extends CI_Model
 
     public function finalize_promotion($year_id, $finalized_by = null, $notes = null)
     {
+        $year = $this->get_year($year_id);
+        if (!$year) {
+            return ['status' => false, 'message' => 'Academic year not found'];
+        }
+
         $promotion = $this->get_active_promotion_cycle($year_id);
         if (!$promotion) {
             $promotion = $this->get_latest_promotion_cycle_record($year_id);
@@ -1108,6 +1113,15 @@ class AcademicYear_model extends CI_Model
             'promoted_count' => (int)$final_counts['promoted_total'],
             'retained_count' => (int)$final_counts['retained_total']
         ]);
+
+        $activeYear = $this->get_active_year();
+        if ($activeYear && (int)$activeYear['id'] !== (int)$year_id) {
+            $currentStart = strtotime($year['start_date']);
+            $activeStart = strtotime($activeYear['start_date']);
+            if ($activeStart !== false && $currentStart !== false && $activeStart >= $currentStart) {
+                $this->move_promoted_students_to_next_year($year, $activeYear);
+            }
+        }
 
         return [
             'status' => true,
