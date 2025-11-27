@@ -404,7 +404,12 @@ class AdminController extends BaseController {
         }
 
         if ($academic_year_id_param !== null && $academic_year_id_param !== '') {
+            $resolved_filter_year = $this->resolve_academic_year_reference((int)$academic_year_id_param, null);
+            if (isset($resolved_filter_year['error'])) {
+                return json_response(false, $resolved_filter_year['error'], null, 404);
+            }
             $filters['academic_year_id'] = (int)$academic_year_id_param;
+            $filters['academic_year_name_for_id'] = $resolved_filter_year['name'];
         } elseif ($academic_year_param !== null && $academic_year_param !== '') {
             $filters['academic_year'] = trim($academic_year_param);
         }

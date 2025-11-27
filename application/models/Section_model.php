@@ -33,7 +33,12 @@ class Section_model extends CI_Model {
         }
 
         if (!empty($options['academic_year_id']) && $this->hasAcademicYearId) {
-            $this->db->where('sections.academic_year_id', (int)$options['academic_year_id']);
+            $this->db->group_start()
+                ->where('sections.academic_year_id', (int)$options['academic_year_id']);
+            if (!empty($options['academic_year_name_for_id'])) {
+                $this->db->or_where('sections.academic_year', trim($options['academic_year_name_for_id']));
+            }
+            $this->db->group_end();
         } elseif (!empty($options['academic_year'])) {
             $this->db->where('sections.academic_year', trim($options['academic_year']));
         }
