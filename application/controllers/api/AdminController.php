@@ -5,12 +5,24 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class AdminController extends BaseController {
     private $sectionsHasAcademicYearId = false;
+    private $emailVerificationTtl = 86400;
+    private $emailVerificationTokenBytes = 32;
+    private $verificationLinkBase;
     public function __construct() {
         parent::__construct();
         $this->load->model(['Section_model', 'User_model', 'Program_model', 'AcademicYear_model']);
-        $this->load->helper(['response', 'auth', 'notification', 'utility', 'email_notification', 'audit']);
+        $this->load->helper(['response', 'auth', 'notification', 'utility', 'email_notification', 'audit', 'url']);
         $this->load->library('Token_lib');
         $this->sectionsHasAcademicYearId = $this->db->field_exists('academic_year_id', 'sections');
+        $ttl = getenv('EMAIL_VERIFICATION_TTL');
+        if ($ttl && is_numeric($ttl)) {
+            $this->emailVerificationTtl = max(300, (int)$ttl);
+        }
+        $tokenBytes = getenv('EMAIL_VERIFICATION_TOKEN_BYTES');
+        if ($tokenBytes && is_numeric($tokenBytes)) {
+            $this->emailVerificationTokenBytes = max(16, min(64, (int)$tokenBytes));
+        }
+        $this->verificationLinkBase = rtrim(getenv('FRONTEND_VERIFY_BASE_URL') ?: site_url('api/auth/verify-email'), '/');
         // CORS headers are already handled by BaseController
     }
 
@@ -2508,6 +2520,83 @@ class AdminController extends BaseController {
         return $password;
     }
 
+    private function create_bulk_verification_context() {
+        $token_plain = $this->generate_email_verification_token();
+        $expires_at = date('Y-m-d H:i:s', time() + $this->emailVerificationTtl);
+        return [
+            'token_plain' => $token_plain,
+            'expires_at' => $expires_at,
+            'fields' => [
+                'email_verification_status' => 'pending',
+                'email_verification_token' => $this->hash_verification_token($token_plain),
+                'email_verification_expires_at' => $expires_at,
+                'email_verification_sent_at' => date('Y-m-d H:i:s'),
+                'email_verified_at' => null
+            ]
+        ];
+    }
+
+    private function generate_email_verification_token() {
+        $bytes = $this->emailVerificationTokenBytes;
+        try {
+            return bin2hex(random_bytes($bytes));
+        } catch (Exception $e) {
+            return bin2hex(openssl_random_pseudo_bytes($bytes));
+        }
+    }
+
+    private function hash_verification_token($token) {
+        return hash('sha256', $token);
+    }
+
+    private function build_email_verification_link($token) {
+        if (empty($token)) {
+            return null;
+        }
+
+        $separator = (strpos($this->verificationLinkBase, '?') === false) ? '?' : '&';
+        return $this->verificationLinkBase . $separator . 'token=' . urlencode($token);
+    }
+
+    private function handle_bulk_verification_messaging(array $student_data, array $verification_context) {
+        if (empty($verification_context['token_plain'])) {
+            return;
+        }
+
+        $verification_link = $this->build_email_verification_link($verification_context['token_plain']);
+        if ($verification_link) {
+            if (function_exists('send_bulk_upload_verification_email')) {
+                try {
+                    send_bulk_upload_verification_email(
+                        $student_data['full_name'],
+                        $student_data['email'],
+                        $verification_link,
+                        $verification_context['expires_at']
+                    );
+                } catch (Exception $e) {
+                    log_message('error', 'Failed to send bulk upload verification email: ' . $e->getMessage());
+                }
+            }
+
+            try {
+                $message = "Please verify your email address to activate your student account. "
+                    . "Use the button below to complete verification.";
+                create_system_notification(
+                    $student_data['user_id'],
+                    'Verify your email address',
+                    $message,
+                    true,
+                    [
+                        'action_text' => 'Verify Email',
+                        'action_url' => $verification_link
+                    ]
+                );
+            } catch (Exception $e) {
+                log_message('error', 'Failed to create bulk upload verification notification: ' . $e->getMessage());
+            }
+        }
+    }
+
     private function get_active_program_codes() {
         $program_rows = $this->Program_model->get_all([
             'status' => 'active',
@@ -2782,6 +2871,8 @@ class AdminController extends BaseController {
             // Generate unique user_id for student
             $user_id = generate_user_id('STD');
 
+            $verification_context = $this->create_bulk_verification_context();
+
             // Prepare student data for insertion
             $student_data = [
                 'user_id' => $user_id,
@@ -2795,10 +2886,13 @@ class AdminController extends BaseController {
                 'program' => $this->standardize_program_name($student['program']),
                 'student_type' => isset($student['student_type']) ? strtolower(trim($student['student_type'])) : 'regular',
                 'qr_code' => $student['qr_code'],
-                'status' => isset($student['status']) ? strtolower(trim($student['status'])) : 'active',
-                'password' => password_hash($this->generate_temporary_password(), PASSWORD_BCRYPT),
-                'created_at' => date('Y-m-d H:i:s')
+                'status' => 'pending_verification',
+                'password' => null,
+                'created_at' => date('Y-m-d H:i:s'),
+                'created_source' => 'bulk_upload'
             ];
+
+            $student_data = array_merge($student_data, $verification_context['fields']);
 
             // Add section_id if provided
             if (!empty($student['section_id'])) {
@@ -2834,6 +2928,8 @@ class AdminController extends BaseController {
                 // Add to batch arrays to prevent duplicates within the same batch
                 $batch_student_nums[] = $student_data['student_num'];
                 $batch_emails[] = $student_data['email'];
+
+                $this->handle_bulk_verification_messaging($student_data, $verification_context);
             } else {
                 $db_error = $this->db->error();
                 $errors[] = [

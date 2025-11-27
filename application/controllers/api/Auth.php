@@ -298,7 +298,8 @@ class Auth extends BaseController {
                 'profile_pic' => $profile_pic_path,
                 'cover_pic' => $cover_pic_path,
                 'status' => $this->get_initial_account_status($role),
-                'last_login' => null
+                'last_login' => null,
+                'created_source' => 'self_signup'
             ];
 
             // Add role-specific fields
@@ -590,7 +591,8 @@ class Auth extends BaseController {
             'status' => $this->get_initial_account_status($role),
             'last_login' => null,
             'profile_pic' => isset($data->profile_pic) ? $data->profile_pic : null,
-            'cover_pic' => isset($data->cover_pic) ? $data->cover_pic : null
+            'cover_pic' => isset($data->cover_pic) ? $data->cover_pic : null,
+            'created_source' => 'self_signup'
         ];
 
         $verification_context = $this->create_email_verification_context($role);
@@ -746,8 +748,10 @@ class Auth extends BaseController {
             return;
         }
 
-        $requires_manual_approval = $this->requires_manual_approval($user['role']);
+        $skip_manual_approval = $this->should_skip_manual_approval($user);
+        $requires_manual_approval = $skip_manual_approval ? false : $this->requires_manual_approval($user['role']);
         $next_status = $requires_manual_approval ? 'pending_approval' : 'active';
+        $temporary_password = null;
 
         $update_data = [
             'email_verification_status' => 'verified',
@@ -757,6 +761,11 @@ class Auth extends BaseController {
             'email_verified_at' => date('Y-m-d H:i:s'),
             'status' => $next_status
         ];
+
+        if ($this->should_generate_temp_password_on_verification($user)) {
+            $temporary_password = $this->generate_bulk_temporary_password();
+            $update_data['password'] = password_hash($temporary_password, PASSWORD_BCRYPT);
+        }
 
         if ($this->User_model->update($user['user_id'], $update_data)) {
             $this->send_verification_success_notification($user['user_id'], $user['full_name'], $user['role']);
@@ -782,6 +791,31 @@ class Auth extends BaseController {
                 $response_message = 'Email verified successfully. Your account is now pending approval.';
             } elseif ($this->should_require_verification($user['role'])) {
                 $this->send_welcome_notification($user['user_id'], $user['full_name'], $user['role'], $user['email']);
+            }
+
+            if ($temporary_password && function_exists('send_bulk_upload_credentials_email')) {
+                try {
+                    $login_url = function_exists('get_scms_login_url')
+                        ? get_scms_login_url()
+                        : (getenv('APP_LOGIN_URL') ?: $this->email_verification_redirect_url);
+                    send_bulk_upload_credentials_email($user['full_name'], $user['email'], $temporary_password, $login_url);
+                } catch (Exception $e) {
+                    log_message('error', 'Failed to send bulk upload credentials email: ' . $e->getMessage());
+                }
+            }
+
+            if ($this->is_bulk_upload_user($user)) {
+                log_audit_event(
+                    'BULK STUDENT VERIFIED',
+                    'AUTHENTICATION',
+                    "{$user['full_name']} verified via bulk upload flow.",
+                    [
+                        'user_id' => $user['user_id'],
+                        'source' => 'bulk_upload',
+                        'temporary_password_issued' => (bool)$temporary_password,
+                        'verified_at' => $update_data['email_verified_at']
+                    ]
+                );
             }
 
             if (strtoupper($this->input->method(TRUE)) === 'GET') {
@@ -2045,6 +2079,41 @@ class Auth extends BaseController {
 
         $separator = (strpos($this->verification_link_base, '?') === false) ? '?' : '&';
         return $this->verification_link_base . $separator . 'token=' . urlencode($token);
+    }
+
+    private function should_skip_manual_approval(array $user = null) {
+        return $this->is_bulk_upload_user($user);
+    }
+
+    private function should_generate_temp_password_on_verification(array $user = null) {
+        return $this->is_bulk_upload_user($user) && empty($user['password']);
+    }
+
+    private function is_bulk_upload_user(array $user = null) {
+        if (!$user) {
+            return false;
+        }
+
+        return strtolower($user['role'] ?? '') === 'student'
+            && ($user['created_source'] ?? null) === 'bulk_upload';
+    }
+
+    private function generate_bulk_temporary_password($length = 12) {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@$!?';
+        $password = '';
+        $maxIndex = strlen($alphabet) - 1;
+
+        try {
+            for ($i = 0; $i < $length; $i++) {
+                $password .= $alphabet[random_int(0, $maxIndex)];
+            }
+        } catch (Exception $e) {
+            for ($i = 0; $i < $length; $i++) {
+                $password .= $alphabet[mt_rand(0, $maxIndex)];
+            }
+        }
+
+        return $password;
     }
 
     /**

@@ -600,6 +600,61 @@ function send_registration_approved_email($full_name, $email, $role, $temporary_
 }
 
 /**
+ * Send verification email for bulk-uploaded students
+ */
+function send_bulk_upload_verification_email($full_name, $email, $verification_link, $expires_at = null) {
+    if (empty($verification_link)) {
+        return false;
+    }
+
+    $subject = 'Verify your SCMS student account';
+    $expiry_text = $expires_at ? date('F j, Y g:i A', strtotime($expires_at)) : null;
+    $message = "Hi {$full_name},\n\nYou were added to SCMS by your administrator. "
+        . "Please verify your email to activate your student account.\n\n"
+        . "Click the button below to verify your email.";
+
+    if ($expiry_text) {
+        $message .= "\n\nThis link expires on {$expiry_text}.";
+    }
+
+    $message .= "\n\nIf the button doesn't work, copy and paste this link into your browser:\n{$verification_link}";
+
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Verify Email',
+        'action_url' => $verification_link
+    ]);
+
+    return send_email($email, $subject, $html, $full_name);
+}
+
+/**
+ * Send credentials email after bulk verification
+ */
+function send_bulk_upload_credentials_email($full_name, $email, $temporary_password, $login_url = null) {
+    if (empty($temporary_password)) {
+        return false;
+    }
+
+    $login_url = $login_url ?: get_scms_login_url();
+    $subject = 'Your SCMS temporary password';
+    $message = "Hi {$full_name},\n\nYour student account has been verified and activated.\n\n"
+        . "Use the details below to sign in:\n"
+        . "- Email: {$email}\n"
+        . "- Temporary password: {$temporary_password}\n\n"
+        . "Security reminders:\n"
+        . "- Change this password immediately after logging in.\n"
+        . "- Do not share this password with anyone.\n\n"
+        . "Login link: {$login_url}";
+
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Login to SCMS',
+        'action_url' => $login_url
+    ]);
+
+    return send_email($email, $subject, $html, $full_name);
+}
+
+/**
  * Send rejection email
  */
 function send_registration_rejected_email($full_name, $email, $role, $login_url = null) {
