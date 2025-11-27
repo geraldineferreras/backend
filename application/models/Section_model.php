@@ -2,17 +2,18 @@
 class Section_model extends CI_Model {
     private $supportsArchive = false;
     private $hasAcademicYearId = false;
+    private $hasSectionHistory = false;
 
     public function __construct() {
         parent::__construct();
         $this->supportsArchive = $this->db->field_exists('is_archived', 'sections');
         $this->hasAcademicYearId = $this->db->field_exists('academic_year_id', 'sections');
+        $this->hasSectionHistory = $this->db->table_exists('section_student_history');
     }
     public function get_all($options = []) {
         $include_archived = $this->include_archived_flag($options);
 
-        $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic,
-                                 (SELECT COUNT(*) FROM users WHERE users.section_id = sections.section_id AND users.role = "student") as enrolled_count')
+        $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic, ' . $this->get_enrolled_count_expression() . ' as enrolled_count', false)
             ->from('sections')
             ->join('users', 'sections.adviser_id = users.user_id', 'left');
 
@@ -133,11 +134,53 @@ class Section_model extends CI_Model {
     }
 
     public function get_students($section_id) {
-        return $this->db->select('user_id, full_name, email, student_num, contact_num, address, program, status, email_verified_at, email_verification_status, created_source')
+        $section = $this->get_by_id($section_id);
+        if (!$section) {
+            return [];
+        }
+
+        $current = $this->db->select('user_id, full_name, email, student_num, contact_num, address, program, status, email_verified_at, email_verification_status, created_source')
             ->from('users')
             ->where('section_id', $section_id)
             ->where('role', 'student')
             ->get()->result_array();
+
+        $history = [];
+        if ($this->hasSectionHistory) {
+            $history = $this->db->select('student_id as user_id, student_name as full_name, NULL as email, NULL as student_num, NULL as contact_num, NULL as address, program, "archived" as status, NULL as email_verified_at, NULL as email_verification_status, NULL as created_source')
+                ->from('section_student_history')
+                ->where('section_id', $section_id)
+                ->where('academic_year', $section['academic_year'])
+                ->group_start()
+                    ->where('semester IS NULL')
+                    ->or_where('semester', $section['semester'])
+                ->group_end()
+                ->get()->result_array();
+        }
+
+        if (empty($history)) {
+            return $current;
+        }
+
+        $currentIds = array_column($current, 'user_id');
+        foreach ($history as $row) {
+            if (!in_array($row['user_id'], $currentIds, true)) {
+                $current[] = $row;
+            }
+        }
+        return $current;
+    }
+
+    private function get_enrolled_count_expression()
+    {
+        $currentExpr = '(SELECT COUNT(*) FROM users WHERE users.section_id = sections.section_id AND users.role = "student")';
+        if (!$this->hasSectionHistory) {
+            return $currentExpr;
+        }
+
+        $historyExpr = '(SELECT COUNT(*) FROM section_student_history h WHERE h.section_id = sections.section_id AND (h.academic_year = sections.academic_year OR (h.academic_year_id IS NOT NULL AND sections.academic_year_id IS NOT NULL AND h.academic_year_id = sections.academic_year_id)) AND (h.semester IS NULL OR h.semester = sections.semester))';
+
+        return '(' . $currentExpr . ' + ' . $historyExpr . ')';
     }
 
     public function is_section_linked($section_id) {
@@ -297,8 +340,7 @@ class Section_model extends CI_Model {
     public function get_by_program($program, $options = []) {
         $include_archived = $this->include_archived_flag($options);
 
-        $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic,
-                                 (SELECT COUNT(*) FROM users WHERE users.section_id = sections.section_id AND users.role = "student") as enrolled_count')
+        $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic, ' . $this->get_enrolled_count_expression() . ' as enrolled_count', false)
             ->from('sections')
             ->join('users', 'sections.adviser_id = users.user_id', 'left')
             ->where('sections.program', $program);
@@ -336,8 +378,7 @@ class Section_model extends CI_Model {
     // Get sections by program and specific year level
     public function get_by_program_and_year_level($program, $year_level = null, $options = []) {
         $include_archived = $this->include_archived_flag($options);
-        $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic,
-                          (SELECT COUNT(*) FROM users WHERE users.section_id = sections.section_id AND users.role = "student") as enrolled_count')
+        $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic, ' . $this->get_enrolled_count_expression() . ' as enrolled_count', false)
             ->from('sections')
             ->join('users', 'sections.adviser_id = users.user_id', 'left')
             ->where('sections.program', $program);
@@ -387,8 +428,7 @@ class Section_model extends CI_Model {
     public function get_management_overview($filters = []) {
         $include_archived = !empty($filters['include_archived']);
 
-        $base = $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic,
-                                 (SELECT COUNT(*) FROM users WHERE users.section_id = sections.section_id AND users.role = "student") as enrolled_count')
+        $base = $this->db->select('sections.*, users.full_name as adviser_name, users.email as adviser_email, users.profile_pic as adviser_profile_pic, ' . $this->get_enrolled_count_expression() . ' as enrolled_count', false)
             ->from('sections')
             ->join('users', 'sections.adviser_id = users.user_id', 'left');
 

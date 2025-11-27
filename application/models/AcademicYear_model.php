@@ -6,6 +6,7 @@ class AcademicYear_model extends CI_Model
     private $table = 'academic_years';
     private $promotionTable = 'academic_year_promotions';
     private $promotionStudentsTable = 'academic_year_promotion_students';
+    private $sectionStudentHistoryTable = 'section_student_history';
     private $sectionsArchiveFieldExists = false;
 
     public function __construct()
@@ -26,6 +27,7 @@ class AcademicYear_model extends CI_Model
         $this->ensure_academic_years_table();
         $this->ensure_promotions_table();
         $this->ensure_promotion_students_table();
+        $this->ensure_section_student_history_table();
         $this->ensure_sections_columns();
     }
 
@@ -389,6 +391,76 @@ class AcademicYear_model extends CI_Model
             'null' => true,
             'after' => 'target_academic_year_id'
         ]);
+    }
+
+    private function ensure_section_student_history_table()
+    {
+        if ($this->db->table_exists($this->sectionStudentHistoryTable)) {
+            return;
+        }
+
+        $fields = [
+            'id' => [
+                'type' => 'INT',
+                'constraint' => 11,
+                'unsigned' => true,
+                'auto_increment' => true
+            ],
+            'student_id' => [
+                'type' => 'VARCHAR',
+                'constraint' => 50,
+                'null' => false
+            ],
+            'student_name' => [
+                'type' => 'VARCHAR',
+                'constraint' => 150,
+                'null' => true
+            ],
+            'program' => [
+                'type' => 'VARCHAR',
+                'constraint' => 20,
+                'null' => true
+            ],
+            'year_level' => [
+                'type' => 'INT',
+                'constraint' => 11,
+                'null' => true
+            ],
+            'section_id' => [
+                'type' => 'INT',
+                'constraint' => 11,
+                'null' => false
+            ],
+            'section_name' => [
+                'type' => 'VARCHAR',
+                'constraint' => 150,
+                'null' => true
+            ],
+            'academic_year_id' => [
+                'type' => 'INT',
+                'constraint' => 11,
+                'null' => true
+            ],
+            'academic_year' => [
+                'type' => 'VARCHAR',
+                'constraint' => 50,
+                'null' => true
+            ],
+            'semester' => [
+                'type' => 'VARCHAR',
+                'constraint' => 10,
+                'null' => true
+            ],
+            'recorded_at' => [
+                'type' => 'DATETIME',
+                'null' => false
+            ]
+        ];
+
+        $this->dbforge->add_field($fields);
+        $this->dbforge->add_key('id', true);
+        $this->dbforge->add_key(['student_id', 'section_id', 'academic_year']);
+        $this->dbforge->create_table($this->sectionStudentHistoryTable, true);
     }
 
     private function ensure_sections_columns()
@@ -1298,10 +1370,16 @@ class AcademicYear_model extends CI_Model
                 continue;
             }
 
+            $oldSection = $this->db->get_where('sections', ['section_id' => $student['section_id']])->row_array();
+
             $userUpdate = [
                 'section_id' => $section['section_id'],
                 'program' => $section['program'] ?? $student['program']
             ];
+
+            if ($oldSection) {
+                $this->record_section_history($student, $oldSection, $sourceYear);
+            }
 
             $this->db->where('user_id', $student['student_id'])->update('users', $userUpdate);
             if ($this->db->affected_rows() === 0 && $this->db->error()['code'] !== 0) {
@@ -1344,6 +1422,38 @@ class AcademicYear_model extends CI_Model
                 'promotion_id' => $promotion['id']
             ]
         ];
+    }
+
+    private function record_section_history(array $student, array $section, array $year)
+    {
+        if (empty($student['student_id']) || empty($section['section_id'])) {
+            return;
+        }
+
+        $exists = $this->db->get_where($this->sectionStudentHistoryTable, [
+            'student_id' => $student['student_id'],
+            'section_id' => $section['section_id'],
+            'academic_year' => $year['name']
+        ])->row_array();
+
+        if ($exists) {
+            return;
+        }
+
+        $data = [
+            'student_id' => $student['student_id'],
+            'student_name' => $student['student_name'],
+            'program' => $student['program'],
+            'year_level' => $student['current_year_level'],
+            'section_id' => $section['section_id'],
+            'section_name' => $section['section_name'],
+            'academic_year_id' => $year['id'],
+            'academic_year' => $year['name'],
+            'semester' => $section['semester'] ?? null,
+            'recorded_at' => date('Y-m-d H:i:s')
+        ];
+
+        $this->db->insert($this->sectionStudentHistoryTable, $data);
     }
 
     private function restore_promotion_decisions($promotionId, array $records)
