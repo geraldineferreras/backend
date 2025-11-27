@@ -94,30 +94,10 @@ class Auth extends BaseController {
                 return;
             }
 
-            // Check if this is first login for admin-created chairperson (before updating last_login)
-            $is_admin_created_chairperson = (($user['created_source'] ?? null) === 'admin_created' && 
-                                             $user['role'] === 'admin' && 
-                                             ($user['admin_type'] ?? null) === 'program_chairperson');
-            $is_first_login = empty($user['last_login']);
-
             // Update last_login
             $this->User_model->update($user['user_id'], [
                 'last_login' => date('Y-m-d H:i:s')
             ]);
-
-            // Send welcome email on first login for admin-created chairpersons ONLY
-            if ($is_admin_created_chairperson && $is_first_login) {
-                if (function_exists('send_chairperson_welcome_email')) {
-                    try {
-                        $login_url = function_exists('get_scms_login_url')
-                            ? get_scms_login_url()
-                            : (getenv('APP_LOGIN_URL') ?: 'https://scmsupdatedbackup.vercel.app/auth/login');
-                        send_chairperson_welcome_email($user['full_name'], $user['email'], $login_url);
-                    } catch (Exception $e) {
-                        log_message('error', "Failed to send chairperson welcome email: " . $e->getMessage());
-                    }
-                }
-            }
 
             // Log successful login to audit
             $user_data = [
@@ -791,23 +771,11 @@ class Auth extends BaseController {
 
         $created_source = $user['created_source'] ?? null;
         $is_bulk_upload = $created_source === 'bulk_upload';
-        $is_admin_created_chairperson = ($created_source === 'admin_created' && 
-                                         $user['role'] === 'admin' && 
-                                         ($user['admin_type'] ?? null) === 'program_chairperson');
-        
-        // Admin-created chairpersons: immediately activate and send credentials (NO approval step)
-        // Regular chairpersons/teachers/students: require manual approval
-        $requires_manual_approval = ($this->requires_manual_approval($user['role']) && !$is_bulk_upload) && !$is_admin_created_chairperson;
+        $requires_manual_approval = $this->requires_manual_approval($user['role']) && !$is_bulk_upload;
         $next_status = $requires_manual_approval ? 'pending_approval' : 'active';
-        
         $bulk_temporary_password = null;
-        $chairperson_temporary_password = null;
-        
         if ($is_bulk_upload) {
             $bulk_temporary_password = $this->generate_temporary_password();
-        } elseif ($is_admin_created_chairperson) {
-            // Generate temporary password immediately for admin-created chairpersons
-            $chairperson_temporary_password = $this->generate_temporary_password();
         }
 
         $update_data = [
@@ -820,43 +788,14 @@ class Auth extends BaseController {
         ];
         if ($bulk_temporary_password) {
             $update_data['password'] = password_hash($bulk_temporary_password, PASSWORD_BCRYPT);
-        } elseif ($chairperson_temporary_password) {
-            // Set temporary password for admin-created chairperson
-            $update_data['password'] = password_hash($chairperson_temporary_password, PASSWORD_BCRYPT);
         }
 
         if ($this->User_model->update($user['user_id'], $update_data)) {
-            // Determine display role for notifications (use 'chairperson' for admin-created chairpersons)
-            $display_role = $is_admin_created_chairperson ? 'chairperson' : $user['role'];
-            
+            $this->send_verification_success_notification($user['user_id'], $user['full_name'], $user['role']);
             $response_message = 'Email verified successfully. You can now log in.';
 
-            if ($is_admin_created_chairperson && $chairperson_temporary_password) {
-                // For admin-created chairpersons: send credentials email immediately
-                // DO NOT send welcome email yet - that will be sent after first login
-                $login_url = function_exists('get_scms_login_url')
-                    ? get_scms_login_url()
-                    : (getenv('APP_LOGIN_URL') ?: $this->email_verification_redirect_url);
-                
-                if (function_exists('send_chairperson_credentials_email')) {
-                    try {
-                        send_chairperson_credentials_email(
-                            $user['full_name'],
-                            $user['email'],
-                            $chairperson_temporary_password,
-                            $login_url
-                        );
-                    } catch (Exception $e) {
-                        log_message('error', "Failed to send chairperson credentials email: " . $e->getMessage());
-                    }
-                }
-                
-                $response_message = 'Email verified successfully. Your login credentials have been sent to your email.';
-                
-            } elseif ($requires_manual_approval) {
-                // Don't send "you can log in" message for users requiring approval
-                // Instead, send pending approval notification
-                $this->notify_account_pending_approval($user['user_id'], $user['full_name'], $display_role, $user['email']);
+            if ($requires_manual_approval) {
+                $this->notify_account_pending_approval($user['user_id'], $user['full_name'], $user['role'], $user['email']);
                 
                 // Notify all admins/chairpersons about the new pending registration
                 if (function_exists('notify_admins_pending_approval')) {
@@ -864,7 +803,7 @@ class Auth extends BaseController {
                         notify_admins_pending_approval(
                             $user['full_name'],
                             $user['email'],
-                            $display_role,
+                            $user['role'],
                             $user['program'] ?? null
                         );
                     } catch (Exception $e) {
@@ -873,12 +812,8 @@ class Auth extends BaseController {
                 }
                 
                 $response_message = 'Email verified successfully. Your account is now pending approval.';
-            } else {
-                // Only send verification success/welcome for users who don't need approval
-                $this->send_verification_success_notification($user['user_id'], $user['full_name'], $display_role);
-                if ($this->should_require_verification($user['role'])) {
-                    $this->send_welcome_notification($user['user_id'], $user['full_name'], $display_role, $user['email']);
-                }
+            } elseif ($this->should_require_verification($user['role'])) {
+                $this->send_welcome_notification($user['user_id'], $user['full_name'], $user['role'], $user['email']);
             }
 
             if ($is_bulk_upload && $bulk_temporary_password) {
