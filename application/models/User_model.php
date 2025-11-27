@@ -108,32 +108,28 @@ class User_model extends CI_Model {
     public function get_pending_registrations($role = null) {
         $this->db->select('users.*, users.program as assigned_program')
             ->from('users')
-            ->where('status', 'pending_approval');
+            ->where('status', 'pending_approval')
+            // Exclude admin-created chairpersons (they are activated immediately after verification, no approval needed)
+            ->group_start()
+                ->where('created_source !=', 'admin_created')
+                ->or_where('created_source', null)
+            ->group_end();
 
         if ($role) {
             $role_lower = strtolower($role);
-            // When filtering by 'chairperson', also include admin-created chairpersons (role='admin' with admin_type='program_chairperson')
+            // When filtering by 'chairperson', only include regular chairpersons (self-registered)
+            // Admin-created chairpersons are excluded above
             if ($role_lower === 'chairperson') {
-                $this->db->group_start()
-                    ->where('role', 'chairperson')
-                    ->or_group_start()
-                        ->where('role', 'admin')
-                        ->where('admin_type', 'program_chairperson')
-                    ->group_end()
-                ->group_end();
+                $this->db->where('role', 'chairperson');
             } else {
                 $this->db->where('role', $role_lower);
             }
         } else {
-            // Include admin-created chairpersons in all results
+            // Include regular pending registrations
             $this->db->group_start()
                 ->where('role', 'teacher')
                 ->or_where('role', 'student')
                 ->or_where('role', 'chairperson')
-                ->or_group_start()
-                    ->where('role', 'admin')
-                    ->where('admin_type', 'program_chairperson')
-                ->group_end()
             ->group_end();
         }
 

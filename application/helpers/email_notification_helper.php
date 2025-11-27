@@ -672,8 +672,7 @@ function send_chairperson_verification_email($full_name, $email, $verification_l
     $message = "Hi {$full_name},\n\n"
         . "An administrator has created a chairperson account for you in the SCMS system.\n"
         . "To complete your account setup, please verify your email address by clicking the button below.\n\n"
-        . "After verification, your account will be reviewed by an administrator for approval.\n"
-        . "Once approved, you will receive login credentials via email.\n\n"
+        . "After verification, you will receive your login credentials via email.\n\n"
         . "Click the button below or use this link if it does not work:\n"
         . "{$verification_link}\n\n"
         . "If you did not expect this email, please contact the system administrator.\n\n"
@@ -682,6 +681,50 @@ function send_chairperson_verification_email($full_name, $email, $verification_l
     $html = create_email_html('system', $subject, $message, null, null, null, [
         'action_text' => 'Verify Email',
         'action_url' => $verification_link
+    ]);
+
+    return send_email($email, $subject, $html, $full_name);
+}
+
+/**
+ * Send temporary password email to chairperson after email verification
+ */
+function send_chairperson_credentials_email($full_name, $email, $temporary_password, $login_url = null) {
+    $login_url = $login_url ?: get_scms_login_url();
+    $subject = 'Your SCMS chairperson account credentials';
+    $message = "Hi {$full_name},\n\n"
+        . "Thank you for verifying your email address. Your SCMS chairperson account is now active.\n\n"
+        . "Use the credentials below to log in:\n"
+        . "- Email: {$email}\n"
+        . "- Temporary password: {$temporary_password}\n\n"
+        . "Security reminders:\n"
+        . "- Do not share this password with anyone.\n"
+        . "- Please change your password immediately after logging in.\n\n"
+        . "Login link: {$login_url}";
+
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Log in to SCMS',
+        'action_url' => $login_url
+    ]);
+
+    return send_email($email, $subject, $html, $full_name);
+}
+
+/**
+ * Send welcome email to chairperson after first successful login
+ */
+function send_chairperson_welcome_email($full_name, $email, $login_url = null) {
+    $login_url = $login_url ?: get_scms_login_url();
+    $subject = 'Welcome to SCMS!';
+    $message = "Hi {$full_name},\n\n"
+        . "Welcome to the Student Class Management System!\n\n"
+        . "Your chairperson account has been successfully activated and you can now access all features.\n\n"
+        . "We're excited to have you on board. If you need any assistance, please don't hesitate to contact support.\n\n"
+        . "Login link: {$login_url}";
+
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Go to SCMS',
+        'action_url' => $login_url
     ]);
 
     return send_email($email, $subject, $html, $full_name);
