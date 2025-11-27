@@ -1150,13 +1150,15 @@ class AdminController extends BaseController {
             // Get historical students for this AY/semester if history table exists
             $historical_students = [];
             if ($this->db->table_exists('section_student_history')) {
+                $academic_year_escaped = $this->db->escape($academic_year);
+                $semester_escaped = $this->db->escape($semester);
                 $this->db->select('h.student_id, h.student_name, u.full_name, u.email, u.student_num')
                     ->from('section_student_history h')
                     ->join('users u', 'h.student_id = u.user_id', 'left')
                     ->where('h.section_id', $section['section_id'])
-                    ->where('h.academic_year_name', $academic_year)
+                    ->where("h.academic_year_name COLLATE utf8mb4_unicode_ci = {$academic_year_escaped}", null, false)
                     ->group_start()
-                        ->where('h.semester', $semester)
+                        ->where("h.semester COLLATE utf8mb4_unicode_ci = {$semester_escaped}", null, false)
                         ->or_where('h.semester IS NULL')
                     ->group_end();
                 $historical_students = $this->db->get()->result_array();
