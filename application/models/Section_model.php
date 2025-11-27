@@ -178,7 +178,7 @@ class Section_model extends CI_Model {
             return $currentExpr;
         }
 
-        $historyExpr = '(SELECT COUNT(*) FROM section_student_history h WHERE h.section_id = sections.section_id AND (h.academic_year = sections.academic_year OR (h.academic_year_id IS NOT NULL AND sections.academic_year_id IS NOT NULL AND h.academic_year_id = sections.academic_year_id)) AND (h.semester IS NULL OR h.semester = sections.semester))';
+        $historyExpr = '(SELECT COUNT(*) FROM section_student_history h WHERE h.section_id = sections.section_id AND (h.academic_year_name = sections.academic_year OR (h.academic_year_id IS NOT NULL AND sections.academic_year_id IS NOT NULL AND h.academic_year_id = sections.academic_year_id)) AND (h.semester IS NULL OR h.semester = sections.semester))';
 
         return '(' . $currentExpr . ' + ' . $historyExpr . ')';
     }
