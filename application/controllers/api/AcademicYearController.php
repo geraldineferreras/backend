@@ -258,6 +258,41 @@ class AcademicYearController extends BaseController
             }
         }
 
+        if (!isset($payloadData['decision_status'])) {
+            $decisionAliases = [
+                $payloadData['decision'] ?? null,
+                $payloadData['action'] ?? null,
+                $payloadData['status'] ?? null
+            ];
+
+            foreach ($decisionAliases as $alias) {
+                if (!$alias) {
+                    continue;
+                }
+
+                $normalized = strtolower($alias);
+                if (in_array($normalized, ['promote', 'promoted'], true)) {
+                    $payloadData['decision_status'] = 'promoted';
+                    break;
+                }
+
+                if (in_array($normalized, ['retain', 'retained'], true)) {
+                    $payloadData['decision_status'] = 'retained';
+                    break;
+                }
+
+                if ($normalized === 'irregular') {
+                    $payloadData['decision_status'] = 'irregular';
+                    break;
+                }
+
+                if ($normalized === 'pending') {
+                    $payloadData['decision_status'] = 'pending';
+                    break;
+                }
+            }
+        }
+
         $payloadData['updated_by'] = $user['user_id'];
         $result = $this->AcademicYear_model->update_promotion_student($year_id, $student_id, $payloadData);
         $status_code = $result['status'] ? 200 : 400;
