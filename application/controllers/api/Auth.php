@@ -228,13 +228,11 @@ class Auth extends BaseController {
                     ->set_output(json_encode(['status' => false, 'message' => 'Program is required for student accounts']));
                 return;
             }
-
-            // Block chairperson creation
-            if (strtolower($role) === 'chairperson') {
+            if ($role === 'chairperson' && empty($program)) {
                 $this->output
-                    ->set_status_header(403)
+                    ->set_status_header(400)
                     ->set_content_type('application/json')
-                    ->set_output(json_encode(['status' => false, 'message' => 'Chairperson creation is not allowed']));
+                    ->set_output(json_encode(['status' => false, 'message' => 'Program is required for chairperson accounts']));
                 return;
             }
 
@@ -352,6 +350,17 @@ class Auth extends BaseController {
                         ->set_output(json_encode(['status' => false, 'message' => 'Program is required for admin accounts']));
                     return;
                 }
+            } elseif ($role === 'chairperson') {
+                if (empty($program)) {
+                    $this->output
+                        ->set_status_header(400)
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['status' => false, 'message' => 'Program is required for chairperson accounts']));
+                    return;
+                }
+
+                $user_data['program'] = $program;
+                $user_data['admin_type'] = 'chairperson';
             } elseif ($role === 'teacher') {
                 // Teachers can have a program if specified and valid
                 if (!empty($program)) {
@@ -507,8 +516,6 @@ class Auth extends BaseController {
 
         if (empty($role)) {
             $errors[] = 'Role is required.';
-        } elseif (strtolower($role) === 'chairperson') {
-            $errors[] = 'Chairperson creation is not allowed.';
         }
         if (empty($first_name)) {
             $errors[] = 'First name is required.';
@@ -535,6 +542,9 @@ class Auth extends BaseController {
         // Validate program based on role
         if ($role === 'student' && empty($program)) {
             $errors[] = 'Program is required for student accounts.';
+        }
+        if ($role === 'chairperson' && empty($program)) {
+            $errors[] = 'Program is required for chairperson accounts.';
         }
 
         if (!empty($errors)) {
@@ -648,6 +658,17 @@ class Auth extends BaseController {
                     ->set_output(json_encode(['status' => false, 'message' => 'Program is required for admin accounts']));
                 return;
             }
+        } elseif ($role === 'chairperson') {
+            if (empty($program)) {
+                $this->output
+                    ->set_status_header(400)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['status' => false, 'message' => 'Program is required for chairperson accounts']));
+                return;
+            }
+
+            $dataToInsert['program'] = $program;
+            $dataToInsert['admin_type'] = 'chairperson';
         } elseif ($role === 'teacher') {
             // Teachers can have a program if specified and valid
             if (!empty($program)) {
@@ -2241,6 +2262,10 @@ class Auth extends BaseController {
             return true;
         }
 
+        if ($role === 'chairperson') {
+            return true;
+        }
+
         if ($role === 'admin') {
             return $this->verify_admin_registrations;
         }
@@ -2258,7 +2283,7 @@ class Auth extends BaseController {
 
     private function requires_manual_approval($role) {
         $role = strtolower((string)$role);
-        return in_array($role, ['student', 'teacher']);
+        return in_array($role, ['student', 'teacher', 'chairperson']);
     }
 
     private function get_initial_account_status($role) {

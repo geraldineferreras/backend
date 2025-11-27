@@ -32,7 +32,7 @@ class AdminController extends BaseController {
     }
 
     /**
-     * List pending teacher/student registrations waiting for approval
+     * List pending teacher/student/chairperson registrations waiting for approval
      */
     public function registrations_pending_get() {
         $user_data = require_role($this, ['admin', 'chairperson']);
@@ -41,8 +41,8 @@ class AdminController extends BaseController {
         }
 
         $role_filter = strtolower($this->input->get('role'));
-        if ($role_filter && !in_array($role_filter, ['teacher', 'student'])) {
-            return json_response(false, 'Role filter must be teacher or student', null, 400);
+        if ($role_filter && !in_array($role_filter, ['teacher', 'student', 'chairperson'])) {
+            return json_response(false, 'Role filter must be teacher, student, or chairperson', null, 400);
         }
 
         $registrations = $this->User_model->get_pending_registrations($role_filter ?: null);
@@ -62,7 +62,7 @@ class AdminController extends BaseController {
     }
 
     /**
-     * Approve a pending teacher/student registration
+     * Approve a pending teacher/student/chairperson registration
      */
     public function registrations_approve_post($user_id = null) {
         $user_data = require_role($this, ['admin', 'chairperson']);
@@ -75,7 +75,7 @@ class AdminController extends BaseController {
         }
 
         $user = $this->User_model->get_by_id($user_id);
-        if (!$user || !in_array($user['role'], ['teacher', 'student'])) {
+        if (!$user || !in_array($user['role'], ['teacher', 'student', 'chairperson'])) {
             return json_response(false, 'Pending registration not found for this user', null, 404);
         }
 
@@ -123,7 +123,7 @@ class AdminController extends BaseController {
     }
 
     /**
-     * Reject a pending teacher/student registration
+     * Reject a pending teacher/student/chairperson registration
      */
     public function registrations_reject_post($user_id = null) {
         $user_data = require_role($this, ['admin', 'chairperson']);
@@ -136,7 +136,7 @@ class AdminController extends BaseController {
         }
 
         $user = $this->User_model->get_by_id($user_id);
-        if (!$user || !in_array($user['role'], ['teacher', 'student'])) {
+        if (!$user || !in_array($user['role'], ['teacher', 'student', 'chairperson'])) {
             return json_response(false, 'Pending registration not found for this user', null, 404);
         }
 
