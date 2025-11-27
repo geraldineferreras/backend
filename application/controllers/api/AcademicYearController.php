@@ -242,7 +242,22 @@ class AcademicYearController extends BaseController
             return json_response(false, 'Invalid JSON payload', null, 400);
         }
 
-        $payloadData = $payloadResult['data'];
+        $payloadData = $payloadResult['data'] ?? [];
+
+        // Allow camelCase payloads coming from the frontend
+        $camelToSnake = [
+            'evaluationStatus' => 'evaluation_status',
+            'decisionStatus' => 'decision_status',
+            'targetYearLevel' => 'target_year_level',
+            'issueReason' => 'issue_reason',
+            'decisionNotes' => 'decision_notes'
+        ];
+        foreach ($camelToSnake as $camel => $snake) {
+            if (array_key_exists($camel, $payloadData) && !array_key_exists($snake, $payloadData)) {
+                $payloadData[$snake] = $payloadData[$camel];
+            }
+        }
+
         $payloadData['updated_by'] = $user['user_id'];
         $result = $this->AcademicYear_model->update_promotion_student($year_id, $student_id, $payloadData);
         $status_code = $result['status'] ? 200 : 400;
