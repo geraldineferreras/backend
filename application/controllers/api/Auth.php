@@ -1573,24 +1573,160 @@ class Auth extends BaseController {
             return;
         }
         
-        // Optional force flag: delete dependent audit logs before deleting user
+        // Optional force flag: delete all linked records before deleting user
         $force_param = $this->input->get('force');
         $force_body = isset($data->force) ? $data->force : null;
-        $force = ($force_param === 'true' || $force_param === '1' || $force_body === true || $force_body === 1);
+        $force = ($force_param === 'true' || $force_param === '1' || $force_body === true || $force_body === 1 || $force_body === 'true');
 
         // Temporarily disable CI DB debug to prevent HTML error page on FK violation
         $original_db_debug = $this->db->db_debug;
         $this->db->db_debug = FALSE;
 
+        // Check for linked records
+        $linked_records = $this->check_linked_records($user_id, $role);
+        $has_linked_records = !empty($linked_records);
+
+        // If there are linked records and force is not set, do soft delete
+        if ($has_linked_records && !$force) {
+            // Restore db_debug setting
+            $this->db->db_debug = $original_db_debug;
+            
+            // Soft delete: deactivate account instead of removing the row
+            $this->User_model->update($user_id, ['status' => 'inactive']);
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => 'User has linked records. Account deactivated instead of deleted.',
+                    'data' => [ 
+                        'soft_deleted' => true,
+                        'linked_records' => $linked_records
+                    ]
+                ]));
+            return;
+        }
+
         // Use a transaction for safety
         $this->db->trans_begin();
 
-        // When forcing, remove audit log references first to satisfy FK constraints
-        if ($force) {
-            $this->db->where('user_id', $user_id)->delete('audit_logs');
+        $deleted_records = [];
+        $warning_messages = [];
+
+        // If forcing, delete all linked records
+        if ($force && $has_linked_records) {
+            // Delete records based on role
+            if ($role === 'student') {
+                // Delete student-related records
+                if (isset($linked_records['attendance']) && $linked_records['attendance'] > 0) {
+                    $count = $linked_records['attendance'];
+                    $this->db->where('student_id', $user_id)->delete('attendance');
+                    $deleted_records['attendance'] = $count;
+                    $warning_messages[] = "Deleted {$count} attendance record(s)";
+                }
+                
+                if (isset($linked_records['excuse_letters']) && $linked_records['excuse_letters'] > 0) {
+                    $count = $linked_records['excuse_letters'];
+                    $this->db->where('student_id', $user_id)->delete('excuse_letters');
+                    $deleted_records['excuse_letters'] = $count;
+                    $warning_messages[] = "Deleted {$count} excuse letter(s)";
+                }
+                
+                if (isset($linked_records['task_student_assignments']) && $linked_records['task_student_assignments'] > 0) {
+                    $count = $linked_records['task_student_assignments'];
+                    $this->db->where('student_id', $user_id)->delete('task_student_assignments');
+                    $deleted_records['task_student_assignments'] = $count;
+                    $warning_messages[] = "Deleted {$count} task assignment(s)";
+                }
+                
+                if (isset($linked_records['classroom_enrollments']) && $linked_records['classroom_enrollments'] > 0) {
+                    $count = $linked_records['classroom_enrollments'];
+                    $this->db->where('student_id', $user_id)->delete('classroom_enrollments');
+                    $deleted_records['classroom_enrollments'] = $count;
+                    $warning_messages[] = "Deleted {$count} classroom enrollment(s)";
+                }
+                
+                if (isset($linked_records['task_submissions']) && $linked_records['task_submissions'] > 0) {
+                    $count = $linked_records['task_submissions'];
+                    $this->db->where('student_id', $user_id)->delete('task_submissions');
+                    $deleted_records['task_submissions'] = $count;
+                    $warning_messages[] = "Deleted {$count} task submission(s)";
+                }
+            } elseif ($role === 'teacher') {
+                // Delete teacher-related records
+                if (isset($linked_records['attendance']) && $linked_records['attendance'] > 0) {
+                    $count = $linked_records['attendance'];
+                    $this->db->where('teacher_id', $user_id)->delete('attendance');
+                    $deleted_records['attendance'] = $count;
+                    $warning_messages[] = "Deleted {$count} attendance record(s)";
+                }
+                
+                if (isset($linked_records['excuse_letters']) && $linked_records['excuse_letters'] > 0) {
+                    $count = $linked_records['excuse_letters'];
+                    $this->db->where('teacher_id', $user_id)->delete('excuse_letters');
+                    $deleted_records['excuse_letters'] = $count;
+                    $warning_messages[] = "Deleted {$count} excuse letter(s)";
+                }
+                
+                if (isset($linked_records['classes']) && $linked_records['classes'] > 0) {
+                    $count = $linked_records['classes'];
+                    $this->db->where('teacher_id', $user_id)->delete('classes');
+                    $deleted_records['classes'] = $count;
+                    $warning_messages[] = "Deleted {$count} class(es)";
+                }
+                
+                // Check if classrooms table exists and has teacher_id
+                if (isset($linked_records['classrooms']) && $linked_records['classrooms'] > 0) {
+                    $count = $linked_records['classrooms'];
+                    $this->db->where('teacher_id', $user_id)->delete('classrooms');
+                    $deleted_records['classrooms'] = $count;
+                    $warning_messages[] = "Deleted {$count} classroom(s)";
+                }
+            }
+
+            // Delete common user-related records for both roles
+            if (isset($linked_records['audit_logs']) && $linked_records['audit_logs'] > 0) {
+                $count = $linked_records['audit_logs'];
+                $this->db->where('user_id', $user_id)->delete('audit_logs');
+                $deleted_records['audit_logs'] = $count;
+                $warning_messages[] = "Deleted {$count} audit log(s)";
+            }
+            
+            if (isset($linked_records['notifications']) && $linked_records['notifications'] > 0) {
+                $count = $linked_records['notifications'];
+                $this->db->where('user_id', $user_id)->delete('notifications');
+                $deleted_records['notifications'] = $count;
+                $warning_messages[] = "Deleted {$count} notification(s)";
+            }
+            
+            if (isset($linked_records['notification_settings']) && $linked_records['notification_settings'] > 0) {
+                $count = $linked_records['notification_settings'];
+                $this->db->where('user_id', $user_id)->delete('notification_settings');
+                $deleted_records['notification_settings'] = $count;
+            }
+            
+            if (isset($linked_records['classroom_stream']) && $linked_records['classroom_stream'] > 0) {
+                $count = $linked_records['classroom_stream'];
+                $this->db->where('user_id', $user_id)->delete('classroom_stream');
+                $deleted_records['classroom_stream'] = $count;
+                $warning_messages[] = "Deleted {$count} stream post(s)";
+            }
+            
+            if (isset($linked_records['stream_comments']) && $linked_records['stream_comments'] > 0) {
+                $count = $linked_records['stream_comments'];
+                $this->db->where('user_id', $user_id)->delete('stream_comments');
+                $deleted_records['stream_comments'] = $count;
+                $warning_messages[] = "Deleted {$count} stream comment(s)";
+            }
+            
+            if (isset($linked_records['account_links']) && $linked_records['account_links'] > 0) {
+                $count = $linked_records['account_links'];
+                $this->db->where('user_id', $user_id)->delete('account_links');
+                $deleted_records['account_links'] = $count;
+            }
         }
 
-        // Attempt deletion
+        // Attempt user deletion
         $this->User_model->delete($user_id);
         $db_error = $this->db->error();
 
@@ -1598,15 +1734,30 @@ class Auth extends BaseController {
             $this->db->trans_commit();
             // Restore original db_debug setting
             $this->db->db_debug = $original_db_debug;
+            
+            $message = 'User deleted successfully';
+            if ($force && !empty($warning_messages)) {
+                $message .= '. WARNING: The following linked records were also deleted: ' . implode(', ', $warning_messages);
+            }
+            
+            $response_data = ['force_deleted' => $force];
+            if (!empty($deleted_records)) {
+                $response_data['deleted_records'] = $deleted_records;
+                $response_data['warnings'] = $warning_messages;
+            }
+            
             $this->output
                 ->set_status_header(200)
                 ->set_content_type('application/json')
-                ->set_output(json_encode(['status' => true, 'message' => 'User deleted successfully']))
-                ;
+                ->set_output(json_encode([
+                    'status' => true,
+                    'message' => $message,
+                    'data' => $response_data
+                ]));
             return;
         }
 
-        // Deletion failed: rollback so we can decide next step
+        // Deletion failed: rollback transaction
         $this->db->trans_rollback();
         // Restore original db_debug setting before further operations
         $this->db->db_debug = $original_db_debug;
@@ -1622,7 +1773,10 @@ class Auth extends BaseController {
                     ->set_output(json_encode([
                         'status' => true,
                         'message' => 'User has linked records. Account deactivated instead of deleted.',
-                        'data' => [ 'soft_deleted' => true ]
+                        'data' => [ 
+                            'soft_deleted' => true,
+                            'linked_records' => $linked_records
+                        ]
                     ]));
                 return;
             }
@@ -1640,6 +1794,92 @@ class Auth extends BaseController {
             ->set_status_header(500)
             ->set_content_type('application/json')
             ->set_output(json_encode(['status' => false, 'message' => 'Failed to delete user']));
+    }
+
+    // Helper function to check for linked records
+    private function check_linked_records($user_id, $role) {
+        $linked_records = [];
+        
+        // Check role-specific tables
+        if ($role === 'student') {
+            if ($this->db->table_exists('attendance')) {
+                $count = $this->db->where('student_id', $user_id)->count_all_results('attendance');
+                if ($count > 0) $linked_records['attendance'] = $count;
+            }
+            
+            if ($this->db->table_exists('excuse_letters')) {
+                $count = $this->db->where('student_id', $user_id)->count_all_results('excuse_letters');
+                if ($count > 0) $linked_records['excuse_letters'] = $count;
+            }
+            
+            if ($this->db->table_exists('task_student_assignments')) {
+                $count = $this->db->where('student_id', $user_id)->count_all_results('task_student_assignments');
+                if ($count > 0) $linked_records['task_student_assignments'] = $count;
+            }
+            
+            if ($this->db->table_exists('classroom_enrollments')) {
+                $count = $this->db->where('student_id', $user_id)->count_all_results('classroom_enrollments');
+                if ($count > 0) $linked_records['classroom_enrollments'] = $count;
+            }
+            
+            if ($this->db->table_exists('task_submissions')) {
+                $count = $this->db->where('student_id', $user_id)->count_all_results('task_submissions');
+                if ($count > 0) $linked_records['task_submissions'] = $count;
+            }
+        } elseif ($role === 'teacher') {
+            if ($this->db->table_exists('attendance')) {
+                $count = $this->db->where('teacher_id', $user_id)->count_all_results('attendance');
+                if ($count > 0) $linked_records['attendance'] = $count;
+            }
+            
+            if ($this->db->table_exists('excuse_letters')) {
+                $count = $this->db->where('teacher_id', $user_id)->count_all_results('excuse_letters');
+                if ($count > 0) $linked_records['excuse_letters'] = $count;
+            }
+            
+            if ($this->db->table_exists('classes')) {
+                $count = $this->db->where('teacher_id', $user_id)->count_all_results('classes');
+                if ($count > 0) $linked_records['classes'] = $count;
+            }
+            
+            if ($this->db->table_exists('classrooms')) {
+                $count = $this->db->where('teacher_id', $user_id)->count_all_results('classrooms');
+                if ($count > 0) $linked_records['classrooms'] = $count;
+            }
+        }
+        
+        // Check common user-related tables
+        if ($this->db->table_exists('audit_logs')) {
+            $count = $this->db->where('user_id', $user_id)->count_all_results('audit_logs');
+            if ($count > 0) $linked_records['audit_logs'] = $count;
+        }
+        
+        if ($this->db->table_exists('notifications')) {
+            $count = $this->db->where('user_id', $user_id)->count_all_results('notifications');
+            if ($count > 0) $linked_records['notifications'] = $count;
+        }
+        
+        if ($this->db->table_exists('notification_settings')) {
+            $count = $this->db->where('user_id', $user_id)->count_all_results('notification_settings');
+            if ($count > 0) $linked_records['notification_settings'] = $count;
+        }
+        
+        if ($this->db->table_exists('classroom_stream')) {
+            $count = $this->db->where('user_id', $user_id)->count_all_results('classroom_stream');
+            if ($count > 0) $linked_records['classroom_stream'] = $count;
+        }
+        
+        if ($this->db->table_exists('stream_comments')) {
+            $count = $this->db->where('user_id', $user_id)->count_all_results('stream_comments');
+            if ($count > 0) $linked_records['stream_comments'] = $count;
+        }
+        
+        if ($this->db->table_exists('account_links')) {
+            $count = $this->db->where('user_id', $user_id)->count_all_results('account_links');
+            if ($count > 0) $linked_records['account_links'] = $count;
+        }
+        
+        return $linked_records;
     }
 
     // Admin method to change user status
