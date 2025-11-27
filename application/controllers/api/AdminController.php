@@ -4,11 +4,13 @@ require_once(APPPATH . 'controllers/api/BaseController.php');
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 class AdminController extends BaseController {
+    private $sectionsHasAcademicYearId = false;
     public function __construct() {
         parent::__construct();
         $this->load->model(['Section_model', 'User_model', 'Program_model', 'AcademicYear_model']);
         $this->load->helper(['response', 'auth', 'notification', 'utility', 'email_notification', 'audit']);
         $this->load->library('Token_lib');
+        $this->sectionsHasAcademicYearId = $this->db->field_exists('academic_year_id', 'sections');
         // CORS headers are already handled by BaseController
     }
 
@@ -364,7 +366,50 @@ class AdminController extends BaseController {
     public function sections_get() {
         $user_data = require_admin($this);
         if (!$user_data) return;
-        $sections = $this->Section_model->get_all();
+
+        $program_param = $this->input->get('program');
+        $academic_year_id_param = $this->input->get('academicYearId');
+        if ($academic_year_id_param === null) {
+            $academic_year_id_param = $this->input->get('academic_year_id');
+        }
+        $academic_year_param = $this->input->get('academicYear');
+        if ($academic_year_param === null) {
+            $academic_year_param = $this->input->get('academic_year');
+        }
+        $year_level_param = $this->input->get('yearLevel');
+        if ($year_level_param === null) {
+            $year_level_param = $this->input->get('year_level');
+        }
+        $semester_param = $this->input->get('semester');
+        $include_archived_param = $this->input->get('include_archived');
+
+        $filters = [
+            'include_archived' => in_array(strtolower((string)$include_archived_param), ['1', 'true', 'yes'], true)
+        ];
+
+        if ($program_param !== null && $program_param !== '') {
+            $program_code = $this->standardize_program_name($program_param, true);
+            if (!$program_code) {
+                return json_response(false, 'Program not found', null, 404);
+            }
+            $filters['program'] = $program_code;
+        }
+
+        if ($year_level_param !== null && $year_level_param !== '') {
+            $filters['year_level'] = trim($year_level_param);
+        }
+
+        if ($semester_param !== null && $semester_param !== '') {
+            $filters['semester'] = trim($semester_param);
+        }
+
+        if ($academic_year_id_param !== null && $academic_year_id_param !== '') {
+            $filters['academic_year_id'] = (int)$academic_year_id_param;
+        } elseif ($academic_year_param !== null && $academic_year_param !== '') {
+            $filters['academic_year'] = trim($academic_year_param);
+        }
+
+        $sections = $this->Section_model->get_all($filters);
         
         // Format sections for frontend
         $formatted_sections = array_map(function($section) {
@@ -445,6 +490,11 @@ class AdminController extends BaseController {
             return json_response(false, 'Invalid year_level: must be a number between 1 and 4', null, 400);
         }
         
+        $resolved_year = $this->resolve_academic_year_reference($data->academic_year_id ?? null, $data->academic_year);
+        if (isset($resolved_year['error'])) {
+            return json_response(false, $resolved_year['error'], null, 404);
+        }
+        
         // Standardize program name to shortcut format
         $program_shortcut = $this->standardize_program_name($data->program);
         if (!$program_shortcut) {
@@ -457,8 +507,12 @@ class AdminController extends BaseController {
             'year_level' => $data->year_level,
             'adviser_id' => $adviser_id, // Can be null
             'semester' => $data->semester,
-            'academic_year' => $data->academic_year
+            'academic_year' => $resolved_year['name']
         ];
+        
+        if ($this->sectionsHasAcademicYearId) {
+            $insert_data['academic_year_id'] = $resolved_year['id'];
+        }
         $section_id = $this->Section_model->insert($insert_data);
         if ($section_id) {
             // Send system notification to adviser about new section assignment (only if adviser is assigned)
@@ -531,6 +585,11 @@ class AdminController extends BaseController {
             return json_response(false, 'Invalid year_level: must be a number between 1 and 4', null, 400);
         }
         
+        $resolved_year = $this->resolve_academic_year_reference($data->academic_year_id ?? null, $data->academic_year);
+        if (isset($resolved_year['error'])) {
+            return json_response(false, $resolved_year['error'], null, 404);
+        }
+        
         // Standardize program name to shortcut format
         $program_shortcut = $this->standardize_program_name($data->program);
         if (!$program_shortcut) {
@@ -543,8 +602,12 @@ class AdminController extends BaseController {
             'year_level' => $data->year_level,
             'adviser_id' => $adviser_id, // Can be null
             'semester' => $data->semester,
-            'academic_year' => $data->academic_year
+            'academic_year' => $resolved_year['name']
         ];
+        
+        if ($this->sectionsHasAcademicYearId) {
+            $update_data['academic_year_id'] = $resolved_year['id'];
+        }
         
         $success = $this->Section_model->update($section_id, $update_data);
         if ($success) {
@@ -2171,6 +2234,16 @@ class AdminController extends BaseController {
                 return;
             }
 
+            // Log which programs are being processed
+            log_message('debug', 'Auto-create sections: Processing programs: ' . implode(', ', $programs));
+            
+            // Check if ACT is missing and add warning
+            $expected_programs = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
+            $missing_programs = array_diff($expected_programs, $programs);
+            if (!empty($missing_programs)) {
+                log_message('warning', 'Auto-create sections: Missing programs (not active in database): ' . implode(', ', $missing_programs));
+            }
+
             $adviser_pool = $this->build_adviser_pool();
             $programs_without_advisers = [];
             $programs_with_fallback_advisers = [];
@@ -2184,16 +2257,24 @@ class AdminController extends BaseController {
             $existing_count = 0;
             $errors = [];
             $warnings = [];
+            $program_stats = []; // Track stats per program
             
             // Start transaction
             $this->db->trans_start();
             
             foreach ($programs as $program) {
+                $program_created = 0;
+                $program_existing = 0;
+                $program_errors = [];
+                
                 foreach ($year_levels as $year_level) {
                     foreach ($sections as $section_letter) {
                         $section_name = $program . ' ' . $year_level . $section_letter;
                         
                         // Check if section already exists for this academic year and semester
+                        // This allows duplicate section names with different A.Y. and semester
+                        // Reset query builder to ensure clean query
+                        $this->db->reset_query();
                         $this->db->where('section_name', $section_name);
                         $this->db->where('academic_year', $active_context['academic_year']);
                         $this->db->where('semester', $active_context['semester']);
@@ -2221,24 +2302,54 @@ class AdminController extends BaseController {
                                 $section_data['academic_year_id'] = $active_context['academic_year_id'];
                             }
                             
+                            // Reset query builder before insert
+                            $this->db->reset_query();
                             $this->db->insert('sections', $section_data);
                             
                             if ($this->db->affected_rows() > 0) {
                                 $created_count++;
+                                $program_created++;
                             } else {
                                 $db_error = $this->db->error();
-                                $error_msg = "Failed to create section: $section_name";
-                                if (!empty($db_error['message'])) {
-                                    $error_msg .= " - " . $db_error['message'];
+                                $error_code = $db_error['code'] ?? 0;
+                                
+                                // Check if error is due to duplicate key (1062 = Duplicate entry)
+                                // If it's a duplicate, treat it as existing section, not an error
+                                if ($error_code == 1062 || 
+                                    (isset($db_error['message']) && 
+                                     (stripos($db_error['message'], 'Duplicate entry') !== false || 
+                                      stripos($db_error['message'], 'already exists') !== false))) {
+                                    // Section already exists (race condition or unique constraint)
+                                    $existing_count++;
+                                    $program_existing++;
+                                    log_message('debug', "Section {$section_name} already exists (duplicate key detected), treating as existing section");
+                                } else {
+                                    // Real error
+                                    $error_msg = "Failed to create section: $section_name";
+                                    if (!empty($db_error['message'])) {
+                                        $error_msg .= " - " . $db_error['message'];
+                                    }
+                                    $errors[] = $error_msg;
+                                    $program_errors[] = $error_msg;
+                                    log_message('error', $error_msg);
                                 }
-                                $errors[] = $error_msg;
-                                log_message('error', $error_msg);
                             }
                         } else {
                             $existing_count++;
+                            $program_existing++;
                         }
                     }
                 }
+                
+                // Store per-program statistics
+                $program_stats[$program] = [
+                    'created' => $program_created,
+                    'existing' => $program_existing,
+                    'total' => $program_created + $program_existing,
+                    'errors' => $program_errors
+                ];
+                
+                log_message('debug', "Auto-create sections: Program {$program} - Created: {$program_created}, Existing: {$program_existing}");
             }
             
             // Complete transaction
@@ -2259,6 +2370,13 @@ class AdminController extends BaseController {
             $total_sections = $created_count + $existing_count;
             if ($created_count === 0) {
                 $warnings[] = 'All sections for the target academic term already exist. No new sections were created.';
+            }
+
+            // Add warning if expected programs are missing (e.g., ACT)
+            $expected_programs = ['BSIT', 'BSIS', 'BSCS', 'ACT'];
+            $missing_programs = array_diff($expected_programs, $programs);
+            if (!empty($missing_programs)) {
+                $warnings[] = 'Some expected programs are not active in the database: ' . implode(', ', $missing_programs) . '. Please ensure these programs are added and marked as active in Program Management.';
             }
 
             if ($global_adviser_shortage) {
@@ -2291,6 +2409,7 @@ class AdminController extends BaseController {
                 'semester' => $active_context['semester'],
                 'target_term' => $target_term_label,
                 'programs' => $programs,
+                'program_stats' => $program_stats, // Per-program statistics
                 'year_levels' => $year_levels, // Now contains [1, 2, 3, 4]
                 'sections_per_year' => count($sections),
                 'target_section_total' => $target_section_total,
@@ -2301,7 +2420,7 @@ class AdminController extends BaseController {
                 ],
                 'warnings' => $warnings,
                 'errors' => $errors,
-                'alert_level' => $created_count > 0 ? 'success' : 'warning',
+                'alert_level' => (empty($errors) && ($created_count > 0 || $existing_count > 0)) ? 'success' : (!empty($errors) ? 'error' : 'warning'),
                 'summary' => sprintf(
                     'This generated up to %d sections (%d program(s) × %d year levels × %d sections) for %s. Each new section received a random adviser when available.',
                     $target_section_total,
@@ -2312,11 +2431,25 @@ class AdminController extends BaseController {
                 )
             ];
             
-            $message = $created_count > 0
-                ? "Successfully created $created_count new sections and linked advisers where available. $existing_count sections already existed."
-                : "No new sections were created; existing sections already cover {$target_term_label}.";
+            // Build appropriate success message
+            if ($created_count > 0 && $existing_count > 0) {
+                $message = "Successfully created $created_count new sections. $existing_count sections already existed for {$target_term_label} and were skipped.";
+            } elseif ($created_count > 0) {
+                $message = "Successfully created $created_count new sections for {$target_term_label} and linked advisers where available.";
+            } elseif ($existing_count > 0) {
+                $message = "All sections for {$target_term_label} already exist. No new sections were created. This is normal if you're running auto-create for the same academic term.";
+            } else {
+                $message = "No sections were created or found for {$target_term_label}.";
+            }
+            
             if (!empty($warnings)) {
                 $message .= ' Please review warnings.';
+            }
+            
+            // If we have existing sections but no errors, this is a success, not a failure
+            if ($existing_count > 0 && $created_count == 0 && empty($errors)) {
+                // This is actually a success - all sections exist, which is fine
+                log_message('info', "Auto-create sections: All sections already exist for {$target_term_label}. This is expected behavior.");
             }
 
             $this->send_success($response_data, $message);
@@ -2508,6 +2641,46 @@ class AdminController extends BaseController {
         }
 
         return '1st Semester';
+    }
+
+    private function resolve_academic_year_reference($academic_year_id = null, $academic_year_name = null) {
+        if (!$this->sectionsHasAcademicYearId) {
+            return [
+                'id' => null,
+                'name' => $academic_year_name
+            ];
+        }
+
+        if (!empty($academic_year_id)) {
+            $year = $this->AcademicYear_model->get_year($academic_year_id);
+            if ($year) {
+                return [
+                    'id' => $year['id'],
+                    'name' => $year['name']
+                ];
+            }
+            return ['error' => 'Academic year not found'];
+        }
+
+        if (!empty($academic_year_name)) {
+            $row = $this->db->select('id, name')
+                ->from('academic_years')
+                ->where('name', $academic_year_name)
+                ->limit(1)
+                ->get()
+                ->row_array();
+
+            if ($row) {
+                return [
+                    'id' => $row['id'],
+                    'name' => $row['name']
+                ];
+            }
+
+            return ['error' => 'Academic year not found'];
+        }
+
+        return ['error' => 'Academic year is required'];
     }
 
     /**

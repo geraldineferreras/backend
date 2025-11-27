@@ -1,10 +1,12 @@
 <?php
 class Section_model extends CI_Model {
     private $supportsArchive = false;
+    private $hasAcademicYearId = false;
 
     public function __construct() {
         parent::__construct();
         $this->supportsArchive = $this->db->field_exists('is_archived', 'sections');
+        $this->hasAcademicYearId = $this->db->field_exists('academic_year_id', 'sections');
     }
     public function get_all($options = []) {
         $include_archived = $this->include_archived_flag($options);
@@ -16,6 +18,24 @@ class Section_model extends CI_Model {
 
         if ($this->supportsArchive && !$include_archived) {
             $this->db->where('sections.is_archived', 0);
+        }
+
+        if (!empty($options['program'])) {
+            $this->db->where('sections.program', strtoupper(trim($options['program'])));
+        }
+
+        if (!empty($options['year_level'])) {
+            $this->db->where('sections.year_level', trim($options['year_level']));
+        }
+
+        if (!empty($options['semester'])) {
+            $this->db->where('sections.semester', trim($options['semester']));
+        }
+
+        if (!empty($options['academic_year_id']) && $this->hasAcademicYearId) {
+            $this->db->where('sections.academic_year_id', (int)$options['academic_year_id']);
+        } elseif (!empty($options['academic_year'])) {
+            $this->db->where('sections.academic_year', trim($options['academic_year']));
         }
 
         return $this->db->order_by('sections.academic_year', 'DESC')
