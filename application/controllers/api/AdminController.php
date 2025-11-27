@@ -1141,9 +1141,57 @@ class AdminController extends BaseController {
 
         $sections = $this->Section_model->get_by_semester_and_year($semester, $academic_year);
 
-        // Format for dropdown: simple id/name pairs
-        $dropdown_sections = array_map(function($section) {
-            return [
+        // Format for dropdown with enrolled students
+        $dropdown_sections = [];
+        foreach ($sections as $section) {
+            // Get current enrolled students
+            $current_students = $this->Section_model->get_students($section['section_id']);
+            
+            // Get historical students for this AY/semester if history table exists
+            $historical_students = [];
+            if ($this->db->table_exists('section_student_history')) {
+                $this->db->select('h.student_id, h.student_name, u.full_name, u.email, u.student_num')
+                    ->from('section_student_history h')
+                    ->join('users u', 'h.student_id = u.user_id', 'left')
+                    ->where('h.section_id', $section['section_id'])
+                    ->where('h.academic_year_name', $academic_year)
+                    ->group_start()
+                        ->where('h.semester', $semester)
+                        ->or_where('h.semester IS NULL')
+                    ->group_end();
+                $historical_students = $this->db->get()->result_array();
+            }
+            
+            // Combine current and historical students, removing duplicates
+            $all_students = [];
+            $student_ids_seen = [];
+            
+            foreach ($current_students as $student) {
+                if (!in_array($student['user_id'], $student_ids_seen)) {
+                    $all_students[] = [
+                        'user_id' => $student['user_id'],
+                        'full_name' => $student['full_name'],
+                        'email' => $student['email'],
+                        'student_num' => $student['student_num']
+                    ];
+                    $student_ids_seen[] = $student['user_id'];
+                }
+            }
+            
+            foreach ($historical_students as $student) {
+                $student_id = $student['student_id'];
+                if (!in_array($student_id, $student_ids_seen)) {
+                    $all_students[] = [
+                        'user_id' => $student_id,
+                        'full_name' => $student['full_name'] ?? $student['student_name'],
+                        'email' => $student['email'] ?? null,
+                        'student_num' => $student['student_num'] ?? null
+                    ];
+                    $student_ids_seen[] = $student_id;
+                }
+            }
+            
+            $dropdown_sections[] = [
                 'value' => $section['section_id'],
                 'label' => $section['section_name'],
                 'section_id' => $section['section_id'],
@@ -1151,9 +1199,11 @@ class AdminController extends BaseController {
                 'program' => $section['program'],
                 'year_level' => $section['year_level'],
                 'semester' => $section['semester'],
-                'academic_year' => $section['academic_year']
+                'academic_year' => $section['academic_year'],
+                'enrolled_count' => (int)($section['enrolled_count'] ?? count($all_students)),
+                'students' => $all_students
             ];
-        }, $sections);
+        }
 
         return json_response(true, 'Sections retrieved successfully', $dropdown_sections);
     }
