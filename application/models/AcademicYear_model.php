@@ -1493,5 +1493,70 @@ class AcademicYear_model extends CI_Model
 
         return $map;
     }
+
+    private function auto_create_sections_for_year(array $year)
+    {
+        if (empty($year)) {
+            return null;
+        }
+
+        $this->load->model('Section_model');
+        $this->load->model('Program_model');
+
+        $programs = $this->Program_model->get_active();
+        if (empty($programs)) {
+            return ['message' => 'No active programs available to auto-create sections'];
+        }
+
+        $yearLevels = [1, 2, 3, 4];
+        $sectionSuffixes = range('A', 'K'); // A-K
+        $created = [];
+        $totalCreated = 0;
+
+        foreach ($programs as $program) {
+            $programCode = strtoupper($program['code'] ?? $program['program_code'] ?? $program['name'] ?? '');
+            if (empty($programCode)) {
+                continue;
+            }
+
+            foreach ($yearLevels as $yearLevel) {
+                foreach ($sectionSuffixes as $suffix) {
+                    $sectionName = sprintf('%s %d%s', $programCode, $yearLevel, $suffix);
+
+                    $exists = $this->db->get_where('sections', [
+                        'section_name' => $sectionName,
+                        'program' => $programCode,
+                        'academic_year' => $year['name'],
+                        'semester' => '1st'
+                    ])->row_array();
+
+                    if ($exists) {
+                        continue;
+                    }
+
+                    $sectionData = [
+                        'section_name' => $sectionName,
+                        'program' => $programCode,
+                        'year_level' => $yearLevel,
+                        'semester' => '1st',
+                        'academic_year' => $year['name'],
+                        'academic_year_id' => $year['id'],
+                        'status' => 'active',
+                        'created_at' => date('Y-m-d H:i:s')
+                    ];
+
+                    $this->db->insert('sections', $sectionData);
+                    $created[$programCode]['sections'][] = $sectionName;
+                    $totalCreated++;
+                }
+            }
+        }
+
+        return [
+            'message' => 'Sections auto-created successfully',
+            'programs' => $created,
+            'total_sections_created' => $totalCreated
+        ];
+    }
 }
 
