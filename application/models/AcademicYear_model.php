@@ -884,6 +884,10 @@ class AcademicYear_model extends CI_Model
             return ['status' => false, 'message' => 'Unable to prepare promotion cycle'];
         }
 
+        if ($promotion['status'] === 'finalized') {
+            $options['force_refresh'] = false;
+        }
+
         $preservedDecisions = [];
         if (!empty($options['force_refresh'])) {
             $preservedDecisions = $this->db->get_where($this->promotionStudentsTable, [
@@ -1108,6 +1112,11 @@ class AcademicYear_model extends CI_Model
             return $promotion;
         }
 
+        $latest = $this->get_latest_promotion_cycle_record($year_id);
+        if ($latest) {
+            return $latest;
+        }
+
         $data = [
             'academic_year_id' => $year_id,
             'status' => 'draft',
@@ -1126,6 +1135,17 @@ class AcademicYear_model extends CI_Model
             ->from($this->promotionTable)
             ->where('academic_year_id', $year_id)
             ->where_in('status', ['draft', 'in_progress'])
+            ->order_by('id', 'DESC')
+            ->limit(1)
+            ->get()
+            ->row_array();
+    }
+
+    private function get_latest_promotion_cycle_record($year_id)
+    {
+        return $this->db->select('*')
+            ->from($this->promotionTable)
+            ->where('academic_year_id', $year_id)
             ->order_by('id', 'DESC')
             ->limit(1)
             ->get()
