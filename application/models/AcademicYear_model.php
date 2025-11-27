@@ -1037,7 +1037,18 @@ class AcademicYear_model extends CI_Model
     {
         $promotion = $this->get_active_promotion_cycle($year_id);
         if (!$promotion) {
-            return ['status' => false, 'message' => 'No active promotion cycle to finalize'];
+            $promotion = $this->get_latest_promotion_cycle_record($year_id);
+            if (!$promotion) {
+                return ['status' => false, 'message' => 'No promotion cycle found to finalize'];
+            }
+        }
+
+        if ($promotion['status'] === 'finalized') {
+            return [
+                'status' => true,
+                'message' => 'Promotion already finalized',
+                'data' => $promotion
+            ];
         }
 
         $students = $this->db->get_where($this->promotionStudentsTable, [
