@@ -1152,7 +1152,7 @@ class AdminController extends BaseController {
             if ($this->db->table_exists('section_student_history')) {
                 $academic_year_escaped = $this->db->escape($academic_year);
                 $semester_escaped = $this->db->escape($semester);
-                $this->db->select('h.student_id, h.student_name, u.full_name, u.email, u.student_num')
+                $this->db->select('h.student_id, u.full_name, u.email, u.student_num')
                     ->from('section_student_history h')
                     ->join('users u', 'h.student_id = u.user_id', 'left')
                     ->where('h.section_id', $section['section_id'])
@@ -1185,7 +1185,7 @@ class AdminController extends BaseController {
                 if (!in_array($student_id, $student_ids_seen)) {
                     $all_students[] = [
                         'user_id' => $student_id,
-                        'full_name' => $student['full_name'] ?? $student['student_name'],
+                        'full_name' => $student['full_name'] ?? 'Unknown Student',
                         'email' => $student['email'] ?? null,
                         'student_num' => $student['student_num'] ?? null
                     ];

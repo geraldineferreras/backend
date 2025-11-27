@@ -147,13 +147,14 @@ class Section_model extends CI_Model {
 
         $history = [];
         if ($this->hasSectionHistory) {
-            $history = $this->db->select('student_id as user_id, student_name as full_name, NULL as email, NULL as student_num, NULL as contact_num, NULL as address, program, "archived" as status, NULL as email_verified_at, NULL as email_verification_status, NULL as created_source')
-                ->from('section_student_history')
-                ->where('section_id', $section_id)
-                ->where('academic_year', $section['academic_year'])
+            $history = $this->db->select('h.student_id as user_id, u.full_name, u.email, u.student_num, u.contact_num, u.address, h.program, "archived" as status, u.email_verified_at, u.email_verification_status, u.created_source')
+                ->from('section_student_history h')
+                ->join('users u', 'h.student_id = u.user_id', 'left')
+                ->where('h.section_id', $section_id)
+                ->where('h.academic_year_name COLLATE utf8mb4_unicode_ci =', $section['academic_year'], false)
                 ->group_start()
-                    ->where('semester IS NULL')
-                    ->or_where('semester', $section['semester'])
+                    ->where('h.semester IS NULL')
+                    ->or_where('h.semester COLLATE utf8mb4_unicode_ci =', $section['semester'], false)
                 ->group_end()
                 ->get()->result_array();
         }
