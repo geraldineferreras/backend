@@ -119,7 +119,9 @@ class AcademicYearController extends BaseController
 
         $result = $this->AcademicYear_model->create_year(array_merge($payload, [
             'created_by' => $user['user_id']
-        ]), $options);
+        ]), array_merge($options, [
+            'auto_create_sections' => true
+        ]));
 
         $status_code = $result['status'] ? 201 : 400;
         return json_response($result['status'], $result['message'], $result['data'] ?? null, $status_code);
@@ -249,6 +251,10 @@ class AcademicYearController extends BaseController
             'evaluationStatus' => 'evaluation_status',
             'decisionStatus' => 'decision_status',
             'targetYearLevel' => 'target_year_level',
+            'targetSectionId' => 'target_section_id',
+            'targetSectionName' => 'target_section_name',
+            'targetAcademicYearId' => 'target_academic_year_id',
+            'targetAcademicYearName' => 'target_academic_year_name',
             'issueReason' => 'issue_reason',
             'decisionNotes' => 'decision_notes'
         ];

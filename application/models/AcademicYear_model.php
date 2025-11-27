@@ -323,6 +323,26 @@ class AcademicYear_model extends CI_Model
                     'type' => 'DATETIME',
                     'null' => true
                 ],
+                'target_section_id' => [
+                    'type' => 'INT',
+                    'constraint' => 11,
+                    'null' => true
+                ],
+                'target_section_name' => [
+                    'type' => 'VARCHAR',
+                    'constraint' => 150,
+                    'null' => true
+                ],
+                'target_academic_year_id' => [
+                    'type' => 'INT',
+                    'constraint' => 11,
+                    'null' => true
+                ],
+                'target_academic_year_name' => [
+                    'type' => 'VARCHAR',
+                    'constraint' => 50,
+                    'null' => true
+                ],
                 'created_at' => [
                     'type' => 'TIMESTAMP',
                     'null' => false,
@@ -341,6 +361,34 @@ class AcademicYear_model extends CI_Model
             $this->dbforge->create_table($this->promotionStudentsTable, true);
             $this->ensure_timestamp_auto_update($this->promotionStudentsTable, 'updated_at');
         }
+
+        $this->add_column_if_missing($this->promotionStudentsTable, 'target_section_id', [
+            'type' => 'INT',
+            'constraint' => 11,
+            'null' => true,
+            'after' => 'decision_at'
+        ]);
+
+        $this->add_column_if_missing($this->promotionStudentsTable, 'target_section_name', [
+            'type' => 'VARCHAR',
+            'constraint' => 150,
+            'null' => true,
+            'after' => 'target_section_id'
+        ]);
+
+        $this->add_column_if_missing($this->promotionStudentsTable, 'target_academic_year_id', [
+            'type' => 'INT',
+            'constraint' => 11,
+            'null' => true,
+            'after' => 'target_section_name'
+        ]);
+
+        $this->add_column_if_missing($this->promotionStudentsTable, 'target_academic_year_name', [
+            'type' => 'VARCHAR',
+            'constraint' => 50,
+            'null' => true,
+            'after' => 'target_academic_year_id'
+        ]);
     }
 
     private function ensure_sections_columns()
@@ -470,6 +518,12 @@ class AcademicYear_model extends CI_Model
         $this->db->insert($this->table, $data);
         $year_id = $this->db->insert_id();
 
+        $autoSections = null;
+        if (!empty($options['auto_create_sections'])) {
+            $year = $this->db->get_where($this->table, ['id' => $year_id])->row_array();
+            $autoSections = $this->auto_create_sections_for_year($year);
+        }
+
         $auto_activate = !empty($options['auto_activate']);
         $activation_result = null;
         if ($auto_activate) {
@@ -493,7 +547,8 @@ class AcademicYear_model extends CI_Model
             'data' => [
                 'year' => $this->get_year($year_id),
                 'auto_activated' => $auto_activate,
-                'activation' => $activation_result
+                'activation' => $activation_result,
+                'auto_created_sections' => $autoSections
             ]
         ];
     }
@@ -579,6 +634,8 @@ class AcademicYear_model extends CI_Model
         }
 
         $this->db->trans_start();
+        $movementResult = null;
+        $autoSections = null;
 
         // Archive previously active academic year (only one can be active)
         $previous_active = $this->db->select('*')
@@ -606,16 +663,39 @@ class AcademicYear_model extends CI_Model
             'updated_by' => $activated_by
         ]);
 
+        if ($previous_active) {
+            $movementResult = $this->move_promoted_students_to_next_year($previous_active, $year);
+            if (!$movementResult['status']) {
+                $this->db->trans_rollback();
+                return $movementResult;
+            }
+        }
+
         $this->db->trans_complete();
 
         if ($this->db->trans_status() === false) {
             return ['status' => false, 'message' => 'Failed to activate academic year'];
         }
 
+        $data = $this->get_year($year_id);
+        if ($movementResult) {
+            $data['promotion_migration'] = array_merge([
+                'message' => $movementResult['message'],
+                'source_academic_year' => [
+                    'id' => $previous_active['id'],
+                    'name' => $previous_active['name']
+                ]
+            ], $movementResult['data'] ?? []);
+        }
+
+        if ($autoSections) {
+            $data['auto_created_sections'] = $autoSections;
+        }
+
         return [
             'status' => true,
             'message' => 'Academic year activated successfully',
-            'data' => $this->get_year($year_id)
+            'data' => $data
         ];
     }
 
@@ -888,6 +968,18 @@ class AcademicYear_model extends CI_Model
 
         if (array_key_exists('target_year_level', $payload)) {
             $update['target_year_level'] = $payload['target_year_level'];
+            if (!array_key_exists('target_section_name', $payload) && !empty($student['section_name'])) {
+                $update['target_section_name'] = $this->build_target_section_name(
+                    $student['section_name'],
+                    $payload['target_year_level']
+                );
+            }
+        }
+
+        foreach (['target_section_id', 'target_section_name', 'target_academic_year_id', 'target_academic_year_name'] as $targetField) {
+            if (array_key_exists($targetField, $payload)) {
+                $update[$targetField] = $payload[$targetField];
+            }
         }
 
         if (array_key_exists('issue_reason', $payload)) {
@@ -1051,13 +1143,16 @@ class AcademicYear_model extends CI_Model
 
             $evaluationStatus = empty($issue_reasons) ? 'eligible' : 'issue';
 
+            $targetYearLevel = $currentYearLevel ? min($currentYearLevel + 1, 4) : null;
+
             $insert = [
                 'promotion_id' => $promotion_id,
                 'student_id' => $row['user_id'],
                 'student_name' => $row['full_name'],
                 'program' => $row['section_program'] ?? $row['program'],
                 'current_year_level' => $currentYearLevel,
-                'target_year_level' => $currentYearLevel ? min($currentYearLevel + 1, 4) : null,
+                'target_year_level' => $targetYearLevel,
+                'target_section_name' => $this->build_target_section_name($row['section_name'], $targetYearLevel),
                 'section_id' => $row['section_id'],
                 'section_name' => $row['section_name'],
                 'evaluation_status' => $evaluationStatus,
@@ -1066,6 +1161,175 @@ class AcademicYear_model extends CI_Model
 
             $this->db->insert($this->promotionStudentsTable, $insert);
         }
+    }
+
+    private function move_promoted_students_to_next_year(array $sourceYear, array $targetYear)
+    {
+        $promotion = $this->db->select('*')
+            ->from($this->promotionTable)
+            ->where('academic_year_id', $sourceYear['id'])
+            ->where('status', 'finalized')
+            ->order_by('id', 'DESC')
+            ->limit(1)
+            ->get()
+            ->row_array();
+
+        if (!$promotion) {
+            return [
+                'status' => true,
+                'message' => 'No finalized promotion found for previous academic year'
+            ];
+        }
+
+        $students = $this->db->get_where($this->promotionStudentsTable, [
+            'promotion_id' => $promotion['id'],
+            'decision_status' => 'promoted'
+        ])->result_array();
+
+        if (empty($students)) {
+            return [
+                'status' => true,
+                'message' => 'No promoted students to move for the previous academic year',
+                'data' => ['moved' => 0, 'promotion_id' => $promotion['id']]
+            ];
+        }
+
+        $moved = 0;
+        $failures = [];
+
+        foreach ($students as $student) {
+            $targetYearLevel = $student['target_year_level'];
+            if (!$targetYearLevel && !empty($student['current_year_level'])) {
+                $targetYearLevel = min((int)$student['current_year_level'] + 1, 4);
+            }
+
+            if (empty($targetYearLevel)) {
+                $failures[] = [
+                    'student_id' => $student['student_id'],
+                    'student_name' => $student['student_name'],
+                    'reason' => 'Target year level is missing'
+                ];
+                continue;
+            }
+
+            $targetSectionName = $student['target_section_name'] ?: $this->build_target_section_name(
+                $student['section_name'],
+                $targetYearLevel
+            );
+
+            $section = $this->resolve_target_section($student, $targetSectionName, $targetYearLevel, $targetYear);
+            if (!$section) {
+                $failures[] = [
+                    'student_id' => $student['student_id'],
+                    'student_name' => $student['student_name'],
+                    'reason' => sprintf('No section found for %s year level %s in %s', $student['program'], $targetYearLevel, $targetYear['name'])
+                ];
+                continue;
+            }
+
+            $userUpdate = [
+                'section_id' => $section['section_id'],
+                'program' => $section['program'] ?? $student['program']
+            ];
+
+            $this->db->where('user_id', $student['student_id'])->update('users', $userUpdate);
+            if ($this->db->affected_rows() === 0 && $this->db->error()['code'] !== 0) {
+                $failures[] = [
+                    'student_id' => $student['student_id'],
+                    'student_name' => $student['student_name'],
+                    'reason' => 'Failed to update student record'
+                ];
+                continue;
+            }
+
+            $this->db->where('id', $student['id'])->update($this->promotionStudentsTable, [
+                'target_year_level' => $targetYearLevel,
+                'target_section_id' => $section['section_id'],
+                'target_section_name' => $section['section_name'],
+                'target_academic_year_id' => $targetYear['id'],
+                'target_academic_year_name' => $targetYear['name']
+            ]);
+
+            $moved++;
+        }
+
+        if (!empty($failures)) {
+            return [
+                'status' => false,
+                'message' => 'Unable to move all promoted students to the next academic year',
+                'data' => [
+                    'moved' => $moved,
+                    'promotion_id' => $promotion['id'],
+                    'failures' => $failures
+                ]
+            ];
+        }
+
+        return [
+            'status' => true,
+            'message' => 'Promoted students moved to the next academic year',
+            'data' => [
+                'moved' => $moved,
+                'promotion_id' => $promotion['id']
+            ]
+        ];
+    }
+
+    private function resolve_target_section(array $student, ?string $targetSectionName, $targetYearLevel, array $targetYear)
+    {
+        if (empty($student['program']) || empty($targetYearLevel)) {
+            return null;
+        }
+
+        $program = strtoupper(trim($student['program']));
+
+        $builder = $this->db->select('*')
+            ->from('sections')
+            ->where('program', $program)
+            ->where('year_level', $targetYearLevel);
+
+        if ($this->sectionsArchiveFieldExists) {
+            $builder->where('is_archived', 0);
+        }
+
+        $this->apply_year_filter($builder, $targetYear);
+
+        if ($targetSectionName) {
+            $section = $builder->where('section_name', $targetSectionName)->get()->row_array();
+            if ($section) {
+                return $section;
+            }
+        }
+
+        // Fallback: try any section with matching program/year level in target year
+        $fallbackBuilder = $this->db->select('*')
+            ->from('sections')
+            ->where('program', $program)
+            ->where('year_level', $targetYearLevel);
+
+        if ($this->sectionsArchiveFieldExists) {
+            $fallbackBuilder->where('is_archived', 0);
+        }
+
+        $this->apply_year_filter($fallbackBuilder, $targetYear);
+
+        return $fallbackBuilder->order_by('section_name', 'ASC')->limit(1)->get()->row_array();
+    }
+
+    private function build_target_section_name(?string $currentSectionName, $targetYearLevel)
+    {
+        if (empty($currentSectionName) || empty($targetYearLevel)) {
+            return null;
+        }
+
+        if (preg_match('/\d+/', $currentSectionName, $matches, PREG_OFFSET_CAPTURE)) {
+            $match = $matches[0];
+            $start = $match[1];
+            $length = strlen($match[0]);
+            return substr($currentSectionName, 0, $start) . $targetYearLevel . substr($currentSectionName, $start + $length);
+        }
+
+        return trim($currentSectionName . ' ' . $targetYearLevel);
     }
 
     private function build_student_issue_map($year_name)
