@@ -618,6 +618,52 @@ function send_registration_rejected_email($full_name, $email, $role, $login_url 
 }
 
 /**
+ * Send bulk upload verification instructions
+ */
+function send_bulk_upload_verification_email($full_name, $email, $verification_link) {
+    $login_url = get_scms_login_url();
+    $subject = 'Verify your SCMS student account';
+    $message = "Hi {$full_name},\n\n"
+        . "A SCMS account was created for you via the registrar's bulk upload.\n"
+        . "Please verify your email address to activate your access.\n\n"
+        . "Click the button below or use this link if it does not work:\n"
+        . "{$verification_link}\n\n"
+        . "After verifying, you will automatically receive your temporary password.\n\n"
+        . "Need help? You can log any issues via the SCMS portal: {$login_url}";
+
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Verify Email',
+        'action_url' => $verification_link
+    ]);
+
+    return send_email($email, $subject, $html, $full_name);
+}
+
+/**
+ * Send welcome email with temp password after bulk verification
+ */
+function send_bulk_upload_welcome_email($full_name, $email, $temporary_password, $login_url = null) {
+    $login_url = $login_url ?: get_scms_login_url();
+    $subject = 'Your SCMS student account is ready';
+    $message = "Hi {$full_name},\n\n"
+        . "Thanks for verifying your email! Your SCMS student account is now active.\n\n"
+        . "Use the credentials below to log in:\n"
+        . "- Email: {$email}\n"
+        . "- Temporary password: {$temporary_password}\n\n"
+        . "Security reminders:\n"
+        . "- Change your password immediately after logging in.\n"
+        . "- Do not share this password with anyone.\n\n"
+        . "Login link: {$login_url}";
+
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Log in to SCMS',
+        'action_url' => $login_url
+    ]);
+
+    return send_email($email, $subject, $html, $full_name);
+}
+
+/**
  * Send email notification to all admins/chairpersons when a new registration needs approval
  * Also creates in-app system notifications (toaster) for each admin
  */

@@ -5,12 +5,29 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class AdminController extends BaseController {
     private $sectionsHasAcademicYearId = false;
+    private $emailVerificationTTL = 86400;
+    private $emailVerificationTokenBytes = 32;
+    private $verificationLinkBase;
+    private $loginUrl;
     public function __construct() {
         parent::__construct();
         $this->load->model(['Section_model', 'User_model', 'Program_model', 'AcademicYear_model']);
-        $this->load->helper(['response', 'auth', 'notification', 'utility', 'email_notification', 'audit']);
+        $this->load->helper(['response', 'auth', 'notification', 'utility', 'email_notification', 'audit', 'url']);
         $this->load->library('Token_lib');
         $this->sectionsHasAcademicYearId = $this->db->field_exists('academic_year_id', 'sections');
+        $ttl = getenv('EMAIL_VERIFICATION_TTL');
+        if ($ttl && is_numeric($ttl)) {
+            $this->emailVerificationTTL = max(300, (int)$ttl);
+        }
+
+        $token_bytes = getenv('EMAIL_VERIFICATION_TOKEN_BYTES');
+        if ($token_bytes && is_numeric($token_bytes)) {
+            $this->emailVerificationTokenBytes = max(16, min(64, (int)$token_bytes));
+        }
+
+        $this->verificationLinkBase = rtrim(getenv('FRONTEND_VERIFY_BASE_URL') ?: site_url('api/auth/verify-email'), '/');
+        $loginFallback = getenv('EMAIL_VERIFICATION_REDIRECT_URL') ?: 'https://scmsupdatedbackup.vercel.app/auth/login';
+        $this->loginUrl = rtrim(getenv('APP_LOGIN_URL') ?: $loginFallback, '/');
         // CORS headers are already handled by BaseController
     }
 
@@ -2508,6 +2525,50 @@ class AdminController extends BaseController {
         return $password;
     }
 
+    private function create_bulk_email_verification_context() {
+        $token_plain = $this->generate_email_verification_token();
+        return [
+            'status' => 'pending',
+            'token_plain' => $token_plain,
+            'token_hash' => $this->hash_verification_token($token_plain),
+            'expires_at' => date('Y-m-d H:i:s', time() + $this->emailVerificationTTL),
+            'sent_at' => date('Y-m-d H:i:s')
+        ];
+    }
+
+    private function generate_email_verification_token() {
+        try {
+            return bin2hex(random_bytes($this->emailVerificationTokenBytes));
+        } catch (Exception $e) {
+            return hash('sha256', uniqid('verify_', true));
+        }
+    }
+
+    private function hash_verification_token($token) {
+        return hash('sha256', $token);
+    }
+
+    private function build_verification_link($token) {
+        if (empty($token)) {
+            return null;
+        }
+
+        $separator = strpos($this->verificationLinkBase, '?') === false ? '?' : '&';
+        return $this->verificationLinkBase . $separator . 'token=' . urlencode($token);
+    }
+
+    private function dispatch_bulk_verification_email($full_name, $email, $verification_link) {
+        if (empty($email) || empty($verification_link) || !function_exists('send_bulk_upload_verification_email')) {
+            return;
+        }
+
+        try {
+            send_bulk_upload_verification_email($full_name, $email, $verification_link);
+        } catch (Exception $e) {
+            log_message('error', "Failed to send bulk verification email to {$email}: " . $e->getMessage());
+        }
+    }
+
     private function get_active_program_codes() {
         $program_rows = $this->Program_model->get_all([
             'status' => 'active',
@@ -2782,7 +2843,15 @@ class AdminController extends BaseController {
             // Generate unique user_id for student
             $user_id = generate_user_id('STD');
 
+            $verification_context = $this->create_bulk_email_verification_context();
+
             // Prepare student data for insertion
+            try {
+                $pendingPasswordSeed = bin2hex(random_bytes(10));
+            } catch (Exception $e) {
+                $pendingPasswordSeed = uniqid('pending_', true);
+            }
+
             $student_data = [
                 'user_id' => $user_id,
                 'role' => 'student',
@@ -2795,9 +2864,15 @@ class AdminController extends BaseController {
                 'program' => $this->standardize_program_name($student['program']),
                 'student_type' => isset($student['student_type']) ? strtolower(trim($student['student_type'])) : 'regular',
                 'qr_code' => $student['qr_code'],
-                'status' => isset($student['status']) ? strtolower(trim($student['status'])) : 'active',
-                'password' => password_hash($this->generate_temporary_password(), PASSWORD_BCRYPT),
-                'created_at' => date('Y-m-d H:i:s')
+                'status' => 'pending_verification',
+                'email_verification_status' => $verification_context['status'],
+                'email_verification_token' => $verification_context['token_hash'],
+                'email_verification_expires_at' => $verification_context['expires_at'],
+                'email_verification_sent_at' => $verification_context['sent_at'],
+                'email_verified_at' => null,
+                'password' => password_hash($pendingPasswordSeed, PASSWORD_BCRYPT),
+                'created_at' => date('Y-m-d H:i:s'),
+                'created_source' => 'bulk_upload'
             ];
 
             // Add section_id if provided
@@ -2834,6 +2909,9 @@ class AdminController extends BaseController {
                 // Add to batch arrays to prevent duplicates within the same batch
                 $batch_student_nums[] = $student_data['student_num'];
                 $batch_emails[] = $student_data['email'];
+
+                $verification_link = $this->build_verification_link($verification_context['token_plain']);
+                $this->dispatch_bulk_verification_email($student_data['full_name'], $student_data['email'], $verification_link);
             } else {
                 $db_error = $this->db->error();
                 $errors[] = [

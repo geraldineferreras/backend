@@ -133,7 +133,7 @@ class Section_model extends CI_Model {
     }
 
     public function get_students($section_id) {
-        return $this->db->select('user_id, full_name, email, student_num, contact_num, address, program, status')
+        return $this->db->select('user_id, full_name, email, student_num, contact_num, address, program, status, email_verified_at, email_verification_status, created_source')
             ->from('users')
             ->where('section_id', $section_id)
             ->where('role', 'student')
@@ -260,7 +260,7 @@ class Section_model extends CI_Model {
     }
 
     public function get_available_students() {
-        return $this->db->select('user_id, full_name, email, student_num, contact_num, address, program, status')
+        return $this->db->select('user_id, full_name, email, student_num, contact_num, address, program, status, email_verified_at, email_verification_status, created_source')
             ->from('users')
             ->where('role', 'student')
             ->where('(section_id IS NULL OR section_id = 0)', NULL, FALSE)
@@ -270,7 +270,7 @@ class Section_model extends CI_Model {
     }
 
     public function get_all_students_with_sections() {
-        return $this->db->select('users.user_id, users.full_name, users.email, users.student_num, users.contact_num, users.address, users.program, users.status, sections.section_name, sections.section_id')
+        return $this->db->select('users.user_id, users.full_name, users.email, users.student_num, users.contact_num, users.address, users.program, users.status, users.email_verified_at, users.email_verification_status, users.created_source, sections.section_name, sections.section_id')
             ->from('users')
             ->join('sections', 'users.section_id = sections.section_id', 'left')
             ->where('users.role', 'student')
