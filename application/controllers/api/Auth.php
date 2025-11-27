@@ -771,7 +771,12 @@ class Auth extends BaseController {
 
         $created_source = $user['created_source'] ?? null;
         $is_bulk_upload = $created_source === 'bulk_upload';
-        $requires_manual_approval = $this->requires_manual_approval($user['role']) && !$is_bulk_upload;
+        $is_admin_created_chairperson = ($created_source === 'admin_created' && 
+                                         $user['role'] === 'admin' && 
+                                         ($user['admin_type'] ?? null) === 'program_chairperson');
+        
+        // Admin-created chairpersons require manual approval after email verification
+        $requires_manual_approval = ($this->requires_manual_approval($user['role']) && !$is_bulk_upload) || $is_admin_created_chairperson;
         $next_status = $requires_manual_approval ? 'pending_approval' : 'active';
         $bulk_temporary_password = null;
         if ($is_bulk_upload) {

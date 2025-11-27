@@ -664,6 +664,30 @@ function send_bulk_upload_welcome_email($full_name, $email, $temporary_password,
 }
 
 /**
+ * Send verification email to chairperson created by admin
+ */
+function send_chairperson_verification_email($full_name, $email, $verification_link) {
+    $login_url = get_scms_login_url();
+    $subject = 'Verify your SCMS chairperson account';
+    $message = "Hi {$full_name},\n\n"
+        . "An administrator has created a chairperson account for you in the SCMS system.\n"
+        . "To complete your account setup, please verify your email address by clicking the button below.\n\n"
+        . "After verification, your account will be reviewed by an administrator for approval.\n"
+        . "Once approved, you will receive login credentials via email.\n\n"
+        . "Click the button below or use this link if it does not work:\n"
+        . "{$verification_link}\n\n"
+        . "If you did not expect this email, please contact the system administrator.\n\n"
+        . "Need help? You can contact support via the SCMS portal: {$login_url}";
+
+    $html = create_email_html('system', $subject, $message, null, null, null, [
+        'action_text' => 'Verify Email',
+        'action_url' => $verification_link
+    ]);
+
+    return send_email($email, $subject, $html, $full_name);
+}
+
+/**
  * Send email notification to all admins/chairpersons when a new registration needs approval
  * Also creates in-app system notifications (toaster) for each admin
  */

@@ -111,7 +111,30 @@ class User_model extends CI_Model {
             ->where('status', 'pending_approval');
 
         if ($role) {
-            $this->db->where('role', strtolower($role));
+            $role_lower = strtolower($role);
+            // When filtering by 'chairperson', also include admin-created chairpersons (role='admin' with admin_type='program_chairperson')
+            if ($role_lower === 'chairperson') {
+                $this->db->group_start()
+                    ->where('role', 'chairperson')
+                    ->or_group_start()
+                        ->where('role', 'admin')
+                        ->where('admin_type', 'program_chairperson')
+                    ->group_end()
+                ->group_end();
+            } else {
+                $this->db->where('role', $role_lower);
+            }
+        } else {
+            // Include admin-created chairpersons in all results
+            $this->db->group_start()
+                ->where('role', 'teacher')
+                ->or_where('role', 'student')
+                ->or_where('role', 'chairperson')
+                ->or_group_start()
+                    ->where('role', 'admin')
+                    ->where('admin_type', 'program_chairperson')
+                ->group_end()
+            ->group_end();
         }
 
         $this->db->order_by('created_at', 'ASC');
