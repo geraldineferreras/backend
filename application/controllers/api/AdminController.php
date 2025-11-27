@@ -2176,7 +2176,7 @@ class AdminController extends BaseController {
             $programs_with_fallback_advisers = [];
             $global_adviser_shortage = empty($adviser_pool['all']);
 
-            $year_levels = [1, 2, 3, 4]; // Changed to numeric values
+            $year_levels = [1, 2, 3, 4]; // Numeric values
             $sections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
             $target_section_total = count($programs) * count($year_levels) * count($sections);
             
@@ -2193,10 +2193,11 @@ class AdminController extends BaseController {
                     foreach ($sections as $section_letter) {
                         $section_name = $program . ' ' . $year_level . $section_letter;
                         
-                        // Check if section already exists
-                        $existing = $this->db->get_where('sections', [
-                            'section_name' => $section_name
-                        ])->row_array();
+                        // Check if section already exists for this academic year and semester
+                        $this->db->where('section_name', $section_name);
+                        $this->db->where('academic_year', $active_context['academic_year']);
+                        $this->db->where('semester', $active_context['semester']);
+                        $existing = $this->db->get('sections')->row_array();
                         
                         if (!$existing) {
                             $adviser_pick = $this->select_random_adviser($program, $adviser_pool);
@@ -2207,15 +2208,13 @@ class AdminController extends BaseController {
                             }
 
                             // Create section with active academic context
-                            // Only use columns that actually exist in the table
                             $section_data = [
                                 'section_name' => $section_name,
                                 'program' => $program,
                                 'year_level' => $year_level,
-                                'adviser_id' => $adviser_pick['adviser_id'],
+                                'adviser_id' => $adviser_pick['adviser_id'], // Can be null
                                 'semester' => $active_context['semester'],
                                 'academic_year' => $active_context['academic_year']
-                                // Note: created_at has a default value, so we don't need to set it
                             ];
 
                             if ($sections_has_academic_year_id) {
@@ -2223,10 +2222,17 @@ class AdminController extends BaseController {
                             }
                             
                             $this->db->insert('sections', $section_data);
+                            
                             if ($this->db->affected_rows() > 0) {
                                 $created_count++;
                             } else {
-                                $errors[] = "Failed to create section: $section_name";
+                                $db_error = $this->db->error();
+                                $error_msg = "Failed to create section: $section_name";
+                                if (!empty($db_error['message'])) {
+                                    $error_msg .= " - " . $db_error['message'];
+                                }
+                                $errors[] = $error_msg;
+                                log_message('error', $error_msg);
                             }
                         } else {
                             $existing_count++;
@@ -2237,8 +2243,14 @@ class AdminController extends BaseController {
             
             // Complete transaction
             if ($this->db->trans_status() === FALSE) {
+                $db_error = $this->db->error();
+                $error_msg = 'Failed to create sections. Transaction rolled back.';
+                if (!empty($db_error['message'])) {
+                    $error_msg .= " Database error: " . $db_error['message'];
+                }
                 $this->db->trans_rollback();
-                $this->send_error('Failed to create sections. Transaction rolled back.', 500);
+                log_message('error', $error_msg);
+                $this->send_error($error_msg, 500);
                 return;
             }
             
