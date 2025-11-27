@@ -46,6 +46,7 @@ class AdminController extends BaseController {
         }
 
         // Chairpersons cannot view chairperson registrations (only admins can)
+        // This includes both role='chairperson' and admin_type='program_chairperson'
         if ($user_data['role'] === 'chairperson' && $role_filter === 'chairperson') {
             return json_response(false, 'Only administrators can view chairperson registrations', null, 403);
         }
@@ -55,17 +56,24 @@ class AdminController extends BaseController {
         // Filter out chairperson registrations if viewer is a chairperson
         if ($user_data['role'] === 'chairperson') {
             $registrations = array_filter($registrations, function($user) {
-                return $user['role'] !== 'chairperson';
+                // Exclude both role='chairperson' and admin_type='program_chairperson'
+                $is_program_chairperson = ($user['role'] === 'admin' && ($user['admin_type'] ?? null) === 'program_chairperson');
+                return $user['role'] !== 'chairperson' && !$is_program_chairperson;
             });
             $registrations = array_values($registrations); // Re-index array
         }
+        
         $payload = array_map(function($user) {
             $program = $user['program'] ?? null;
+            // Show program_chairperson as 'chairperson' role
+            $display_role = ($user['role'] === 'admin' && ($user['admin_type'] ?? null) === 'program_chairperson') 
+                ? 'chairperson' 
+                : $user['role'];
             return [
                 'user_id' => $user['user_id'],
                 'full_name' => $user['full_name'],
                 'email' => $user['email'],
-                'role' => $user['role'],
+                'role' => $display_role,
                 'program' => $program,
                 'submitted_at' => $user['created_at'] ?? null
             ];
@@ -88,12 +96,17 @@ class AdminController extends BaseController {
         }
 
         $user = $this->User_model->get_by_id($user_id);
-        if (!$user || !in_array($user['role'], ['teacher', 'student', 'chairperson'])) {
+        
+        // Check if this is a program_chairperson (admin with admin_type='program_chairperson')
+        $is_program_chairperson = ($user['role'] === 'admin' && ($user['admin_type'] ?? null) === 'program_chairperson');
+        $is_chairperson_role = ($user['role'] === 'chairperson');
+        
+        if (!$user || (!in_array($user['role'], ['teacher', 'student', 'chairperson']) && !$is_program_chairperson)) {
             return json_response(false, 'Pending registration not found for this user', null, 404);
         }
 
-        // Only admins can approve chairperson accounts
-        if ($user['role'] === 'chairperson' && $user_data['role'] !== 'admin') {
+        // Only admins can approve chairperson accounts (both role='chairperson' and admin_type='program_chairperson')
+        if (($is_chairperson_role || $is_program_chairperson) && $user_data['role'] !== 'admin') {
             return json_response(false, 'Only administrators can approve chairperson accounts', null, 403);
         }
 
@@ -120,9 +133,12 @@ class AdminController extends BaseController {
             ? get_scms_login_url()
             : (getenv('APP_LOGIN_URL') ?: site_url('auth/login'));
 
+        // Determine role for email (program_chairperson should be shown as 'chairperson')
+        $email_role = $is_program_chairperson ? 'chairperson' : $user['role'];
+        
         if (function_exists('send_registration_approved_email')) {
             try {
-                send_registration_approved_email($user['full_name'], $user['email'], $user['role'], $temporary_password, $login_url);
+                send_registration_approved_email($user['full_name'], $user['email'], $email_role, $temporary_password, $login_url);
             } catch (Exception $e) {
                 log_message('error', 'Failed to send approval email: ' . $e->getMessage());
             }
@@ -130,7 +146,7 @@ class AdminController extends BaseController {
 
         try {
             $title = 'Account approved';
-            $message = "Hello {$user['full_name']}, your {$user['role']} account has been approved. "
+            $message = "Hello {$user['full_name']}, your {$email_role} account has been approved. "
                 . "Use the temporary password sent to your email to sign in and update your password.";
             create_system_notification($user_id, $title, $message, false);
         } catch (Exception $e) {
@@ -154,12 +170,17 @@ class AdminController extends BaseController {
         }
 
         $user = $this->User_model->get_by_id($user_id);
-        if (!$user || !in_array($user['role'], ['teacher', 'student', 'chairperson'])) {
+        
+        // Check if this is a program_chairperson (admin with admin_type='program_chairperson')
+        $is_program_chairperson = ($user['role'] === 'admin' && ($user['admin_type'] ?? null) === 'program_chairperson');
+        $is_chairperson_role = ($user['role'] === 'chairperson');
+        
+        if (!$user || (!in_array($user['role'], ['teacher', 'student', 'chairperson']) && !$is_program_chairperson)) {
             return json_response(false, 'Pending registration not found for this user', null, 404);
         }
 
-        // Only admins can reject chairperson accounts
-        if ($user['role'] === 'chairperson' && $user_data['role'] !== 'admin') {
+        // Only admins can reject chairperson accounts (both role='chairperson' and admin_type='program_chairperson')
+        if (($is_chairperson_role || $is_program_chairperson) && $user_data['role'] !== 'admin') {
             return json_response(false, 'Only administrators can reject chairperson accounts', null, 403);
         }
 
@@ -200,6 +221,207 @@ class AdminController extends BaseController {
 
         return json_response(true, 'Registration rejected successfully');
     }
+
+    /**
+     * Create a new chairperson account
+     * POST /api/admin/chairperson/create
+     * 
+     * Admin creates chairperson with:
+     * - role = 'admin'
+     * - admin_type = 'program_chairperson'
+     * - status = 'pending_verification'
+     * - Email verification token generated
+     * - Verification email sent
+     * - No password set
+     */
+    public function chairperson_create_post() {
+        $user_data = require_role($this, ['admin']);
+        if (!$user_data) {
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return json_response(false, 'Invalid JSON format', null, 400);
+        }
+
+        $first_name = isset($data['first_name']) ? trim($data['first_name']) : null;
+        $middle_name = isset($data['middle_name']) ? trim($data['middle_name']) : null;
+        $last_name = isset($data['last_name']) ? trim($data['last_name']) : null;
+        $email = isset($data['email']) ? trim($data['email']) : null;
+        $contact_num = isset($data['contact_num']) ? trim($data['contact_num']) : null;
+        $address = isset($data['address']) ? trim($data['address']) : null;
+        $program = isset($data['program']) ? trim($data['program']) : null;
+
+        // Validate required fields
+        $errors = [];
+        if (empty($first_name)) {
+            $errors[] = 'First name is required.';
+        }
+        if (empty($last_name)) {
+            $errors[] = 'Last name is required.';
+        }
+        if (empty($email)) {
+            $errors[] = 'Email is required.';
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Invalid email format.';
+        }
+        if (empty($program)) {
+            $errors[] = 'Program is required for chairperson accounts.';
+        }
+        if (empty($contact_num)) {
+            $errors[] = 'Contact number is required.';
+        }
+        if (empty($address)) {
+            $errors[] = 'Address is required.';
+        }
+
+        if (!empty($errors)) {
+            return json_response(false, implode(' ', $errors), null, 400);
+        }
+
+        // Check if email already exists
+        $existing_user = $this->User_model->get_by_email($email);
+        if ($existing_user) {
+            return json_response(false, 'User with this email already exists!', null, 409);
+        }
+
+        // Validate and standardize program
+        $this->load->helper('utility');
+        $program_shortcut = $this->Program_model->normalize_program_input($program, false);
+        if (!$program_shortcut) {
+            return json_response(false, 'Invalid program. Must be BSIT, BSIS, BSCS, or ACT', null, 400);
+        }
+        $program = $program_shortcut;
+
+        // Generate full name
+        $full_name = generate_full_name($first_name, $middle_name, $last_name, false);
+
+        // Generate user ID
+        $user_id = generate_user_id('ADM');
+
+        // Create email verification context
+        $token_plain = $this->generate_email_verification_token();
+        $verification_context = [
+            'required' => true,
+            'status' => 'pending',
+            'token_plain' => $token_plain,
+            'token_hash' => $this->hash_verification_token($token_plain),
+            'expires_at' => date('Y-m-d H:i:s', time() + $this->emailVerificationTTL),
+            'sent_at' => date('Y-m-d H:i:s'),
+            'verified_at' => null
+        ];
+
+        // Prepare user data
+        $user_data_insert = [
+            'user_id' => $user_id,
+            'role' => 'admin',
+            'admin_type' => 'program_chairperson',
+            'first_name' => $first_name,
+            'middle_name' => !empty($middle_name) ? $middle_name : null,
+            'last_name' => $last_name,
+            'full_name' => $full_name,
+            'email' => $email,
+            'password' => password_hash(uniqid('pending_', true), PASSWORD_BCRYPT), // Placeholder password
+            'contact_num' => $contact_num,
+            'address' => $address,
+            'program' => $program,
+            'status' => 'pending_verification',
+            'email_verification_status' => $verification_context['status'],
+            'email_verification_token' => $verification_context['token_hash'],
+            'email_verification_expires_at' => $verification_context['expires_at'],
+            'email_verification_sent_at' => $verification_context['sent_at'],
+            'email_verified_at' => $verification_context['verified_at'],
+            'created_source' => 'admin_created'
+        ];
+
+        // Insert user
+        if (!$this->User_model->insert($user_data_insert)) {
+            return json_response(false, 'Failed to create chairperson account', null, 500);
+        }
+
+        // Send verification email
+        $verification_link = $this->build_verification_link($token_plain);
+        $this->send_verification_pending_notification($user_id, $full_name, 'chairperson', $verification_link);
+
+        log_audit_event(
+            'CHAIRPERSON CREATED',
+            'ADMINISTRATION',
+            "Admin {$user_data['user_id']} created chairperson account for {$full_name} ({$email})",
+            [
+                'created_user_id' => $user_id,
+                'created_by' => $user_data['user_id'],
+                'program' => $program
+            ]
+        );
+
+        return json_response(true, 'Chairperson account created successfully. Verification email has been sent.', [
+            'user_id' => $user_id,
+            'email' => $email,
+            'verification_required' => true
+        ]);
+    }
+
+    /**
+     * Generate email verification token
+     */
+    private function generate_email_verification_token() {
+        return bin2hex(random_bytes($this->emailVerificationTokenBytes));
+    }
+
+    /**
+     * Hash verification token
+     */
+    private function hash_verification_token($token) {
+        return hash('sha256', $token);
+    }
+
+    /**
+     * Build verification link
+     */
+    private function build_verification_link($token) {
+        return $this->verificationLinkBase . '?token=' . $token;
+    }
+
+    /**
+     * Send verification pending notification
+     */
+    private function send_verification_pending_notification($user_id, $full_name, $role, $verification_link) {
+        try {
+            // Create system notification
+            $title = "Verify your email address";
+            $message = "Hello {$full_name}, please verify your {$role} account email to complete your registration.\n\n";
+            $message .= "Click the Verify Email button below or use this link if needed:\n{$verification_link}\n\n";
+            $message .= "If you did not create this account, you can ignore this email.";
+            
+            create_system_notification($user_id, $title, $message, true, [
+                'action_text' => 'Verify Email',
+                'action_url' => $verification_link
+            ]);
+            
+            // Send email notification if function exists
+            $user = $this->User_model->get_by_id($user_id);
+            if ($user && function_exists('send_email_verification_notification')) {
+                send_email_verification_notification($full_name, $user['email'], $role, $verification_link);
+            } elseif ($user && function_exists('send_email')) {
+                // Fallback: send basic email
+                $subject = 'Verify your email address';
+                $email_message = "Hi {$full_name},\n\nPlease verify your {$role} account by clicking the link below:\n\n{$verification_link}\n\n";
+                $email_message .= "If you did not create this account, you can ignore this email.";
+                
+                if (function_exists('create_email_html')) {
+                    $html = create_email_html('system', $subject, $email_message, null, null, null, [
+                        'action_text' => 'Verify Email',
+                        'action_url' => $verification_link
+                    ]);
+                    send_email($user['email'], $subject, $html, $full_name);
+                }
+            }
+        } catch (Exception $e) {
+            log_message('error', 'Failed to send verification notification: ' . $e->getMessage());
+        }
+    }
+
 
     /**
      * Get class join request logs (View-only)
