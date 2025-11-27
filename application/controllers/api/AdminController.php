@@ -417,17 +417,22 @@ class AdminController extends BaseController {
         if (json_last_error() !== JSON_ERROR_NONE) {
             return json_response(false, 'Invalid JSON format', null, 400);
         }
-        $required = ['section_name', 'program', 'year_level', 'adviser_id', 'semester', 'academic_year'];
+        $required = ['section_name', 'program', 'year_level', 'semester', 'academic_year'];
         foreach ($required as $field) {
             if (empty($data->$field)) {
                 return json_response(false, "$field is required", null, 400);
             }
         }
         
-        // Validate adviser exists and is a teacher
-        $adviser = $this->User_model->get_by_id($data->adviser_id);
-        if (!$adviser || $adviser['role'] !== 'teacher') {
-            return json_response(false, 'Invalid adviser: must be an active teacher', null, 400);
+        // Handle adviser_id - make it optional (allow null, empty, or 0)
+        $adviser_id = null;
+        if (isset($data->adviser_id) && !empty($data->adviser_id) && $data->adviser_id != '0' && $data->adviser_id != 0) {
+            $adviser_id = $data->adviser_id;
+            // Validate adviser exists and is a teacher
+            $adviser = $this->User_model->get_by_id($adviser_id);
+            if (!$adviser || $adviser['role'] !== 'teacher') {
+                return json_response(false, 'Invalid adviser: must be an active teacher', null, 400);
+            }
         }
         
         // Validate semester
@@ -450,14 +455,16 @@ class AdminController extends BaseController {
             'section_name' => $data->section_name,
             'program' => $program_shortcut, // Always save as shortcut
             'year_level' => $data->year_level,
-            'adviser_id' => $data->adviser_id,
+            'adviser_id' => $adviser_id, // Can be null
             'semester' => $data->semester,
             'academic_year' => $data->academic_year
         ];
         $section_id = $this->Section_model->insert($insert_data);
         if ($section_id) {
-            // Send system notification to adviser about new section assignment
-            $this->send_section_assignment_notification($data->adviser_id, $data->section_name, $data->program, $data->year_level);
+            // Send system notification to adviser about new section assignment (only if adviser is assigned)
+            if ($adviser_id) {
+                $this->send_section_assignment_notification($adviser_id, $data->section_name, $data->program, $data->year_level);
+            }
             
             // Assign students if provided
             $assigned_students = [];
@@ -496,17 +503,22 @@ class AdminController extends BaseController {
         }
         
         // Validate all required fields are present
-        $required = ['section_name', 'program', 'year_level', 'adviser_id', 'semester', 'academic_year'];
+        $required = ['section_name', 'program', 'year_level', 'semester', 'academic_year'];
         foreach ($required as $field) {
             if (empty($data->$field)) {
                 return json_response(false, "$field is required", null, 400);
             }
         }
         
-        // Validate adviser exists and is a teacher
-        $adviser = $this->User_model->get_by_id($data->adviser_id);
-        if (!$adviser || $adviser['role'] !== 'teacher') {
-            return json_response(false, 'Invalid adviser: must be an active teacher', null, 400);
+        // Handle adviser_id - make it optional (allow null, empty, or 0)
+        $adviser_id = null;
+        if (isset($data->adviser_id) && !empty($data->adviser_id) && $data->adviser_id != '0' && $data->adviser_id != 0) {
+            $adviser_id = $data->adviser_id;
+            // Validate adviser exists and is a teacher
+            $adviser = $this->User_model->get_by_id($adviser_id);
+            if (!$adviser || $adviser['role'] !== 'teacher') {
+                return json_response(false, 'Invalid adviser: must be an active teacher', null, 400);
+            }
         }
         
         // Validate semester
@@ -529,7 +541,7 @@ class AdminController extends BaseController {
             'section_name' => $data->section_name,
             'program' => $program_shortcut, // Always save as shortcut
             'year_level' => $data->year_level,
-            'adviser_id' => $data->adviser_id,
+            'adviser_id' => $adviser_id, // Can be null
             'semester' => $data->semester,
             'academic_year' => $data->academic_year
         ];
